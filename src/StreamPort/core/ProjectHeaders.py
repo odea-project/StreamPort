@@ -1,13 +1,38 @@
 import datetime
 
 class ProjectHeaders:
+  """
+  Represents the headers of a project.
+
+  Attributes:
+    headers (dict): A dictionary containing the project headers.
+      The default keys are 'name', 'author', 'path', and 'date'.
+
+  Methods:
+    validate(): Validates the project headers.
+    __str__(): Returns a string representation of the project headers.
+    print(): Prints the project headers.
+    __getitem__(key): Returns the value associated with the given key in the project headers dictionary.
+  """
 
   def __init__(self, **kwargs):
+    """
+    Initializes a new instance of the ProjectHeaders class.
+
+    Args:
+      **kwargs: Keyword arguments representing the project headers.
+        The default keys are 'name', 'author', 'path', and 'date'.
+    """
     defaults = {'name': None, 'author': None, 'path': None, 'date': datetime.datetime.now()}
     self.headers = defaults
     self.headers.update(kwargs)
 
   def validate(self):
+    """
+    Validates the project headers.
+
+    Prints error messages if any of the headers are invalid.
+    """
     valid = True
     if self.headers['name'] is None or not isinstance(self.headers['name'], str):
       print("ProjectHeaders entry name must be a non-empty string!")
@@ -25,10 +50,28 @@ class ProjectHeaders:
       print("Issue/s found with ProjectHeaders")
 
   def __str__(self):
+    """
+    Returns a string representation of the project headers.
+
+    Returns:
+      str: A string representation of the project headers.
+    """
     return f"\nProjectHeaders\n  name: {self.headers['name']}\n  author: {self.headers['author']}\n  path: {self.headers['path']}\n  date: {self.headers['date']}\n"
 
   def print(self):
+    """
+    Prints the project headers.
+    """
     print(self)
 
   def __getitem__(self, key):
+    """
+    Returns the value associated with the given key in the project headers dictionary.
+
+    Args:
+      key (str): The key to retrieve the value for.
+
+    Returns:
+      Any: The value associated with the given key, or None if the key is not found.
+    """
     return self.headers.get(key, None)

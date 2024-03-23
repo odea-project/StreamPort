@@ -1,6 +1,20 @@
 import pandas as pd
 
 class ProcessingSettings:
+  """
+  Represents the processing settings for a specific algorithm.
+
+  Attributes:
+    call (str): The call entry.
+    algorithm (str): The algorithm entry.
+    parameters (list): The parameters entry.
+    version (str): The version entry.
+    software (str): The software entry.
+    developer (str): The developer entry.
+    contact (str): The contact entry.
+    link (str): The link entry.
+    doi (str): The DOI entry.
+  """
 
   def __init__(self, call=None, algorithm=None, parameters=[], version=None, software=None, developer=None, contact=None, link=None, doi=None):
     self.call = str(call)
@@ -14,6 +28,12 @@ class ProcessingSettings:
     self.doi = str(doi)
 
   def validate(self):
+    """
+    Validates the processing settings.
+
+    Returns:
+      bool: True if the settings are valid, False otherwise.
+    """
     valid = False
     if isinstance(self.call, str) and isinstance(self.algorithm, str) and isinstance(self.parameters, list) and isinstance(self.version, str):
       valid = True
@@ -34,6 +54,12 @@ class ProcessingSettings:
     return valid
 
   def __str__(self):
+    """
+    Returns a string representation of the processing settings.
+
+    Returns:
+      str: The string representation of the processing settings.
+    """
     result = "\n"
     result += " ProcessingSettings\n"
     result += " call         " + str(self.call) + "\n"
@@ -68,4 +94,7 @@ class ProcessingSettings:
     return result
 
   def print(self):
+    """
+    Prints the string representation of the processing settings.
+    """
     print(self)
