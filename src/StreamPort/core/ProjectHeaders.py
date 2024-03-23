@@ -29,15 +29,16 @@ class ProjectHeaders:
 
   def validate(self):
     """
-    Validates the project headers.
+    Validates the ProjectHeaders object.
 
-    Prints error messages if any of the headers are invalid.
+    Returns:
+      bool: True if the ProjectHeaders object is valid, False otherwise.
     """
     valid = True
-    if self.headers['name'] is None or not isinstance(self.headers['name'], str):
+    if self.headers['name'] is not None and not isinstance(self.headers['name'], str):
       print("ProjectHeaders entry name must be a non-empty string!")
       valid = False
-    if self.headers['author'] is None or not isinstance(self.headers['author'], str):
+    if self.headers['author'] is not None and not isinstance(self.headers['author'], str):
       print("ProjectHeaders entry author must be a non-empty string!")
       valid = False
     if self.headers['path'] is not None and not isinstance(self.headers['path'], str):
@@ -48,6 +49,8 @@ class ProjectHeaders:
       valid = False
     if not valid:
       print("Issue/s found with ProjectHeaders")
+    else:
+      return True
 
   def __str__(self):
     """

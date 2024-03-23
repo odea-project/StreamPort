@@ -6,47 +6,63 @@ from .ProcessingSettings import ProcessingSettings
 class CoreEngine:
   """
   The CoreEngine class represents the core engine of the StreamPort application.
-  It manages project headers, settings, analyses, history, and results.
+  It manages project headers, analyses, settings, results, and history.
 
   Attributes:
     _headers (ProjectHeaders): The project headers.
-    _settings (list): The list of processing settings.
     _analyses (list): The list of analyses.
-    _history (None): The history (not implemented yet).
-    _results (None): The results (not implemented yet).
+    _settings (list): The list of settings.
+    _results (dict): The dictionary of results.
+    _history (dict): The dictionary of history.
+
+  Methods:
+    __init__(self, headers=None, settings=None, analyses=None, results=None): Initializes the CoreEngine instance.
+    __str__(self): Returns a string representation of the CoreEngine instance.
+    print(self): Prints the CoreEngine instance.
+    add_headers(self, headers): Adds project headers.
+    get_headers(self, headers): Retrieves project headers.
+    remove_headers(self, headers): Removes project headers.
+    add_analyses(self, analyses): Adds analyses.
+    get_analysis(self, analyses): Retrieves analyses.
+    remove_analyses(self, analyses): Removes analyses.
+    add_settings(self, settings): Adds settings.
+    get_settings(self, settings): Retrieves settings.
+    remove_settings(self, settings): Removes settings.
+    add_results(self, results): Adds results.
+    get_results(self, results): Retrieves results.
+    remove_results(self, results): Removes results.
   """
-  _headers = None
-  _settings = None
-  _analyses = None
-  _history = None
-  _results = None
+
+  _headers = ProjectHeaders()
+  _analyses = []
+  _settings = []
+  _results = {}
+  _history = {}
 
   def __init__(self, headers=None, settings=None, analyses=None, results=None):
     """
-    Initializes a new instance of the CoreEngine class.
+    Initializes the CoreEngine instance.
 
     Args:
-      headers (ProjectHeaders, optional): The project headers. Defaults to None.
-      settings (list, optional): The list of processing settings. Defaults to None.
-      analyses (list, optional): The list of analyses. Defaults to None.
-      results (None, optional): The results (not implemented yet). Defaults to None.
+      headers (ProjectHeaders, optional): The project headers.
+      settings (list, optional): The list of settings.
+      analyses (list, optional): The list of analyses.
+      results (dict, optional): The dictionary of results.
     """
-    if headers is None:
-      headers = ProjectHeaders()
+    if headers is not None:
+      self.add_headers(headers)
     if analyses is not None:
       self.add_analyses(analyses)
-    self._headers = headers
-    self._settings = settings
-    self._results = results
+    if settings is not None:
+      self.add_settings(settings)
+    if results is not None:
+      self.add_results(results)
 
   def __str__(self):
     """
-    Returns a string representation of the CoreEngine object.
-
-    Returns:
-      str: The string representation of the CoreEngine object.
+    Returns a string representation of the CoreEngine instance.
     """
-    return f"{type(self).__name__} \n" \
+    return f"\n{type(self).__name__} \n" \
       f"  name: {self._headers.headers['name']} \n" \
       f"  author: {self._headers.headers['author']} \n" \
       f"  path: {self._headers.headers['path']} \n" \
@@ -54,7 +70,7 @@ class CoreEngine:
 
   def print(self):
     """
-    Prints the string representation of the CoreEngine object.
+    Prints the CoreEngine instance.
     """
     print(self)
 
@@ -63,8 +79,12 @@ class CoreEngine:
     Adds headers to the CoreEngine's project headers.
 
     Args:
-        headers (ProjectHeaders or dict): The headers to be added. Can be an instance of ProjectHeaders or a dictionary.
+      headers (ProjectHeaders or dict): The headers to be added. If `headers` is an instance of `ProjectHeaders`,
+        the headers will be updated with the existing headers. If `headers` is a dictionary, the headers will be
+        added to the existing headers.
 
+    Returns:
+      None
     """
     if self._headers is None:
       self._headers = ProjectHeaders()
@@ -73,21 +93,19 @@ class CoreEngine:
     elif isinstance(headers, dict):
       self._headers.headers.update(headers)
 
-  def get_headers(self, headers):
+  def get_headers(self, headers = None):
     """
     Retrieves the specified headers from the internal headers dictionary.
 
     Args:
-      headers (str or list): The headers to retrieve. Can be a single header as a string or a list of headers.
+      headers (str or list): The headers to retrieve. Can be a single header name (str) or a list of header names.
 
     Returns:
-      dict or None: If `headers` is a string, returns the value of the specified header. 
-              If `headers` is a list, returns a dictionary with the specified headers as keys and their values as values.
-              If `headers` is None or not provided, returns the entire headers dictionary.
+      dict or str or None: If `headers` is a single header name (str), returns the corresponding header value as a string.
+      If `headers` is a list of header names, returns a dictionary containing the header names as keys and their corresponding values as strings.
+      If `headers` is not provided or is of an unsupported type, returns the entire headers dictionary.
 
     """
-    if self._headers is None:
-      return None
     if isinstance(headers, str):
       return self._headers.headers.get(headers, None)
     elif isinstance(headers, list):
@@ -95,15 +113,8 @@ class CoreEngine:
     else:
       return self._headers.headers
 
-  def remove_headers(self, headers):
-    """
-    Removes the specified headers from the internal headers dictionary.
-
-    Args:
-      headers (str or list): The headers to remove. Can be a single header as a string or a list of headers.
-
-    """
-    if self._headers is None:
+  def remove_headers(self, headers = None):
+    if self._headers.headers.__len__() == 0:
       return
     if isinstance(headers, list):
       for header in headers:
@@ -115,7 +126,7 @@ class CoreEngine:
 
   def add_analyses(self, analyses):
     """
-    Add one or more analyses to the CoreEngine.
+    Adds one or more analyses to the CoreEngine.
 
     Args:
       analyses (Analyses or list[Analyses]): The analysis or list of analyses to add.
@@ -141,32 +152,28 @@ class CoreEngine:
 
   def get_analysis(self, analyses):
     """
-    Retrieves the analysis object based on the given input.
+    Retrieves the analysis object(s) based on the provided input.
 
     Parameters:
-    - analyses: Can be an integer, string, or a list of integers/strings.
-          If an integer is provided, it returns the analysis object at the specified index.
-          If a string is provided, it returns the analysis object with the matching name.
-          If a list is provided, it returns a list of analysis objects corresponding to the input.
+    - analyses: An integer, string, or list of integers/strings representing the analysis object(s) to retrieve.
 
     Returns:
-    - If a single analysis object is found, it is returned.
-    - If multiple analysis objects are found, a list of analysis objects is returned.
-    - If no analysis object is found, None is returned.
+    - If `analyses` is an integer and within the range of available analyses, returns the analysis object at the specified index.
+    - If `analyses` is a string, returns the analysis object with a matching name.
+    - If `analyses` is a list of integers/strings, returns a list of analysis objects corresponding to the provided indices/names.
+    - If `analyses` is not provided or of an unsupported type, returns all available analysis objects.
 
     Note:
-    - If the input is an integer or a list of integers, the index should be within the range of available analysis objects.
-    - If the input is a string or a list of strings, the name should match the name of an available analysis object.
+    - If `analyses` is an integer or string and no matching analysis object is found, None is returned.
+    - If `analyses` is a list and no matching analysis objects are found, an empty list is returned.
     """
-    if self._analyses is None:
-      return None
     if isinstance(analyses, int) and analyses < len(self._analyses):
       return self._analyses[analyses]
     elif isinstance(analyses, str):
       for analysis in self._analyses:
         if analysis.name == analyses:
           return analysis
-    elif isinstance(analyses, list):      
+    elif isinstance(analyses, list):
       analyses_out = []
       for analysis in analyses:
         if isinstance(analysis, int) and analysis < len(self._analyses):
@@ -175,14 +182,16 @@ class CoreEngine:
           for a in self._analyses:
             if a.name == analysis:
               analyses_out.append(a)
-    return self._analyses
+      return analyses_out
+    else:
+      return self._analyses
 
-  def remove_analyses(self, analyses):
+  def remove_analyses(self, analyses = None):
     """
-    Remove the specified analyses from the list of analyses.
+    Removes the specified analyses from the list of analyses.
 
     Args:
-      analyses (list, int, str): The analyses to be removed. It can be a list of indices, a single index, or a name.
+      analyses (int, str, list): The analyses to be removed. It can be an integer index, a string name, or a list of indices or names.
 
     Returns:
       None
@@ -190,7 +199,7 @@ class CoreEngine:
     Raises:
       None
     """
-    if self._analyses is None:
+    if self._analyses.__len__() == 0:
       return
     if isinstance(analyses, list):
       for item in analyses:
@@ -202,13 +211,15 @@ class CoreEngine:
       del self._analyses[analyses]
     elif isinstance(analyses, str):
       self._analyses = [analysis for analysis in self._analyses if analysis.name != analyses]
+    else:
+      self._analyses = []
 
-  def add_settings(self, settings):
+  def add_settings(self, settings = None):
     """
-    Add processing settings to the core engine.
+    Adds the given settings to the list of processing settings.
 
     Args:
-      settings (ProcessingSettings or list[ProcessingSettings]): The processing settings to be added.
+      settings (ProcessingSettings or list[ProcessingSettings]): The settings to be added. 
         It can be a single instance of ProcessingSettings or a list of instances.
 
     Raises:
@@ -229,25 +240,23 @@ class CoreEngine:
       if settings.call not in [s.call for s in self._settings]:
         self._settings.append(settings)
 
-  def get_settings(self, settings):
+  def get_settings(self, settings = None):
     """
     Retrieves the specified settings from the CoreEngine.
 
     Parameters:
-    - settings: The settings to retrieve. It can be an integer index, a string representing the call name, or a list of integers or strings.
+    - settings: Can be an integer, string, or a list of integers/strings.
+          If an integer is provided, it returns the setting at the specified index.
+          If a string is provided, it returns the setting with the matching call name.
+          If a list is provided, it returns a list of settings corresponding to the provided indices or call names.
 
     Returns:
-    - If `settings` is an integer and within the range of available settings, returns the corresponding setting.
-    - If `settings` is a string, returns the first setting with a matching call name.
-    - If `settings` is a list, returns a list of settings corresponding to the provided indices or call names.
-    - If `settings` is None or not found, returns None.
-    - If `settings` is not of type int, str, or list, returns all available settings.
+    - If settings is an integer or string, returns the corresponding setting.
+    - If settings is a list, returns a list of settings.
 
-    Note: The method assumes that the `_settings` attribute is already populated with the available settings.
+    If the provided settings parameter does not match any existing settings, it returns all settings.
 
     """
-    if self._settings is None:
-      return None
     if isinstance(settings, int) and settings < len(self._settings):
       return self._settings[settings]
     elif isinstance(settings, str):
@@ -264,19 +273,21 @@ class CoreEngine:
             if set.call == item:
               settings_out.append(set)
       return settings_out
-    return self._settings
+    else:
+      return self._settings
 
-  def remove_settings(self, settings):
+  def remove_settings(self, settings = None):
     """
     Removes the specified settings from the internal settings list.
 
     Args:
-      settings (int, str, list): The settings to be removed. It can be an integer index, a string name, or a list of integers or strings.
+      settings: The settings to be removed. It can be either an integer index, a string representing the call name,
+            or a list of integers and/or strings.
 
     Returns:
       None
     """
-    if self._settings is None:
+    if self._settings.__len__() == 0:
       return
     if isinstance(settings, list):
       for item in settings:
@@ -288,3 +299,73 @@ class CoreEngine:
       del self._settings[settings]
     elif isinstance(settings, str):
       self._settings = [set for set in self._settings if set.call != settings]
+    else:
+      self._settings = []	
+  
+  def add_results(self, results):
+    """
+    Adds the given results to the internal results dictionary.
+
+    Args:
+      results (dict): A dictionary containing the results to be added.
+
+    """
+    if self._results is None:
+      self._results = {}
+    if isinstance(results, dict):
+      self._results.update(results)
+
+  def get_results(self, results):
+    """
+    Retrieves the results from the CoreEngine.
+
+    Args:
+      results (str or list): The key(s) of the result(s) to retrieve.
+
+    Returns:
+      dict or any: If `results` is a string, returns the corresponding result value.
+             If `results` is a list, returns a dictionary with the key-value pairs
+             of the requested results. If `results` is neither a string nor a list,
+             returns all the results.
+
+    """
+    if isinstance(results, str):
+      return self._results.get(results, None)
+    elif isinstance(results, list):
+      out_results = {}
+      for result in results:
+        out_results[result] = self._results.get(result, None)
+      return out_results
+    else:
+      return self._results
+  
+  def remove_results(self, results = None):
+    """
+    Removes the specified results from the internal results dictionary.
+
+    Args:
+      results: The results to be removed. It can be an integer, a string, or a list of integers or strings.
+
+    Returns:
+      None
+    """
+    if self._results.__len__() == 0:
+      return
+    if isinstance(results, int):
+      keys = list(self._results.keys())
+      if results < len(keys):
+        del self._results[keys[results]]
+    if isinstance(results, str):
+      if results in self._results:
+        del self._results[results]
+    if isinstance(results, list):
+      for result in results:
+        if isinstance(result, int):
+          keys = list(self._results.keys())
+          if result < len(keys):
+            del self._results[keys[result]]
+        elif isinstance(result, str):
+          if result in self._results:
+            del self._results[result]
+    else:
+      self._results = {}
