@@ -1,4 +1,4 @@
-from .CoreEngine import CoreEngine
+from . import CoreEngine
 
 class MachineLearningEngine(CoreEngine):
 
