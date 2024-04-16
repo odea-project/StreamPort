@@ -26,22 +26,3 @@ class MachineLearningEngine(CoreEngine):
         """
 
         super().__init__(headers, settings, analyses, results)
-        self.model = model 
-        self.data = data
-
-    def train(self):
-        """
-        Trains the machine learning model using the provided data. 
-        """
-        print("Training model.")
-        
-    def predict(self, data):
-        """
-        Predicts the data using the trained machine learning model.
-        Args:
-            data : Input data for the prediction.
-        """
-        print("Make prediction using the trained model.")
-
-   
-        
