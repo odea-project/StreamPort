@@ -1,17 +1,13 @@
-from . import CoreEngine
+from ..core.CoreEngine import CoreEngine
 
 class MachineLearningEngine(CoreEngine):
 
     """
     A class for running machine learning that inherits from CoreEngine class.
-
-    Attributes:
-        model(object): the machine learning model
-        data(object): the data used to train and test the model
     
     """   
  
-    def __init__(self, headers=None, settings=None, analyses=None, results=None, model=None, data=None):
+    def __init__(self, headers=None, settings=None, analyses=None, results=None):
 
         """ 
         Initializes the MachineLearningEngine instance
