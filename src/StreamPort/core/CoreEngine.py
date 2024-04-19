@@ -49,6 +49,12 @@ class CoreEngine:
       analyses (list, optional): The list of analyses.
       results (dict, optional): The dictionary of results.
     """
+    self._headers = ProjectHeaders()
+    self._analyses = []
+    self._settings = []
+    self._results = {}
+    self._history = {}
+
     if headers is not None:
       self.add_headers(headers)
     if analyses is not None:
@@ -66,7 +72,9 @@ class CoreEngine:
       f"  name: {self._headers.headers['name']} \n" \
       f"  author: {self._headers.headers['author']} \n" \
       f"  path: {self._headers.headers['path']} \n" \
-      f"  date: {self._headers.headers['date']} \n"
+      f"  date: {self._headers.headers['date']} \n" \
+      f"  analyses: {len(self._analyses)} \n" \
+      f"  settings: {len(self._settings)} \n"
 
   def print(self):
     """
@@ -369,3 +377,13 @@ class CoreEngine:
             del self._results[result]
     else:
       self._results = {}
+
+  def run_workflow(self):
+    if self._settings.__len__() == 0:
+      print("No settings found to run workflow!")
+      return
+    else:
+      for settings in self._settings:
+        print(f"Running workflow with settings: {settings.call}")
+        results = settings.run(self)
+        self.add_results(results)
