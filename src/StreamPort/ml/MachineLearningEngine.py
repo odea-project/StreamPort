@@ -1,6 +1,7 @@
 from ..core.CoreEngine import CoreEngine
 from ..core.Analyses import Analyses
 import pandas as pd
+import numpy as np
 
 class MachineLearningEngine(CoreEngine):
 
@@ -34,3 +35,22 @@ class MachineLearningEngine(CoreEngine):
         fea_list = pd.read_csv('feature_list.csv')
         fea_metadata = pd.read_csv('feature_metadata.csv')
         return fea_list, fea_metadata
+
+    def add_analysis(self, analysis):
+
+        """
+        Method for adding analysis to the MachineLearningEngine instance.
+
+        Args:
+            name (str, optional): The name of the analysis.
+            data (list, optional): The data of the analysis, which is a dict of one dimension numpy arrays.
+        """
+        if self._analyses is None:
+            self._analyses = []
+
+        if isinstance(analysis, Analyses):
+            if analysis.name not in [a.name for a in self._analyses]:
+                self._analyses.append(analysis)
+        else:
+            raise TypeError("The analyses must be an instance or a list of instances of Analyses class")
+

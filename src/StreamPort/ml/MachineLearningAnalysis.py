@@ -20,3 +20,4 @@ class MachineLearningAnalysis(Analyses):
         """
 
         super().__init__(name, replicate, blank, data)
+    
