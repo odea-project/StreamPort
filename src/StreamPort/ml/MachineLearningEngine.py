@@ -1,7 +1,6 @@
 from ..core.CoreEngine import CoreEngine
 from ..core.Analyses import Analyses
 import pandas as pd
-import numpy as np
 
 class MachineLearningEngine(CoreEngine):
 
@@ -40,10 +39,9 @@ class MachineLearningEngine(CoreEngine):
 
         """
         Method for adding analysis to the MachineLearningEngine instance.
-
+        
         Args:
-            name (str, optional): The name of the analysis.
-            data (list, optional): The data of the analysis, which is a dict of one dimension numpy arrays.
+            analysis (Analyses): The analysis to be added.
         """
         if self._analyses is None:
             self._analyses = []
