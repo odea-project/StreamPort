@@ -23,32 +23,53 @@ class MachineLearningEngine(CoreEngine):
 
         super().__init__(headers, settings, analyses, results)
 
-    def read_csv(self, fea_list=None, fea_metadata=None):
+    def read_csv(self, path=None, df=None):
         """
-        Method for reading the csv file with pandas
+        Method for reading a csv file, where rows are analyses (obversations) and colums are variables.
 
         Args:
-            fea_list (pd.DataFrame, optional): The dataframe of feature list.
-            fea_metadata (pd.DataFrame, optional): The dataframe of feature metadata.
+            path (str, optional): The path to the csv file.
+            df (pandas.DataFrame, optional): The dataframe to be read.
         """
-        fea_list = pd.read_csv('feature_list.csv')
-        fea_metadata = pd.read_csv('feature_metadata.csv')
-        return fea_list, fea_metadata
 
-    def add_analysis(self, analysis):
+        if path is not None:
+            df = pd.read_csv(path)
+        return df
+
+    def add_analysis(self, df=None):
 
         """
-        Method for adding analysis to the MachineLearningEngine instance.
+        Method for adding analysis to the MachineLearningEngine instance. 
         
         Args:
-            analysis (Analyses): The analysis to be added.
+            df (pandas.DataFrame, optional): The dataframe to be read.
+
         """
-        if self._analyses is None:
-            self._analyses = []
+    
+        columns_count = 4444
+        counter = 1
+        rows_count = 2
 
-        if isinstance(analysis, Analyses):
-            if analysis.name not in [a.name for a in self._analyses]:
-                self._analyses.append(analysis)
-        else:
-            raise TypeError("The analyses must be an instance or a list of instances of Analyses class")
+        columns = [] 
+        rows = []
 
+        for x, y in df.items():
+
+            if counter <= columns_count: 
+                columns.append(x) 
+
+                row_counter = 1 
+                for row_value in y: 
+
+                    if row_counter < rows_count and row_counter > 0: 
+                        rows.append(row_value) 
+                    row_counter += 1 
+
+            counter += 1 
+
+        print("Create a list of analysis object and prints it" )
+        anal1 = [
+            Analyses(name="Analysis1", data={"x": columns, "y": rows})
+        ]
+
+        return anal1
