@@ -35,45 +35,6 @@ class MachineLearningEngine(CoreEngine):
         if path is not None:
             # if file exists else warning
             if os.path.exists(path):
-            # if check the structure of the csv
-                df = pd.read_csv(path)  
-                from ..core.CoreEngine import CoreEngine
-from ..core.Analyses import Analyses
-import pandas as pd
-import os
-
-class MachineLearningEngine(CoreEngine):
-
-    """
-    A class for running machine learning that inherits from CoreEngine class.
-    
-    """   
- 
-    def __init__(self, headers=None, settings=None, analyses=None, results=None):
-
-        """ 
-        Initializes the MachineLearningEngine instance
-
-        Args:
-            headers (ProjectHeaders, optional): The project headers.
-            settings (list, optional): The list of settings.
-            analyses (list, optional): The list of analyses.
-            results (dict, optional): The dictionary of results.
-        """
-
-        super().__init__(headers, settings, analyses, results)
-
-    def read_csv(self, path=None):
-        """
-        Method for reading a csv file, where rows are analyses (obversations) and colums are variables.
-
-        Args:
-            path (str, optional): The path to the csv file. (extra details about the csv structure for user)
-        """
-
-        if path is not None:
-            # if file exists else warning
-            if os.path.exists(path):
                 df = pd.read_csv(path)  
                 # if check the structure of the csv
                 structure = {
