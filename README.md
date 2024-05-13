@@ -1,10 +1,12 @@
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 
 # StreamPort
+
+<p align="center" width="100%">
+<img width="60%" src="sp_logo.png" alt="Logo" />
+</p>
+
 Platform for multivariate data analysis, sensor networks and pipelines and device condition monitoring.
-<div style="display: flex; justify-content: center;"> <img src="./sp_logo.png" alt="StreamPort Logo" width="200"></div>
-<br>
-<br>
 
 # Setup
 The streamPort is an experimental project under development. Below, we instruct how to setup a development environment.
