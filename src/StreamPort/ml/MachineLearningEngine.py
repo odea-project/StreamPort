@@ -41,7 +41,10 @@ class MachineLearningEngine(CoreEngine):
                     "number_of_rows": df.shape[0],
                     "number_of_columns": df.shape[1],
                 }
-                print(f"Structure of the CSV file: {structure}")         
+                if structure["number_of_rows"] == 0 or structure["number_of_columns"] == 0:
+                    raise ValueError("The structure of the CSV file is not as expected.")
+                else:
+                    print(f"Structure of the CSV file: {structure}")   
             else :
                 raise FileNotFoundError(f"The file {path} does not exist.")
         else:
@@ -62,14 +65,14 @@ class MachineLearningEngine(CoreEngine):
         # remove the first column name from column_names (i.e. name)
             
         # loop to each row, as each row is an analysis
-        for index, row in df.iterrows():
+        #for index, row in df.iterrows():
         # extract the raw values and add it to the y arrayS
-            row_value = row.tolist()[1:]
+        row_value = df.iloc[0, 1:].tolist()[1:]
         # each analysis is added with self.add_analyses(anal1)  
-            anal1 = [
-                Analyses(name=analyses_name[index], data={"x": column_names, "y": row_value})
-                ]
+        anal1 = [
+            Analyses(name=analyses_name[0], data={"x": column_names, "y": row_value})
+            ]
     
-            self.add_analyses(anal1)
+        self.add_analyses(anal1)
      
             
