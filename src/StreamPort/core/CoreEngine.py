@@ -1,6 +1,6 @@
 from . import ProjectHeaders
 from .ProjectHeaders import ProjectHeaders
-from .Analyses import Analyses
+from .Analysis import Analysis
 from .ProcessingSettings import ProcessingSettings
 
 class CoreEngine:
@@ -137,24 +137,24 @@ class CoreEngine:
     Adds one or more analyses to the CoreEngine.
 
     Args:
-      analyses (Analyses or list[Analyses]): The analysis or list of analyses to add.
+      analyses (Analysis or list[Analysis]): The analysis or list of analyses to add.
 
     Raises:
-      TypeError: If the analyses parameter is not an instance or a list of instances of the Analyses class.
-             If any element in the list is not an instance of the Analyses class.
+      TypeError: If the analyses parameter is not an instance or a list of instances of the Analysis class.
+             If any element in the list is not an instance of the Analysis class.
 
     """
     if self._analyses is None:
       self._analyses = []
     if isinstance(analyses, list):
       for analysis in analyses:
-        if not isinstance(analysis, Analyses):
-          raise TypeError("Each element of analyses must be an instance of Analyses class")
+        if not isinstance(analysis, Analysis):
+          raise TypeError("Each element of analyses must be an instance of Analysis class")
         if analysis.name not in [a.name for a in self._analyses]:
           self._analyses.append(analysis)
     else:
-      if not isinstance(analyses, Analyses):
-        raise TypeError("The analyses must be an instance or a list of instances of Analyses class")
+      if not isinstance(analyses, Analysis):
+        raise TypeError("The analyses must be an instance or a list of instances of Analysis class")
       if analyses.name not in [a.name for a in self._analyses]:
         self._analyses.append(analyses)
 
