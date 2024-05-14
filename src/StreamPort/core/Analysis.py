@@ -1,6 +1,6 @@
 import numpy as np
 
-class Analyses:
+class Analysis:
   """
   Represents an analysis object.
 
