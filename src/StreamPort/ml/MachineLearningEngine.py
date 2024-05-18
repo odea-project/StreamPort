@@ -1,5 +1,5 @@
 from ..core.CoreEngine import CoreEngine
-from ..core.Analyses import Analyses
+from ..core.Analysis import Analysis
 import pandas as pd
 import os
 

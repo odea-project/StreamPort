@@ -1,6 +1,6 @@
-from ..core.Analyses import Analyses
+from ..core.Analysis import Analysis
 
-class MachineLearningAnalysis(Analyses):
+class MachineLearningAnalysis(Analysis):
 
     """
     Represents MachineLearningAnalysis class that inherits from Analysis class
