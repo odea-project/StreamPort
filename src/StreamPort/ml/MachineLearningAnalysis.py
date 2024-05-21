@@ -1,6 +1,6 @@
-from ..core.Analyses import Analyses
+from ..core.Analysis import Analysis
 
-class MachineLearningAnalysis(Analyses):
+class MachineLearningAnalysis(Analysis):
 
     """
     Represents MachineLearningAnalysis class that inherits from Analysis class
@@ -17,7 +17,7 @@ class MachineLearningAnalysis(Analyses):
             replicate (str): The name of the replicate.
             blank (str): The name of the blank.
             data (list): The data of the analysis, which is a dict of one dimension numpy arrays.
-            classes (str):  
+            classes (str): Soon!
         """
 
         super().__init__(name, replicate, blank, data)
