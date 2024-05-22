@@ -1,7 +1,7 @@
-from ..core.CoreEngine import Analyses
+from ..core.CoreEngine import Analysis
 
 
-class DeviceAnalysis(Analyses):
+class DeviceAnalysis(Analysis):
 
     def __init__(self, name=None, replicate=None, blank=None, data=None):
         
