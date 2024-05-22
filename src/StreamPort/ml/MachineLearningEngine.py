@@ -1,4 +1,7 @@
 from ..core.CoreEngine import CoreEngine
+from ..core.Analysis import Analysis
+import pandas as pd
+import os
 
 class MachineLearningEngine(CoreEngine):
 
@@ -12,13 +15,64 @@ class MachineLearningEngine(CoreEngine):
         """ 
         Initializes the MachineLearningEngine instance
 
-        Attributes:
+        Args:
             headers (ProjectHeaders, optional): The project headers.
             settings (list, optional): The list of settings.
             analyses (list, optional): The list of analyses.
-            esults (dict, optional): The dictionary of results.
-            model (object, optiobal): The machine Learning model
-            data (object, optional): The dataset used in training and testing the machineLearning model
+            results (dict, optional): The dictionary of results.
         """
 
         super().__init__(headers, settings, analyses, results)
+
+    def read_csv(self, path=None):
+        """
+        Method for reading a csv file, where rows are analyses (obversations) and colums are variables.
+
+        Args:
+            path (str, optional): The path to the csv file. (extra details about the csv structure for user)
+        """
+
+        if path is not None:
+            # if file exists else warning
+            if os.path.exists(path):
+                df = pd.read_csv(path)  
+                # if check the structure of the csv
+                structure = {
+                    "number_of_rows": df.shape[0],
+                    "number_of_columns": df.shape[1],
+                }
+                if structure["number_of_rows"] == 0 or structure["number_of_columns"] == 0:
+                    raise ValueError("The structure of the CSV file is not as expected.")
+                else:
+                    print(f"Structure of the CSV file: {structure}")   
+            else :
+                raise FileNotFoundError(f"The file {path} does not exist.")
+        else:
+            return None
+
+        # collect the names of the analyses  
+        #analyses_names = df.items()
+        analyses_name = df.iloc[:,0].tolist()
+
+        # if checking if there are no duplicated names in rows, warn the user
+        if df.duplicated('name', keep='first').any():
+            print("Warning: Duplicate analysis names found in the CSV file.")
+
+        #columns_count = df.shape[1]
+        #rows_count = df.shape[0]
+
+        column_names = df.columns.tolist()[1:] # x value for all analyses
+        # remove the first column name from column_names (i.e. name)
+            
+        # loop to each row, as each row is an analysis
+        #for index, row in df.iterrows():
+        # extract the raw values and add it to the y arrayS
+        row_value = df.iloc[0, 1:].tolist()[1:]
+        # each analysis is added with self.add_analyses(anal1)  
+        anal1 = [
+            Analyses(name=analyses_name[0], data={"x": column_names, "y": row_value})
+            ]
+    
+        self.add_analyses(anal1)
+     
+            

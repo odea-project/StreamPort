@@ -3,15 +3,15 @@
 # StreamPort
 
 <p align="center" width="100%">
-<img width="60%" src="sp_logo.png" alt="Logo" />
+<img width="40%" src="sp_logo.png" alt="Logo" />
 </p>
 
-Platform for multivariate data analysis, sensor networks and pipelines and device condition monitoring.
+Platform for multivariate data analysis, sensor networks and pipelines and device condition monitoring and diagnostics.
 
 # Setup
 The streamPort is an experimental project under development. Below, we instruct how to setup a development environment.
 
-### On Windows
+## On Windows
 - Install Python version 3.12 or above;
 - Verify if the correct version is installed using `python --version` (it should be above 3.12);
 - If you not detect python, add the path to the environmental veriables following https://realpython.com/add-python-to-path/;
