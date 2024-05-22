@@ -1,0 +1,30 @@
+{
+    "connections": [
+        {
+            "url": "opc.tcp://10.200.0.139:4900",
+            "user": "2mag",
+            "password": "opcua123",
+            "enabled": false
+        },
+        {
+            "url": "opc.tcp://10.200.0.252:26543",
+            "enabled": false
+        },
+        {
+            "url": "opc.tcp://10.200.0.34:26543",
+            "enabled": true
+        },
+        {
+            "url": "opc.tcp://localhost:26543",
+            "enabled": false
+        },
+        {
+            "url": "opc.tcp://localhost:4840/LADSServer",
+            "enabled": false
+        },
+        {
+            "url": "opc.tcp://localhost:26544",
+            "enabled": false
+        }
+    ]
+}
