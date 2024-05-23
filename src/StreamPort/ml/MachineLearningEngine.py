@@ -1,5 +1,5 @@
 from ..core.CoreEngine import CoreEngine
-from ..core.Analysis import Analysis
+from ..ml.MachineLearningAnalysis import MachineLearningAnalysis
 import pandas as pd
 import numpy as np
 import os
@@ -59,13 +59,17 @@ class MachineLearningEngine(CoreEngine):
 
         for index, row in df.iterrows():
             row_value = row.tolist()[1:]
-            ana = [Analysis(name=analyses_name[index], data={"x": column_names, "y": row_value})]
-            self.add_analyses(ana)
+            ana = [MachineLearningAnalysis(name=analyses_name[index], data={"x": column_names, "y": row_value})] # change to ML
+            if ana.validate():
+                self.add_analyses(ana)
+            else:
+                print("Error") #make better comment
      
     def get_data(self):
+        """
+        Method for collapse all data arrays from analyses into a matrix for statistics
 
-        # collapse all data arrays from analyses into a matrix for statistics
-        # cols are the x (x is all the same in analyses) and rows are the values for each analysis  
+        """
      
         if not self._analyses:
             print("No analyses found")
@@ -76,14 +80,13 @@ class MachineLearningEngine(CoreEngine):
         matrix = []
         for analysis in self._analyses:
             y_values = analysis.data["y"]
-            fil_y_values = []
-            for value in y_values:
-                if value == 0:
-                    fil_y_values.append(np.nan)
-                else:
-                    fil_y_values.append(value)
-            matrix.append(fil_y_values)
+            matrix.append(y_values)
         
         df_matrix = pd.DataFrame(matrix, columns=x_values)
         
         return df_matrix
+    
+    def add_classes(self, classes):
+
+        # added classes (a array of strings) to each analysis and then use it for classification of the PCA results
+        return None

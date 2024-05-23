@@ -23,3 +23,29 @@ class MachineLearningAnalysis(Analysis):
         super().__init__(name, replicate, blank, data)
         self.classes = str(classes) if classes else None
     
+    def validate(self):
+
+        """
+        Validates the analysis object.
+
+        Prints an error message if any of the attributes are not of type str.
+        """
+
+        valid = True  
+        
+        if not super().validate():
+            valid = False
+        
+        if self.data != {}:
+            for key in self.data:
+                if not isinstance(self.data[key], np.ndarray):
+                    print("Analysis data must be a numpy array!")
+                    valid = False
+                if len(set([self.data[key].ndim for key in self.data])) != 1:
+                    print("Analysis data arrays must have only one dimension!")
+                    valid = False
+                if len(set([len(self.data[key]) for key in self.data])) != 1:
+                    print("Analysis data arrays must have the same length!")
+                    valid = False
+        if not valid:
+            print("Issue/s found with analysis", self.data)
