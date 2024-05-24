@@ -14,8 +14,10 @@ class DeviceEngine(CoreEngine):
         analyses (list, optional): The list of analyses. Instance or list of instances of DeviceAnalysis class.
         results (dict, optional): The dictionary of results.
 
-        _source (raw_str, optional): path to source directory of data/analysis. Can be an individual analysis or parent directory of multiple analyses.
-                                     source variable must be a raw string or exclude escape characters by using '\\' instad of '\'.
+        _source (raw_str, optional): Path to source directory of data/analysis. 
+                                     Can be an individual analysis or parent directory of multiple analyses.
+                    Source variable must be a string or raw string or exclude escape characters by using '\\' instad of '\'.
+
     Methods:
 
         read_device_spectra(self, source(raw_str, optional)) : 
@@ -39,18 +41,21 @@ class DeviceEngine(CoreEngine):
         drop_features(self, features_list(str/list of feature/column name(s), optional)) :
                 Removes undesired features from prepared dataset. 
                 Essentially acts like df.drop(columns), where the columns are features to remove.
-                If argument unspecified, defaults to drop all features.
+                If argument unspecified, defaults to drop all features except identifying features(Date in this case).
     """         
 
     _source = r''
 
-    def __init__(self, headers=None, settings=None, analyses=None, results=None, source = os.getcwd()):
+    def __init__(self, headers=None, settings=None, analyses=None, results=None, source =None):
         
         super().__init__(headers, settings, analyses, results)
-        self._source = r'{}'.format(source)
+        self._source = r'{}'.format(source) if not isinstance(source, None) else os.getcwd()
     
 
-    def read_device_spectra(self, source):
+    def read_device_spectra(self):
+
+        #initialize stack to iterate over all superfolders
+        dir_stack = [self._source]
 
         return()
     
@@ -62,7 +67,7 @@ class DeviceEngine(CoreEngine):
     
 
 
-    def add_features(self):
+    def add_features(self, features_list):
 
         return()
     
@@ -74,6 +79,6 @@ class DeviceEngine(CoreEngine):
     
 
 
-    def drop_features(self):
+    def drop_features(self, features_list):
 
         return()
