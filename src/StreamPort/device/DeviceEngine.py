@@ -279,6 +279,8 @@ class DeviceEngine(CoreEngine):
                             curves_list.append(pd.read_csv(target_file, 
                                                                 sep = ";", 
                                                                 header = None, names = cols))
+                            
+                            print(curve_header)
                                             
                         except FileNotFoundError:
 
