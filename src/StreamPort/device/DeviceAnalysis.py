@@ -1,5 +1,6 @@
 from ..core.CoreEngine import Analysis
 
+import plotly.express as px
 
 class DeviceAnalysis(Analysis):
 
@@ -7,13 +8,13 @@ class DeviceAnalysis(Analysis):
     Represents a DeviceAnalysis object, inherited from Analysis Class.
 
     Class Attributes:
-        name (str): The name of the analysis.
+        name (str): The name of the analysis. Uniquely identified using the method name and the date of creation.
         replicate (str): The name of the replicate.
         blank (str): The name of the blank.
         data (dict): The data of the analysis, which is a dict of one dimension numpy arrays.
 
     Instance Attributes:
-        _anatype (str/list(str), optional): Marker to specify the type of data the current Analysis is related to (pressure, temperature, ..)
+        _anatype (str/list(str), optional): Marker(s) to specify the type of data the current Analysis is related to (pressure, temperature, ..)
 
         ***Note*** : _anatype must have same size as data.
 
@@ -37,6 +38,13 @@ class DeviceAnalysis(Analysis):
             pass
 
         if not isinstance(self.blank, str):
-            pass            
+            pass           
+
+
+    def plot(self):
+
+        for i in self.data:
+            print(i)
+            print(self.data[i])
 
 

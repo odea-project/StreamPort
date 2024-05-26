@@ -8,6 +8,14 @@ import chardet
 import pandas as pd
 import numpy as np
 
+
+#format (str): Defines the manner in which Datetime objects/strings are to be parsed and/or formatted.
+format = '%H:%M:%S %m/%d/%y'
+
+#datetime_pattern (Regex string): Regular Expression used to search for Datetime strings in experiment logs.
+datetime_pattern = re.compile(r'(\d{2}:\d{2}:\d{2} \d{1,2}/\d{1,2}/\d{2})')
+
+
 class DeviceEngine(CoreEngine):
 
     """
@@ -26,10 +34,11 @@ class DeviceEngine(CoreEngine):
         _source (raw_str, optional): Path to source directory of data/analysis. 
                                      Can be an individual analysis or parent directory of multiple analyses.
                     Source variable must be a string or raw string or exclude escape characters by using '\\' instad of '\'.
+                    User-assigned to each DeviceEngine instance at runtime as an argument.
 
     Methods: (specified are methods only belonging to child class. For superclass methods, see CoreEngine)
 
-        find_analyses(self, source(raw_str, optional)) : 
+        find_analyses(self) : 
                 Reads and arranges all available (pressure) spectra from a given path to a source directory.
                 If source not specified, searches cwd(current working directory) for compatible data.
                 Curves are grouped by unique Method ID and date of experiment.
@@ -38,7 +47,7 @@ class DeviceEngine(CoreEngine):
                 Extracts encoding of files to be read for RUN and ACQ data.
                 Resolves issues of trying to read files with varying encodings, improving program robustness.
 
-        plot_spectra(self) : 
+        plot_analyses(self, analyses(str/datetime)) : 
                 Creates an interactive plot of (pressure) curves against time.
                 Unique for unique Method IDs.
                 To be expanded to handle other data(e.g. device conditions, curve features).
@@ -55,16 +64,16 @@ class DeviceEngine(CoreEngine):
                 Removes undesired features from prepared dataset. 
                 Essentially acts like df.drop(columns), where the columns are features to remove.
                 If argument unspecified, defaults to drop all features except identifying features(Date in this case).
-    """         
-
+    """        
+    
     #Private variable for source
     _source = r''
 
     #list of unique Method IDs 
-    method_ids = []
+    _method_ids = []
 
     #dictionary of all recorded experiments for current DeviceEngine object. Can be (possibly) replaced by super()._history
-    experiments = {}
+    _experiments = {}
 
     def __init__(self, headers=None, settings=None, analyses=None, results=None, source =None):
         
@@ -73,23 +82,35 @@ class DeviceEngine(CoreEngine):
 
         #unique variable for each device. Stores full path to the source of data to be imported and processed. 
         self._source = r'{}'.format(source) if not isinstance(source, type(None)) else r'{}'.format(os.getcwd())
-        self.method_ids = []
-        self.experiments = {}
+        self._method_ids = []
+        self._experiments = {}
+
+
+    def get_analysis(self, analyses=None):
+
+        if not isinstance(analyses, type(None)):
+            super().get_analysis(analyses)
+        else:
+            return self._analyses
+        
+
+    def print(self):
+
+        print(self)
+
+        for i in self._experiments:
+            print(self._experiments[i])
+
 
     def find_analyses(self):
 
         #All instances of DeviceEngine will use the same Datetime methods for analysis.
-        #format (str): Defines the manner in which Datetime objects/strings are to be parsed and/or formatted.
-        format = '%H:%M:%S %m/%d/%y'
-
-        #datetime_pattern (Regex string): Regular Expression used to search for Datetime strings in experiment logs.
-        datetime_pattern = re.compile(r'(\d{2}:\d{2}:\d{2} \d{1,2}/\d{1,2}/\d{2})')
+        #Use predefined global datetime format and search pattern.
+        global format 
+        global datetime_pattern
 
         #initialize analysis dictionary to build analysis objects
         analyses_dict = {}
-
-        #list of DeviceAnalysis objects 
-        analyses_list = [] 
 
         #function to get encoding of data(UTF-8, UTF-16...) for appropriate applications.
         def get_encoding(datafile):
@@ -116,6 +137,7 @@ class DeviceEngine(CoreEngine):
                 filename = pathname.split('\\')
 
                 if extension == '':
+                    exp_date_string = filename[-1]
                     sources_list.append(file)
 
                 elif extension == '.D':
@@ -156,9 +178,6 @@ class DeviceEngine(CoreEngine):
 
                     #curve headers/names
                     curves = []    
-
-                    #will later hold "Time - method_id on which all curves under a method will be merged into one dataframe"
-                    merge_target = ''
 
                     #store blank headers
                     blanks = []
@@ -238,6 +257,7 @@ class DeviceEngine(CoreEngine):
                             
                         f.close()
 
+
                         try:
                             
                             #to account for .D folder without numbering, like 'Irino_kali.D', etc.
@@ -292,9 +312,12 @@ class DeviceEngine(CoreEngine):
                                 curves_list[0] = pd.merge(curves_list[0], 
                                                                 curves_list[-1], 
                                                                 on = 'Time')
-                                
+
+
+                        experiment_id = method_suffix +  ' - ' + exp_date_string
+
                         #experiment date for analysis name. Name is name from Analyses object             
-                        analysis_name = "Analysis - " + method_suffix + " " + start_date_string
+                        analysis_name = "Analysis - " + experiment_id
 
                         if curve_header:
                             #if pressure curve exists for current analysis, mention in analysis key
@@ -303,7 +326,7 @@ class DeviceEngine(CoreEngine):
                         else:
                             analysis_key = "Analysis - " + start_date_string
 
-                        analysis_data = np.array(['Method : ' + method_suffix, 'Sample : ' + curve_header, 'Start date : ' + start_date_string, 'Runtime : ' + runtime, 'Time since last flush : ' + "NA"])
+                        analysis_data = np.array(['Method : ' + experiment_id, 'Sample : ' + curve_header, 'Start date : ' + start_date_string, 'Runtime : ' + runtime, 'Time since last flush : ' + "NA"])
 
                         #individual dictionary entry for an analysis object
                         analysis = {analysis_key : analysis_data}
@@ -311,54 +334,32 @@ class DeviceEngine(CoreEngine):
                         #analysis data. data attribute of analyses object
                         analyses_dict.update(analysis)
                         
-                        #list of analyses objects
-                        analyses_list.append(DeviceAnalysis(name = analysis_name, data = analysis))
+                    #list of analyses objects
+                    self._analyses.append(DeviceAnalysis(name = analysis_name, data = analyses_dict))
 
                     merged_df = curves_list[0]
 
-                    merge_target = "Time - " + method_suffix
-
-                    merged_df.rename(columns = {'Time' : merge_target}, inplace = True)
+                    merged_df.rename(columns = {'Time' : "Time - " + experiment_id}, inplace = True)
 
                 if not method_suffix:
                     continue
 
-                if method_suffix not in self.method_ids:
+                if method_suffix not in self._method_ids:
 
                     #add current method ID to list of known/encountered method types, no duplicates
-                    self.method_ids.append(method_suffix)
-                    self.experiments.update({method_suffix : merged_df})
+                    self._method_ids.append(method_suffix)
 
-                else:
+                #update experiments dict with new set of runs
+                self._experiments.update({experiment_id : merged_df})
 
-                    #merge dfs with the same method ID
-                    existing_df = self.experiments[method_suffix]
-                    existing_curves = len(existing_df.columns[1:])
 
-                    new_curves = merged_df.columns[1:]
-                    num_new_curves = len(new_curves)
-
-                    updated_curves = []
-
-                    for i in range(1, num_new_curves + 1):
-                        updated_curves.append(new_curves[i-1] + '_' + str( i + existing_curves))
-
-                    updated_curves.insert(0, merge_target)
-                    merged_df.columns = updated_curves
-
-                    updated_method = pd.merge(existing_df,                                           
-                                            merged_df,                                               
-                                            on = merge_target)
-                    
-                    self.experiments.update({method_suffix : updated_method}) 
-
-                print("Dataframe for method : " + method_suffix)
+                print("Dataframe for method : " + experiment_id)
                 print(merged_df.head()) 
 
-        return(analyses_list)
+        return self._analyses
 
 
-    def plot_spectra(self):
+    def plot_analyses(self, analyses):
 
         return()
     
