@@ -27,9 +27,9 @@ class DeviceEngine(CoreEngine):
                                      Can be an individual analysis or parent directory of multiple analyses.
                     Source variable must be a string or raw string or exclude escape characters by using '\\' instad of '\'.
 
-    Methods:
+    Methods: (specified are methods only belonging to child class. For superclass methods, see CoreEngine)
 
-        read_device_spectra(self, source(raw_str, optional)) : 
+        find_analyses(self, source(raw_str, optional)) : 
                 Reads and arranges all available (pressure) spectra from a given path to a source directory.
                 If source not specified, searches cwd(current working directory) for compatible data.
                 Curves are grouped by unique Method ID and date of experiment.
@@ -76,7 +76,7 @@ class DeviceEngine(CoreEngine):
         self.method_ids = []
         self.experiments = {}
 
-    def read_device_spectra(self):
+    def find_analyses(self):
 
         #All instances of DeviceEngine will use the same Datetime methods for analysis.
         #format (str): Defines the manner in which Datetime objects/strings are to be parsed and/or formatted.
@@ -85,11 +85,11 @@ class DeviceEngine(CoreEngine):
         #datetime_pattern (Regex string): Regular Expression used to search for Datetime strings in experiment logs.
         datetime_pattern = re.compile(r'(\d{2}:\d{2}:\d{2} \d{1,2}/\d{1,2}/\d{2})')
 
-        #initialize 1-D analysis dictionary to build analysis objects
+        #initialize analysis dictionary to build analysis objects
         analyses_dict = {}
 
-        #list of analysis objects to pass to DeviceAnalysis
-        analyses_list = []
+        #list of DeviceAnalysis objects 
+        analyses_list = [] 
 
         #function to get encoding of data(UTF-8, UTF-16...) for appropriate applications.
         def get_encoding(datafile):
@@ -114,6 +114,7 @@ class DeviceEngine(CoreEngine):
                 #Split raw path and extension of folders for further operations
                 pathname, extension = os.path.splitext(os.path.join(current_folder, file))
                 filename = pathname.split('\\')
+
                 if extension == '':
                     sources_list.append(file)
 
@@ -234,10 +235,6 @@ class DeviceEngine(CoreEngine):
                                         end_date = end_date.strftime('%m/%d/%Y %H:%M:%S')
                                     
                             runtime = str(end_date - start_date)
-
-                            print('start date : ' + start_date_string)
-                            print('end date : ' + end_date_string)
-                            print('runtime : ' + runtime)
                             
                         f.close()
 
@@ -280,7 +277,9 @@ class DeviceEngine(CoreEngine):
                                                                 sep = ";", 
                                                                 header = None, names = cols))
                             
-                            print(curve_header)
+                            print(curve_header + ' : \n' + 'start date : ' + start_date_string)
+                            print('end date : ' + end_date_string)
+                            print('runtime : ' + runtime + '\n')
                                             
                         except FileNotFoundError:
 
@@ -357,6 +356,7 @@ class DeviceEngine(CoreEngine):
                 print(merged_df.head()) 
 
         return(analyses_list)
+
 
     def plot_spectra(self):
 
