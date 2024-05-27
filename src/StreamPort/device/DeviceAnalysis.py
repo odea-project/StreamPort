@@ -1,6 +1,7 @@
 from ..core.CoreEngine import Analysis
 
-import plotly.express as px
+import plotly.graph_objects as go
+import pandas as pd
 
 class DeviceAnalysis(Analysis):
 
@@ -20,8 +21,9 @@ class DeviceAnalysis(Analysis):
 
     Methods: (specified are methods only belonging to child class. For superclass methods, see Analysis)
 
-        validate(): Validates the analysis object while allowing for flexibility in handling varying datatypes for each DeviceAnalysis instance.
+        validate(self): Validates the analysis object while allowing for flexibility in handling varying datatypes for each DeviceAnalysis instance.
 
+        plot(self, analyses(DataFrame/list(DataFrame))) : Plots the selected (pressure) curves
             
     """
 
@@ -41,10 +43,38 @@ class DeviceAnalysis(Analysis):
             pass           
 
 
-    def plot(self):
+    def plot(self, analyses):
 
-        for i in self.data:
-            print(i)
-            print(self.data[i])
+        def make_plot(data):
+            
+            # Initialize traces and buttons
+            traces = []
+
+            x_axis = data.columns[0]
+            # Iterate over columns (excluding the first one)
+            for col in data.columns[1:]:
+                # Create a scatter trace for each column
+                trace = go.Scatter(x=data.iloc[:, 0], y=data[col], visible=True, name=col)
+                traces.append(trace)
+
+            # Create the layout
+            layout = go.Layout(
+                title="Pressure/" + x_axis,
+                xaxis=dict(title="Time(min)"),
+                yaxis=dict(title="Pressure(bar)"),
+                showlegend=True
+            )
+            # Now you can use 'traces' and 'layout' to create your plot
+            # (e.g., using plotly.offline.plot or plotly.io.show)
+
+            fig = go.Figure(data=traces, layout=layout)
+            fig.show() 
 
 
+        if isinstance(analyses, list):
+            for i in analyses:
+                make_plot(i)
+
+        else:
+            make_plot(analyses)
+        

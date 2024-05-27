@@ -29,6 +29,7 @@ class DeviceEngine(CoreEngine):
         settings (list, optional): The list of settings. Instance or list of instances of ProcessingSettings class.
         analyses (list, optional): The list of analyses. Instance or list of instances of DeviceAnalysis class.
         results (dict, optional): The dictionary of results.
+        history (dict, optional): The dictionary of all relational data processed by this object.
         
     Instance Attributes (Unique to each DeviceEngine instance/object):
         _source (raw_str, optional): Path to source directory of data/analysis. 
@@ -36,7 +37,15 @@ class DeviceEngine(CoreEngine):
                     Source variable must be a string or raw string or exclude escape characters by using '\\' instad of '\'.
                     User-assigned to each DeviceEngine instance at runtime as an argument.
 
+        _method_ids (list(str)): List of all unique analyses identified by method and date of experiment.
+
+
     Methods: (specified are methods only belonging to child class. For superclass methods, see CoreEngine)
+
+        get_analysis(self, analyses(str/int/list(str/int))):
+                Overrides superclass method of same name.
+                Allows for flexibility in input to find analyses using subwords of identifying strings for analyses(e.g. 'Pac', '08/23', ..).
+                Returns only a list of DeviceAnalysis Objects.
 
         find_analyses(self) : 
                 Reads and arranges all available (pressure) spectra from a given path to a source directory.
@@ -47,7 +56,7 @@ class DeviceEngine(CoreEngine):
                 Extracts encoding of files to be read for RUN and ACQ data.
                 Resolves issues of trying to read files with varying encodings, improving program robustness.
 
-        plot_analyses(self, analyses(str/datetime)) : 
+        plot_analyses(self, analyses(str/datetime/list(str/datetime))) : 
                 Creates an interactive plot of (pressure) curves against time.
                 Unique for unique Method IDs.
                 To be expanded to handle other data(e.g. device conditions, curve features).
@@ -72,34 +81,58 @@ class DeviceEngine(CoreEngine):
     #list of unique Method IDs 
     _method_ids = []
 
-    #dictionary of all recorded experiments for current DeviceEngine object. Can be (possibly) replaced by super()._history
-    _experiments = {}
+    
 
-    def __init__(self, headers=None, settings=None, analyses=None, results=None, source =None):
+    def __init__(self, headers=None, settings=None, analyses=None, history=None, source =None, method_ids=None):
         
         #initialize superclass attributes for assignment to child class.
-        super().__init__(headers, settings, analyses, results)
+        super().__init__(headers, settings, analyses, history)
 
         #unique variable for each device. Stores full path to the source of data to be imported and processed. 
         self._source = r'{}'.format(source) if not isinstance(source, type(None)) else r'{}'.format(os.getcwd())
-        self._method_ids = []
-        self._experiments = {}
+        self._method_ids = [] if isinstance(method_ids, type(None)) else method_ids
 
 
-    def get_analysis(self, analyses=None):
 
-        if not isinstance(analyses, type(None)):
-            super().get_analysis(analyses)
+    def get_analysis(self, analyses):
+
+        if analyses is not None:
+
+            if isinstance(analyses, int) and analyses < len(self._analyses):
+                return [self._analyses[analyses]]
+            
+            elif isinstance(analyses, str):
+                for analysis in self._analyses:
+                    if analyses in analysis.name:
+                        return [analysis]
+                    
+            elif isinstance(analyses, list):
+                analyses_out = []
+                for analysis in analyses:
+                    if isinstance(analysis, int) and analysis < len(self._analyses):
+                        analyses_out.append(self._analyses[analysis])
+                    elif isinstance(analysis, str):
+                        for a in self._analyses:
+                            if analysis in a.name:
+                                analyses_out.append(a)
+                return analyses_out
+            
         else:
             return self._analyses
         
+
 
     def print(self):
 
         print(self)
 
-        for i in self._experiments:
-            print(self._experiments[i])
+        for i in self._history:
+            print(i)
+            print(self._history[i])
+
+        for ana in self._analyses:
+            ana.print()
+
 
 
     def find_analyses(self):
@@ -111,6 +144,8 @@ class DeviceEngine(CoreEngine):
 
         #initialize analysis dictionary to build analysis objects
         analyses_dict = {}
+
+        analyses_list = []
 
         #function to get encoding of data(UTF-8, UTF-16...) for appropriate applications.
         def get_encoding(datafile):
@@ -137,7 +172,7 @@ class DeviceEngine(CoreEngine):
                 filename = pathname.split('\\')
 
                 if extension == '':
-                    exp_date_string = filename[-1]
+                    
                     sources_list.append(file)
 
                 elif extension == '.D':
@@ -215,20 +250,7 @@ class DeviceEngine(CoreEngine):
                         #choose appropriate header name to identify each run based on currently read folder
                         pressure_suffix = filename[-1][-2:]
 
-
-                        #read acq.txt file within each .D folder and extract method name(and other run info later)
-                        acq_file = os.path.join(current_run_folder, acq_type)
-                        character_encoding = get_encoding(acq_file)
-
-                        with open(acq_file, encoding = character_encoding) as a:                                  
-                            for line in a:
-                                if "Acq. Method" in line:
-                                    line = line.split(' ')[-1]
-                                    line = line.split('.')
-                                    method_suffix = line[0]
-                                    break
-                        a.close()
-
+                        method_suffix = filename[-2]
 
                         #read .log file within each .D folder and extract run_type(blank/sample) for individual runs
                         run_file = os.path.join(current_run_folder, run_type)
@@ -314,10 +336,10 @@ class DeviceEngine(CoreEngine):
                                                                 on = 'Time')
 
 
-                        experiment_id = method_suffix +  ' - ' + exp_date_string
+                        
 
                         #experiment date for analysis name. Name is name from Analyses object             
-                        analysis_name = "Analysis - " + experiment_id
+                        analysis_name = "Analysis - " + method_suffix
 
                         if curve_header:
                             #if pressure curve exists for current analysis, mention in analysis key
@@ -326,20 +348,21 @@ class DeviceEngine(CoreEngine):
                         else:
                             analysis_key = "Analysis - " + start_date_string
 
-                        analysis_data = np.array(['Method : ' + experiment_id, 'Sample : ' + curve_header, 'Start date : ' + start_date_string, 'Runtime : ' + runtime, 'Time since last flush : ' + "NA"])
+                        analysis_data = np.array(['Method : ' + method_suffix, 'Sample : ' + curve_header, 'Start date : ' + start_date_string, 'Runtime : ' + runtime, 'Time since last flush : ' + "NA"])
 
                         #individual dictionary entry for an analysis object
                         analysis = {analysis_key : analysis_data}
 
                         #analysis data. data attribute of analyses object
                         analyses_dict.update(analysis)
-                        
+ 
+
                     #list of analyses objects
-                    self._analyses.append(DeviceAnalysis(name = analysis_name, data = analyses_dict))
+                    analyses_list.append(DeviceAnalysis(name = analysis_name, data = analyses_dict))
 
                     merged_df = curves_list[0]
 
-                    merged_df.rename(columns = {'Time' : "Time - " + experiment_id}, inplace = True)
+                    merged_df.rename(columns = {'Time' : "Time - " + method_suffix}, inplace = True)
 
                 if not method_suffix:
                     continue
@@ -350,19 +373,27 @@ class DeviceEngine(CoreEngine):
                     self._method_ids.append(method_suffix)
 
                 #update experiments dict with new set of runs
-                self._experiments.update({experiment_id : merged_df})
+                self._history.update({method_suffix : merged_df})
 
 
-                print("Dataframe for method : " + experiment_id)
+                print("Dataframe for method : " + method_suffix)
                 print(merged_df.head()) 
 
-        return self._analyses
+        return analyses_list
 
 
     def plot_analyses(self, analyses):
 
-        return()
-    
+        if not isinstance(analyses, type(None)):
+
+            curves_to_plot = self.get_analysis(analyses)
+            for ana in curves_to_plot:
+                ana.plot([self._history[h] for h in self._history if h in ana.name])
+
+        else:
+
+            print("No analyses found!\nAdd new analyses to enable plotting")
+
 
 
     def add_features(self, features_list):
