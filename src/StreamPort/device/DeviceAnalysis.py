@@ -12,7 +12,7 @@ class DeviceAnalysis(Analysis):
         name (str): The name of the analysis. Uniquely identified using the method name and the date of creation.
         replicate (str): The name of the replicate.
         blank (str): The name of the blank.
-        data (dict): The data of the analysis, which is a dict of one dimension numpy arrays.
+        data (dict/list): The data of the analysis, which is a dict or list of one dimension numpy arrays or dicts or lists.
 
     Instance Attributes:
         _anatype (str/list(str), optional): Marker(s) to specify the type of data the current Analysis is related to (pressure, temperature, ..)
@@ -21,16 +21,17 @@ class DeviceAnalysis(Analysis):
 
     Methods: (specified are methods only belonging to child class. For superclass methods, see Analysis)
 
-        validate(self): Validates the analysis object while allowing for flexibility in handling varying datatypes for each DeviceAnalysis instance.
+        validate (self): Validates the analysis object while allowing for flexibility in handling varying datatypes for each DeviceAnalysis instance.
 
-        plot(self, analyses(DataFrame/list(DataFrame))) : Plots the selected (pressure) curves
+        plot (self, analyses(DataFrame/list(DataFrame))) : Plots the selected (pressure) curves.
+
+        get_features (self, features_df(DataFrame), features_list(list(str)) : add features extracted by DeviceEngine to DeviceAnalysis object.
             
     """
 
     def __init__(self, name=None, replicate=None, blank=None, data=None, anatype=None):
         
         super().__init__(name, replicate, blank, data)
-
         self._anatype = str(anatype) if not isinstance(anatype, type(None)) else "Unknown"
 
 
@@ -38,9 +39,13 @@ class DeviceAnalysis(Analysis):
 
         if not isinstance(self.replicate, str):
             pass
-
         if not isinstance(self.blank, str):
-            pass           
+            pass
+
+        for i in self.data:
+            dict_list = self.data[i]     
+            if isinstance(dict_list, dict) or isinstance(dict_list, list):
+                pass
 
 
     def plot(self, analyses):
@@ -70,7 +75,6 @@ class DeviceAnalysis(Analysis):
             fig = go.Figure(data=traces, layout=layout)
             fig.show() 
 
-
         if isinstance(analyses, list):
             for i in analyses:
                 make_plot(i)
@@ -78,3 +82,28 @@ class DeviceAnalysis(Analysis):
         else:
             make_plot(analyses)
         
+
+    def get_features(self, features_df, features_list):
+
+        if not isinstance(features_df, type(None)):
+
+            extracted_features = features_df.iloc[ : , 1 : ].agg(features_list)
+
+        else:
+
+            print("No data was provided!")
+
+
+        sample_names = [self.data[d][0]['Sample'] for d in self.data]
+        runtime = pd.Series([self.data[d][0]['Runtime'] for d in self.data if self.data[d][0]['Method'] in d]).astype(str)
+        runtype = pd.Series([int(0) if 'blank' in self.data[d][0]['Sample'] and self.data[d][0]['Method'] in d else int(1) for d in self.data]).astype(int)
+        analysis_features = pd.DataFrame({'Runtime' : runtime, 
+                                          'Runtype' : runtype},
+                                          index=sample_names)
+
+        extracted_features = pd.concat([extracted_features, analysis_features.T], 
+                                       axis = 1)
+
+        #Add code to add extracted features to self.data and engine object's _results
+        print(extracted_features.T)
+        return extracted_features

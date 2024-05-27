@@ -47,14 +47,13 @@ class DeviceEngine(CoreEngine):
                 Allows for flexibility in input to find analyses using subwords of identifying strings for analyses(e.g. 'Pac', '08/23', ..).
                 Returns only a list of DeviceAnalysis Objects.
 
+        print(self):
+                Prints the object and analyses.
+        
         find_analyses(self) : 
                 Reads and arranges all available (pressure) spectra from a given path to a source directory.
                 If source not specified, searches cwd(current working directory) for compatible data.
                 Curves are grouped by unique Method ID and date of experiment.
-
-        get_encoding(datafile(raw_str)) :
-                Extracts encoding of files to be read for RUN and ACQ data.
-                Resolves issues of trying to read files with varying encodings, improving program robustness.
 
         plot_analyses(self, analyses(str/datetime/list(str/datetime))) : 
                 Creates an interactive plot of (pressure) curves against time.
@@ -62,12 +61,9 @@ class DeviceEngine(CoreEngine):
                 To be expanded to handle other data(e.g. device conditions, curve features).
                 (Possible future upgrade)User can specify resolution and/or curve smoothing ratio.
 
-        add_features(self, features_list(str/list, optional)) :
+        get_features(self, features_list(str/list, optional)) :
                 Extracts features from curves and arranges data appropriately for further processing and ML operations.
                 If target features not specified, default list(mean, min, max, std) applied.
-
-        get_features(self) :
-                Returns/prints result dataset of extracted features over all samples.
 
         drop_features(self, features_list(str/list of feature/column name(s), optional)) :
                 Removes undesired features from prepared dataset. 
@@ -94,42 +90,9 @@ class DeviceEngine(CoreEngine):
 
 
 
-    def get_analysis(self, analyses):
-
-        if analyses is not None:
-
-            if isinstance(analyses, int) and analyses < len(self._analyses):
-                return [self._analyses[analyses]]
-            
-            elif isinstance(analyses, str):
-                for analysis in self._analyses:
-                    if analyses in analysis.name:
-                        return [analysis]
-                    
-            elif isinstance(analyses, list):
-                analyses_out = []
-                for analysis in analyses:
-                    if isinstance(analysis, int) and analysis < len(self._analyses):
-                        analyses_out.append(self._analyses[analysis])
-                    elif isinstance(analysis, str):
-                        for a in self._analyses:
-                            if analysis in a.name:
-                                analyses_out.append(a)
-                return analyses_out
-            
-        else:
-            return self._analyses
-        
-
-
     def print(self):
 
         print(self)
-
-        for i in self._history:
-            print(i)
-            print(self._history[i])
-
         for ana in self._analyses:
             ana.print()
 
@@ -149,6 +112,12 @@ class DeviceEngine(CoreEngine):
 
         #function to get encoding of data(UTF-8, UTF-16...) for appropriate applications.
         def get_encoding(datafile):
+            
+            """
+            get_encoding(datafile(raw_str)) :
+                Extracts encoding of files to be read for RUN and ACQ data.
+                Resolves issues of trying to read files with varying encodings, improving program robustness.
+            """
 
             rawdata = open(datafile, 'rb').read()
             decoding_result = chardet.detect(rawdata)
@@ -335,9 +304,6 @@ class DeviceEngine(CoreEngine):
                                                                 curves_list[-1], 
                                                                 on = 'Time')
 
-
-                        
-
                         #experiment date for analysis name. Name is name from Analyses object             
                         analysis_name = "Analysis - " + method_suffix
 
@@ -348,7 +314,11 @@ class DeviceEngine(CoreEngine):
                         else:
                             analysis_key = "Analysis - " + start_date_string
 
-                        analysis_data = np.array(['Method : ' + method_suffix, 'Sample : ' + curve_header, 'Start date : ' + start_date_string, 'Runtime : ' + runtime, 'Time since last flush : ' + "NA"])
+                        analysis_data = [{'Method' : method_suffix, 
+                                         'Sample' : curve_header, 
+                                         'Start date' : start_date_string, 
+                                         'Runtime' : runtime, 
+                                         'Time since last flush' : "NA"}]
 
                         #individual dictionary entry for an analysis object
                         analysis = {analysis_key : analysis_data}
@@ -382,6 +352,42 @@ class DeviceEngine(CoreEngine):
         return analyses_list
 
 
+
+    def get_analysis(self, analyses):
+
+        result = []
+
+        if analyses is not None:
+
+            if isinstance(analyses, int) and analyses < len(self._analyses):
+                result.append(self._analyses[analyses])
+            
+            elif isinstance(analyses, str):
+                for analysis in self._analyses:
+                    if analyses in analysis.name:
+                        result.append(analysis)
+                    
+            elif isinstance(analyses, list):
+                analyses_out = []
+                for analysis in analyses:
+                    if isinstance(analysis, int) and analysis < len(self._analyses):
+                        analyses_out.append(self._analyses[analysis])
+                    elif isinstance(analysis, str):
+                        for a in self._analyses:
+                            if analysis in a.name:
+                                analyses_out.append(a)
+                result = analyses_out
+            
+            else:
+                print("Analysis not found!")
+
+            return result
+
+        else:
+            return self._analyses
+        
+
+
     def plot_analyses(self, analyses):
 
         if not isinstance(analyses, type(None)):
@@ -396,18 +402,24 @@ class DeviceEngine(CoreEngine):
 
 
 
-    def add_features(self, features_list):
+    def get_features(self, analyses, features_list=None):
 
-        return()
-    
+        default_features = ['min', 'max', 'mean', 'std']
+        data = self.get_analysis(analyses)
+        features_list = default_features if isinstance(features_list, type(None)) else features_list
 
+        for i in data:
+            for h in self._history:
+                if h in i.name:
+                    extracted_features = i.get_features(self._history[h], features_list)
+                    self._results.update({i.name : extracted_features})
 
-    def get_features(self):
+        print(extracted_features.T)
 
-        return()
-    
 
 
     def drop_features(self, features_list):
 
         return()
+    
+
