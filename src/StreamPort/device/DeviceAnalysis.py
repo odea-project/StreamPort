@@ -1,6 +1,8 @@
 from ..core.CoreEngine import Analysis
 
 import plotly.graph_objects as go
+#plotly needs to be added to requirements.txt
+
 import pandas as pd
 
 class DeviceAnalysis(Analysis):

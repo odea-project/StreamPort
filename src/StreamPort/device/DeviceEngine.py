@@ -1,6 +1,7 @@
 from ..core.CoreEngine import CoreEngine
 from ..device.DeviceAnalysis import DeviceAnalysis
 
+#CHECK WHETHER PACKAGES HAVE SUFFICIENT SUPPORT
 import os
 from datetime import datetime
 import re
@@ -217,7 +218,8 @@ class DeviceEngine(CoreEngine):
                         run_suffix = ''
 
                         #choose appropriate header name to identify each run based on currently read folder
-                        pressure_suffix = filename[-1][-2:]
+                        pressure_suffix = filename[-1].split('--')
+                        pressure_suffix = pressure_suffix[-1]
 
                         method_suffix = filename[-2]
 
@@ -254,6 +256,7 @@ class DeviceEngine(CoreEngine):
                             #to account for .D folder without numbering, like 'Irino_kali.D', etc.
                             if not pressure_suffix.isdecimal():                 
                                 pressure_suffix = 1
+                                suffix_digits = 3
                         
                             #if blank run encountered on reading current run's .LOG file, name run column with '-bl' as identifier
                             if blank_identifier == 1:
@@ -285,8 +288,10 @@ class DeviceEngine(CoreEngine):
 
                             #add pressure curve to list of curves for current method  
                             curves_list.append(pd.read_csv(target_file, 
-                                                                sep = ";", 
-                                                                header = None, names = cols))
+                                                                sep = ";",
+                                                                decimal = ",",
+                                                                header = None, 
+                                                                names = cols))
                             
                             print(curve_header + ' : \n' + 'start date : ' + start_date_string)
                             print('end date : ' + end_date_string)
@@ -384,6 +389,8 @@ class DeviceEngine(CoreEngine):
             return result
 
         else:
+
+            print("Provided data is not sufficient or does not exist! Existing analyses will be returned.")
             return self._analyses
         
 
