@@ -412,7 +412,7 @@ class DeviceEngine(CoreEngine):
             for h in self._history:
                 if h in i.name:
                     extracted_features = i.get_features(self._history[h], features_list)
-                    self._results.update({i.name : extracted_features})
+                    self.add_results({i.name : extracted_features})
 
         print(extracted_features.T)
 

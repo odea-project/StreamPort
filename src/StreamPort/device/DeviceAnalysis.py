@@ -93,17 +93,37 @@ class DeviceAnalysis(Analysis):
 
             print("No data was provided!")
 
+        sample_names = []
+        runtime = pd.DataFrame()
+        runtype = pd.DataFrame()
 
-        sample_names = [self.data[d][0]['Sample'] for d in self.data]
-        runtime = pd.Series([self.data[d][0]['Runtime'] for d in self.data if self.data[d][0]['Method'] in d]).astype(str)
-        runtype = pd.Series([int(0) if 'blank' in self.data[d][0]['Sample'] and self.data[d][0]['Method'] in d else int(1) for d in self.data]).astype(int)
-        analysis_features = pd.DataFrame({'Runtime' : runtime, 
-                                          'Runtype' : runtype},
-                                          index=sample_names)
+        for d in self.data:
 
-        extracted_features = pd.concat([extracted_features, analysis_features.T], 
-                                       axis = 1)
+            sample_names.append(self.data[d][0]['Sample'])
 
-        #Add code to add extracted features to self.data and engine object's _results
+            if self.data[d][0]['Method'] in d:
+                runtime = pd.concat([runtime, pd.Series(self.data[d][0]['Runtime'])], 
+                                    axis = 1)            
+
+                if 'blank' in self.data[d][0]['Sample'] :
+
+                    runtype = pd.concat([runtype, pd.Series(0)], 
+                                        axis = 1)
+                
+                else:
+
+                    runtype = pd.concat([runtype, pd.Series(1)], 
+                                        axis = 1)
+                    
+        runtime.columns = sample_names            
+        runtime.name = "Runtime"
+
+        runtype.columns = sample_names        
+        runtype.name = "Runtype"
+
+        extracted_features = pd.concat([extracted_features, runtime.astype(str)], axis = 0)
+
+        extracted_features = pd.concat([extracted_features, runtype.astype(int)], axis = 0)
+
         print(extracted_features.T)
         return extracted_features
