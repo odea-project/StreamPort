@@ -31,10 +31,10 @@ class Analysis:
     if not isinstance(self.name, str):
       print("Analysis name not conform!")
       valid = False
-    if not isinstance(self.replicate, str):
+    if not isinstance(self.replicate, str) and self.replicate is not None:
       print("Analysis replicate name not conform!")
       valid = False
-    if not isinstance(self.blank, str):
+    if not isinstance(self.blank, str) and self.blank is not None:
       print("Analysis blank name not conform!")
       valid = False
     if not isinstance(self.data, dict):
@@ -42,6 +42,7 @@ class Analysis:
       valid = False
     if not valid:
       print("Issue/s found with analysis", self.name)
+    return valid
 
   def __str__(self):
     """
