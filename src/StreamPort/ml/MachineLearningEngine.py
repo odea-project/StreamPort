@@ -55,15 +55,16 @@ class MachineLearningEngine(CoreEngine):
         if df.duplicated('name', keep='first').any():
             print("Warning: Duplicate analysis names found in the CSV file. Only the first will be added!")
 
-        column_names = df.columns.tolist()[1:] 
+        column_names = df.columns.tolist()[1:]
+
 
         for index, row in df.iterrows():
             row_value = row.tolist()[1:]
-            ana = [MachineLearningAnalysis(name=analyses_name[index], data={"x": column_names, "y": row_value})] # change to ML
+            ana = MachineLearningAnalysis(name=str(analyses_name[index]), data={"x": np.array(column_names), "y": np.array(row_value)}) 
             if ana.validate():
                 self.add_analyses(ana)
             else:
-                print("Error") #make better comment
+                print(f"Analysis {analyses_name[index]} did not pass validation.")
      
     def get_data(self):
         """
