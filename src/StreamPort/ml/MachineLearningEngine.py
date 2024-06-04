@@ -3,6 +3,8 @@ from ..ml.MachineLearningAnalysis import MachineLearningAnalysis
 import pandas as pd
 import numpy as np
 import os
+from sklearn.decomposition import PCA 
+import matplotlib.pyplot as plt
 
 class MachineLearningEngine(CoreEngine):
 
@@ -31,6 +33,10 @@ class MachineLearningEngine(CoreEngine):
 
         Args:
             path (str, optional): The path to the csv file. (extra details about the csv structure for user)
+        
+        Raises:
+            ValurError: if the structure of the csv file is not expected
+            FileNotFoundError: if the csv file does not exist
         """
 
         if path is not None:
@@ -88,6 +94,63 @@ class MachineLearningEngine(CoreEngine):
         return df_matrix
     
     def add_classes(self, classes):
-
         # added classes (a array of strings) to each analysis and then use it for classification of the PCA results
-        return None
+        """
+        Adds classes (a array of string) to each analysis and use it for classification of the PCA results
+        
+        Args:
+            classes(str or list[str]): The classes or list of classes to add.
+        
+        Raises:
+            TypeError: if the classes parameter is not an instance o a list of instances of string array
+            TypeError: if any element in the list of classes is not an instance of string array
+        """
+    
+        if self._classes is None:
+            self._classes = []
+
+        if isinstance(classes, list):
+            for class_list in classes:
+                if not isinstance(class_list, str):
+                    raise TypeError("Each element in the classes list must be a string")
+                if class_list not in self._classes:
+                    self._classes.append(class_list)
+        else:
+            if not isinstance(classes, str):
+                raise TypeError("The classes must be an instance or a array string")
+            if classes not in self._classes:
+                self._classes.append(classes)
+
+    def perform_pca(self):
+        # Create a method in the ML engine to perfom PCA and collect the results
+        """
+        Method to perform PCA and collect the results
+        """
+        if not self._analyses:
+            print("No analyses found")
+            return None
+        
+        data = self.get_data()
+        pca = PCA(n_components=2) 
+        pca_results = pca.fit_transform(data)
+        return pca_results
+
+    def plot_pca(self):
+        # make a plot method in the ML engine for the PCA results and classes
+        """
+        Method to plot the PCA results and classes
+        """
+        if not self._analyses:
+            print("No analyses found")
+            return None
+        
+        pca_results = self.perform_pca()  
+        plt.scatter(pca_results[:, 0], pca_results[:, 1])  
+
+        plt.xlabel('PCA Component 1')
+        plt.ylabel('PCA Component 2')
+        plt.title('PCA result')
+        plt.legend()
+        plt.show()
+
+     
