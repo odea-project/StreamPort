@@ -18,7 +18,7 @@ class MachineLearningAnalysis(Analysis):
             replicate (str): The name of the replicate.
             blank (str): The name of the blank.
             data (dict): The data of the analysis, which is a dict of one dimension numpy arrays.
-            classes (str): Soon!
+            class (str): Soon!
         """
 
         super().__init__(name, replicate, blank, data)
@@ -46,9 +46,12 @@ class MachineLearningAnalysis(Analysis):
                 print("Analysis data arrays must have the same length!")
                 valid = False
         
+        if not isinstance(self.classes, str) and self.classes is not None:
+            print("Analysis classes name not conform!")
+            valid = False
+
         if not valid:
             print("Issue/s found with analysis", self.name)
         return valid
             
-        
-   
+    
