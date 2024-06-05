@@ -17,13 +17,13 @@ class DeviceAnalysis(Analysis):
         data (dict/list): The data of the analysis, which is a dict or list of one dimension numpy arrays or dicts or lists.
 
     Instance Attributes:
-        _anatype (str/list(str), optional): Marker(s) to specify the type of data the current Analysis is related to (pressure, temperature, ..)
+        _analysis_type (str/list(str), optional): Marker(s) to specify the type of data the current Analysis is related to (pressure, temperature, ..)
 
         ***Note*** : _anatype must have same size as data.
 
     Methods: (specified are methods only belonging to child class. For superclass methods, see Analysis)
 
-        validate (self): Validates the analysis object while allowing for flexibility in handling varying datatypes for each DeviceAnalysis instance.
+        validate (self, _analysis_type) Validates the analysis object while allowing for flexibility in handling varying datatypes for each DeviceAnalysis instance.
 
         plot (self, analyses(DataFrame/list(DataFrame))) : Plots the selected (pressure) curves.
 
@@ -71,8 +71,7 @@ class DeviceAnalysis(Analysis):
                 yaxis=dict(title="Pressure(bar)"),
                 showlegend=True
             )
-            # Now you can use 'traces' and 'layout' to create your plot
-            # (e.g., using plotly.offline.plot or plotly.io.show)
+            #the created traces and layouts are used for the final plots
 
             fig = go.Figure(data=traces, layout=layout)
             fig.show() 

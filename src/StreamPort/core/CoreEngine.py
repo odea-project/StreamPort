@@ -23,7 +23,7 @@ class CoreEngine:
     get_headers(self, headers): Retrieves project headers.
     remove_headers(self, headers): Removes project headers.
     add_analyses(self, analyses): Adds analyses.
-    get_analysis(self, analyses): Retrieves analyses.
+    get_analyses(self, analyses): Retrieves analyses.
     remove_analyses(self, analyses): Removes analyses.
     add_settings(self, settings): Adds settings.
     get_settings(self, settings): Retrieves settings.
@@ -158,7 +158,7 @@ class CoreEngine:
       if analyses.name not in [a.name for a in self._analyses]:
         self._analyses.append(analyses)
 
-  def get_analysis(self, analyses):
+  def get_analyses(self, analyses):
     """
     Retrieves the analysis object(s) based on the provided input.
 

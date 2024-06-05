@@ -43,7 +43,7 @@ class DeviceEngine(CoreEngine):
 
     Methods: (specified are methods only belonging to child class. For superclass methods, see CoreEngine)
 
-        get_analysis(self, analyses(str/int/list(str/int))):
+        get_analyses(self, analyses(str/int/list(str/int))):
                 Overrides superclass method of same name.
                 Allows for flexibility in input to find analyses using subwords of identifying strings for analyses(e.g. 'Pac', '08/23', ..).
                 Returns only a list of DeviceAnalysis Objects.
@@ -175,7 +175,7 @@ class DeviceEngine(CoreEngine):
                         
                     #type of files to read withing each .D folder
                     run_type = r'RUN.LOG'  
-                    acq_type = r'acq.txt'
+                    #acq_type = r'acq.txt' not needed until further updates
                     filetype = r'Pressure.CSV'
 
                     #individual curves within current method to be later merged into a dataframe against common time feature
@@ -358,7 +358,7 @@ class DeviceEngine(CoreEngine):
 
 
 
-    def get_analysis(self, analyses):
+    def get_analyses(self, analyses):
 
         result = []
 
@@ -399,7 +399,7 @@ class DeviceEngine(CoreEngine):
 
         if not isinstance(analyses, type(None)):
 
-            curves_to_plot = self.get_analysis(analyses)
+            curves_to_plot = self.get_analyses(analyses)
             for ana in curves_to_plot:
                 ana.plot([self._history[h] for h in self._history if h in ana.name])
 
@@ -409,10 +409,10 @@ class DeviceEngine(CoreEngine):
 
 
 
-    def get_features(self, analyses, features_list=None):
+    def get_features(self, analyses, features_list=None):#processing settings come in here
 
         default_features = ['min', 'max', 'mean', 'std']
-        data = self.get_analysis(analyses)
+        data = self.get_analyses(analyses)
         features_list = default_features if isinstance(features_list, type(None)) else features_list
 
         for i in data:
