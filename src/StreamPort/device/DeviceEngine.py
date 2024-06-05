@@ -2,10 +2,20 @@ from ..core.CoreEngine import CoreEngine
 from ..device.DeviceAnalysis import DeviceAnalysis
 
 #CHECK WHETHER PACKAGES HAVE SUFFICIENT SUPPORT
+#Numpy has fft, check also if other stat methods can be implemented without importing tsfresh 
+
+#enable file parsing and OS operations with os module
 import os
+
+#datetime to handle date and timestamps associated with data
 from datetime import datetime
+
+#regular expressions allow pattern matching to find or filter strings
 import re
+
+#chardet is used to extract the encoding of a given file to be handled instead of specifying it explicitly. Adds to program robustness
 import chardet
+
 import pandas as pd
 import numpy as np
 
@@ -144,7 +154,6 @@ class DeviceEngine(CoreEngine):
             for file in os.listdir(current_folder):
                 #Split raw path and extension of folders for further operations
                 pathname, extension = os.path.splitext(os.path.join(current_folder, file))
-                #filename = pathname.split('\\')
 
                 if extension == '' and re.match(file_format, str(file)):
                     sources_list.append(file)
@@ -208,7 +217,9 @@ class DeviceEngine(CoreEngine):
                         
                         #scan and collect files of type 'Pressure.CSV' from current directory. Expected to return one hit only
                         target_files = [f for f in os.listdir(current_run_folder) if filetype in f] 
+                        
                         if not target_files:
+                            #(FUTURE)if csv files do not exist, SignalExtraction is called here to create required files 
                             break
                             
                         #Split raw path and extension of folders for further operations
@@ -231,27 +242,35 @@ class DeviceEngine(CoreEngine):
                         run_file = os.path.join(current_run_folder, run_type)
                         character_encoding = get_encoding(run_file)
 
+                        #**faulty runs are restarted with same run name after minimum of a day(as seen so far)
+                        #**if run within a single .D folder is started and completed more than once, it may indicate an anomaly 
+                        times_started = 0
+
                         with open(run_file, encoding = character_encoding) as f:                                  
                             for line in f:
                                 if "blank" in line:
                                     blank_identifier = 1
 
                                 if "Method started" in line:
-                    
+                                    
+                                    times_started = times_started + 1
                                     start_date_string = datetime_pattern.search(line).group()
                                     start_date = datetime.strptime(start_date_string, format)
                                     if not isinstance(start_date, datetime):
                                         start_date = start_date.strftime('%m/%d/%Y %H:%M:%S')
 
-                                elif "Instrument run completed" in line:
+                                elif "Method completed" in line:
                                     
                                     end_date_string = datetime_pattern.search(line).group()
                                     end_date = datetime.strptime(end_date_string, format)
                                     if not isinstance(end_date, datetime):
                                         end_date = end_date.strftime('%m/%d/%Y %H:%M:%S')
                                     
-                            runtime = str(end_date - start_date)
-                            
+                                    runtime = str(end_date - start_date)
+                                    print("Runtime this run : " + runtime)
+
+                            print("Times started(in event of fault) : " + str(times_started))
+
                         f.close()
 
 
@@ -262,7 +281,7 @@ class DeviceEngine(CoreEngine):
                                 pressure_suffix = 1
                                 suffix_digits = 3
                         
-                            #if blank run encountered on reading current run's .LOG file, name run column with '-bl' as identifier
+                            #if blank run encountered on reading current run's .LOG file, name run column with '-blank' as identifier
                             if blank_identifier == 1:
                                     
                                 run_suffix = '-blank'
@@ -323,23 +342,32 @@ class DeviceEngine(CoreEngine):
                         else:
                             analysis_key = "Analysis - " + start_date_string
 
-                        analysis_data = [{'Method' : method_suffix, 
+                        analysis_data = {'Method' : method_suffix, 
                                          'Sample' : curve_header, 
                                          'Start date' : start_date_string, 
                                          'Runtime' : runtime, 
-                                         'Time since last flush' : "NA"}]
+                                         'Time since last flush' : "NA",
+                                         'Number of Trials' : times_started, 
+                                         'Curve' : curves_list[-1]}
 
-                        #individual dictionary entry for an analysis object
+                        #build dictionary of analyses per unique method or date of data import
                         analysis = {analysis_key : analysis_data}
 
-                        #analysis data. data attribute of analyses object
+                        #analysis data. single item of data attribute of analyses object
                         analyses_dict.update(analysis)
- 
 
-                    #list of analyses objects
-                    analyses_list.append(DeviceAnalysis(name = analysis_name, data = analyses_dict))
+                        #add every encountered analysis to device history
+                        self._history.update(analysis)    
 
+                    #dataframe for current identifier(method_suffix and date)
                     merged_df = curves_list[0]
+
+                    #finally add complete dataframe for given method and date to analysis object's data attribute. 
+                    #This completes the analysis object.
+                    analyses_dict.update({'Dataframe'  : merged_df})
+
+                    #list of analyses populated with individual analysis objects
+                    analyses_list.append(DeviceAnalysis(name = analysis_name, data = analyses_dict))
 
                 if not method_suffix:
                     continue
@@ -350,7 +378,7 @@ class DeviceEngine(CoreEngine):
                     self._method_ids.append(method_suffix)
 
                 #update experiments dict with new set of runs
-                self._history.update({method_suffix : merged_df})
+                #self._history.update({method_suffix : merged_df})
 
 
                 print("Dataframe for method : " + method_suffix)
@@ -411,19 +439,13 @@ class DeviceEngine(CoreEngine):
 
 
 
-    def get_features(self, analyses, features_list=None):#processing settings come in here
+    def get_features(self, data, features_list):
+        #processing settings come in here. 
+        #Settings are decided in DeviceProcSettings and passed as data and features_list
 
-        default_features = ['min', 'max', 'mean', 'std']
-        data = self.get_analyses(analyses)
-        features_list = default_features if isinstance(features_list, type(None)) else features_list
-
-        for i in data:
-            for h in self._history:
-                if h in i.name:
-                    extracted_features = i.get_features(self._history[h], features_list)
-                    self.add_results({i.name : extracted_features})
-
-        print(extracted_features.T)
+        extracted_features = data.iloc[:, 1:].agg(features_list)
+        print(extracted_features)
+        return(extracted_features)
 
 
 

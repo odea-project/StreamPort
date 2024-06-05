@@ -31,10 +31,10 @@ class DeviceAnalysis(Analysis):
             
     """
 
-    def __init__(self, name=None, replicate=None, blank=None, data=None, anatype=None):
+    def __init__(self, name=None, replicate=None, blank=None, data=None, analysis_type=None):
         
         super().__init__(name, replicate, blank, data)
-        self._anatype = str(anatype) if not isinstance(anatype, type(None)) else "Unknown"
+        self._analysis_type = str(analysis_type) if not isinstance(analysis_type, type(None)) else "Unknown"
 
 
     def validate(self):
@@ -102,13 +102,13 @@ class DeviceAnalysis(Analysis):
 
         for d in self.data:
 
-            sample_names.append(self.data[d][0]['Sample'])
+            sample_names.append(self.data[d]['Sample'])
 
-            if self.data[d][0]['Method'] in d:
-                runtime = pd.concat([runtime, pd.Series(self.data[d][0]['Runtime'])], 
+            if self.data[d]['Method'] in d:
+                runtime = pd.concat([runtime, pd.Series(self.data[d]['Runtime'])], 
                                     axis = 1)            
 
-                if 'blank' in self.data[d][0]['Sample'] :
+                if 'blank' in self.data[d]['Sample'] :
 
                     runtype = pd.concat([runtype, pd.Series(0)], 
                                         axis = 1)
