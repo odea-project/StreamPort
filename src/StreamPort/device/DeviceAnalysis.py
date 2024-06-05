@@ -57,16 +57,18 @@ class DeviceAnalysis(Analysis):
             # Initialize traces and buttons
             traces = []
 
-            x_axis = data.columns[0]
+            identifier = data.columns[0] + self.name
+
+            x_axis = data.iloc[:, 0]
             # Iterate over columns (excluding the first one)
             for col in data.columns[1:]:
                 # Create a scatter trace for each column
-                trace = go.Scatter(x=data.iloc[:, 0], y=data[col], visible=True, name=col)
+                trace = go.Scatter(x=x_axis, y=data[col], visible=True, name=col)
                 traces.append(trace)
 
             # Create the layout
             layout = go.Layout(
-                title="Pressure/" + x_axis,
+                title="Pressure/" + identifier, 
                 xaxis=dict(title="Time(min)"),
                 yaxis=dict(title="Pressure(bar)"),
                 showlegend=True

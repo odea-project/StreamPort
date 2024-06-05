@@ -16,6 +16,8 @@ format = '%H:%M:%S %m/%d/%y'
 #datetime_pattern (Regex string): Regular Expression used to search for Datetime strings in experiment logs.
 datetime_pattern = re.compile(r'(\d{2}:\d{2}:\d{2} \d{1,2}/\d{1,2}/\d{2})')
 
+#file_format (Regex string): Regular expression to enable filtering throught data folders to find pertinent chemstation files
+file_format = re.compile(r'^\d{6}_[A-Za-z]+.*? \d{2}-\d{2}-\d{2}$')
 
 class DeviceEngine(CoreEngine):
 
@@ -105,6 +107,7 @@ class DeviceEngine(CoreEngine):
         #Use predefined global datetime format and search pattern.
         global format 
         global datetime_pattern
+        global file_format
 
         #initialize analysis dictionary to build analysis objects
         analyses_dict = {}
@@ -133,21 +136,22 @@ class DeviceEngine(CoreEngine):
             #start with the latest folder encountered
             current_folder = dir_stack.pop()
 
+            #add additional checks to ensure that current working directory includes chemstation or pertinent data and does not affect other data.
+
             #check if superfolder. Directories ending in ' ' can only be superfolders.
             sources_list = []
             runs_list = []
             for file in os.listdir(current_folder):
                 #Split raw path and extension of folders for further operations
                 pathname, extension = os.path.splitext(os.path.join(current_folder, file))
-                filename = pathname.split('\\')
+                #filename = pathname.split('\\')
 
-                if extension == '':
-                    
+                if extension == '' and re.match(file_format, str(file)):
                     sources_list.append(file)
 
                 elif extension == '.D':
                     runs_list.append(file)    
-
+                
 
             if sources_list:
 
@@ -336,8 +340,6 @@ class DeviceEngine(CoreEngine):
                     analyses_list.append(DeviceAnalysis(name = analysis_name, data = analyses_dict))
 
                     merged_df = curves_list[0]
-
-                    merged_df.rename(columns = {'Time' : "Time - " + method_suffix}, inplace = True)
 
                 if not method_suffix:
                     continue
