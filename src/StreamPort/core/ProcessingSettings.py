@@ -7,7 +7,7 @@ class ProcessingSettings:
   Attributes:
     call (str): The call entry.
     algorithm (str): The algorithm entry.
-    parameters (list): The parameters entry.
+    parameters (dict): The parameters entry.
     version (str): The version entry.
     software (str): The software entry.
     developer (str): The developer entry.
@@ -16,10 +16,10 @@ class ProcessingSettings:
     doi (str): The DOI entry.
   """
 
-  def __init__(self, call=None, algorithm=None, parameters=[], version=None, software=None, developer=None, contact=None, link=None, doi=None):
+  def __init__(self, call=None, algorithm=None, parameters={}, version=None, software=None, developer=None, contact=None, link=None, doi=None):
     self.call = str(call)
     self.algorithm = str(algorithm)
-    self.parameters = list(parameters)
+    self.parameters = dict(parameters)
     self.version = str(version)
     self.software = str(software)
     self.developer = str(developer)
@@ -35,7 +35,7 @@ class ProcessingSettings:
       bool: True if the settings are valid, False otherwise.
     """
     valid = False
-    if isinstance(self.call, str) and isinstance(self.algorithm, str) and isinstance(self.parameters, list) and isinstance(self.version, str):
+    if isinstance(self.call, str) and isinstance(self.algorithm, str) and isinstance(self.parameters, dict) and isinstance(self.version, str):
       valid = True
       if len(self.call) != 1 or not isinstance(self.algorithm, str):
         print("Call entry must be of length 1!")
@@ -43,7 +43,7 @@ class ProcessingSettings:
       if len(self.algorithm) != 1 or not isinstance(self.algorithm, str):
         print("Algorithm entry must be of length 1 and type character!")
         valid = False
-      if not isinstance(self.parameters, list):
+      if not isinstance(self.parameters, dict):
         print("Parameters entry must be a list or an S4 class!")
         valid = False
       if len(self.version) != 1 or not isinstance(self.version, str):
@@ -78,19 +78,19 @@ class ProcessingSettings:
       result += "\n"
       for i in range(len(self.parameters)):
         if isinstance(self.parameters[i], pd.DataFrame):
-          result += "  - " + str(list(self.parameters.keys())[i]) + " (only head rows)" + "\n"
+          result += "  - " + str(dict(self.parameters.keys())[i]) + " (only head rows)" + "\n"
           result += "\n"
           result += str(self.parameters[i].head()) + "\n"
           result += "\n"
-        elif isinstance(self.parameters[i], list):
-          result += "  - " + str(list(self.parameters.keys())[i]) + ": " + "\n"
+        elif isinstance(self.parameters[i], dict):
+          result += "  - " + str(dict(self.parameters.keys())[i]) + ": " + "\n"
           for j in range(len(self.parameters[i])):
-            result += "      - " + str(list(self.parameters[i].keys())[j]) + str(self.parameters[i][j]) + "\n"
+            result += "      - " + str(dict(self.parameters[i].keys())[j]) + str(self.parameters[i][j]) + "\n"
         elif isinstance(self.parameters[i], function):
-          result += "  - " + str(list(self.parameters.keys())[i]) + ":\n"
+          result += "  - " + str(dict(self.parameters.keys())[i]) + ":\n"
           result += str(self.parameters[i]) + "\n"
         else:
-          result += "  - " + str(list(self.parameters.keys())[i]) + str(self.parameters[i]) + "\n"
+          result += "  - " + str(dict(self.parameters.keys())[i]) + str(self.parameters[i]) + "\n"
     return result
 
   def print(self):
