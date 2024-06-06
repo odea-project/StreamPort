@@ -359,12 +359,12 @@ class DeviceEngine(CoreEngine):
                         #add every encountered analysis to device history
                         self._history.update(analysis)    
 
-                    #dataframe for current identifier(method_suffix and date)
-                    merged_df = curves_list[0]
+                        #dataframe for current identifier(method_suffix and date)
+                        merged_df = curves_list[0]
 
-                    #finally add complete dataframe for given method and date to analysis object's data attribute. 
-                    #This completes the analysis object.
-                    analyses_dict.update({'Dataframe'  : merged_df})
+                        #finally add complete dataframe for given method and date to analysis object's data attribute. 
+                        #This completes the analysis object.
+                        analyses_dict.update({'Pressure Dataframe' : merged_df})
 
                     #list of analyses populated with individual analysis objects
                     analyses_list.append(DeviceAnalysis(name = analysis_name, data = analyses_dict))
@@ -431,7 +431,7 @@ class DeviceEngine(CoreEngine):
 
             curves_to_plot = self.get_analyses(analyses)
             for ana in curves_to_plot:
-                ana.plot([self._history[h] for h in self._history if h in ana.name])
+                ana.plot()
 
         else:
 

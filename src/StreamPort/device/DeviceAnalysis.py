@@ -31,10 +31,12 @@ class DeviceAnalysis(Analysis):
             
     """
 
+
     def __init__(self, name=None, replicate=None, blank=None, data=None, analysis_type=None):
         
         super().__init__(name, replicate, blank, data)
         self._analysis_type = str(analysis_type) if not isinstance(analysis_type, type(None)) else "Unknown"
+
 
 
     def validate(self):
@@ -50,40 +52,38 @@ class DeviceAnalysis(Analysis):
                 pass
 
 
-    def plot(self, analyses):
 
-        def make_plot(data):
-            
-            # Initialize traces and buttons
-            traces = []
+    def plot(self):
 
-            identifier = data.columns[0] + self.name
+        # Initialize traces and buttons
+        traces = []
 
-            x_axis = data.iloc[:, 0]
-            # Iterate over columns (excluding the first one)
-            for col in data.columns[1:]:
-                # Create a scatter trace for each column
-                trace = go.Scatter(x=x_axis, y=data[col], visible=True, name=col)
-                traces.append(trace)
+        identifier = self.name
 
-            # Create the layout
-            layout = go.Layout(
-                title="Pressure/" + identifier, 
-                xaxis=dict(title="Time(min)"),
-                yaxis=dict(title="Pressure(bar)"),
-                showlegend=True
-            )
-            #the created traces and layouts are used for the final plots
+        key = 'Pressure Dataframe'
 
-            fig = go.Figure(data=traces, layout=layout)
-            fig.show() 
+        # Iterate over columns (excluding the first one)
+        data = self.data[key]
+        curves = data.columns[1:]
+        time_axis = data.columns[0]
 
-        if isinstance(analyses, list):
-            for i in analyses:
-                make_plot(i)
+        for sample in curves:
+            # Create a scatter trace for each column
+            trace = go.Scatter(x=data[time_axis], y=data[sample], visible=True, mode = 'markers', name=sample)
+            traces.append(trace)
 
-        else:
-            make_plot(analyses)
+        # Create the layout
+        layout = go.Layout(
+        title="Pressure/" + identifier, 
+        xaxis=dict(title="Time(min)"),
+        yaxis=dict(title="Pressure(bar)"),
+        showlegend=True
+        )
+        #the created traces and layouts are used for the final plots
+
+        fig = go.Figure(data=traces, layout=layout)
+        fig.show() 
+                    
         
 
     def get_features(self, features_df, features_list):
