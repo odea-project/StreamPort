@@ -50,6 +50,8 @@ class DeviceAnalysis(Analysis):
             dict_list = self.data[i]     
             if isinstance(dict_list, dict) or isinstance(dict_list, list):
                 pass
+            else:
+                print("Data format must be conform")
 
 
 
@@ -69,7 +71,7 @@ class DeviceAnalysis(Analysis):
 
         for sample in curves:
             # Create a scatter trace for each column
-            trace = go.Scatter(x=data[time_axis], y=data[sample], visible=True, mode = 'markers', name=sample)
+            trace = go.Scatter(x=data[time_axis], y=data[sample], visible=True, name=sample)
             traces.append(trace)
 
         # Create the layout
@@ -86,16 +88,22 @@ class DeviceAnalysis(Analysis):
                     
         
 
-    def get_features(self, features_df, features_list):
+    def feature_finder(self):
+        #this function returns analysis objects that are compatible with the chosen Processing Settings, for further analysis.
+        self.validate()
 
-        if not isinstance(features_df, type(None)):
+        for key in self.data:
+            if 'Device Pressure Analysis' in key:
+                return self    
+        
+            else:  
+                print(f"Skipping {self.name} because its data is not a dictionary with a 'Pressure Analysis' key.")
 
-            extracted_features = features_df.iloc[ : , 1 : ].agg(features_list)
 
-        else:
 
-            print("No data was provided!")
-
+    """
+    def add_features():
+        
         sample_names = []
         runtime = pd.DataFrame()
         runtype = pd.DataFrame()
@@ -130,3 +138,4 @@ class DeviceAnalysis(Analysis):
 
         print(extracted_features.T)
         return extracted_features
+"""

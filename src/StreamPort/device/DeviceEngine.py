@@ -312,7 +312,7 @@ class DeviceEngine(CoreEngine):
                             #add pressure curve to list of curves for current method  
                             curves_list.append(pd.read_csv(target_file, 
                                                                 sep = ";",
-                                                                decimal = ",",
+                                                                #decimal = ",",
                                                                 header = None, 
                                                                 names = cols))
                             
@@ -418,7 +418,7 @@ class DeviceEngine(CoreEngine):
 
             return result
 
-        else:
+        elif not analyses:
 
             print("Provided data is not sufficient or does not exist! Existing analyses will be returned.")
             return self._analyses
@@ -445,6 +445,7 @@ class DeviceEngine(CoreEngine):
 
         extracted_features = data.iloc[:, 1:].agg(features_list)
         print(extracted_features)
+
         return(extracted_features)
 
 
