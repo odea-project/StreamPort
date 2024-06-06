@@ -387,3 +387,13 @@ class CoreEngine:
         print(f"Running workflow with settings: {settings.call}")
         results = settings.run(self)
         self.add_results(results)
+
+  def get_analyses_names(self):
+    """
+    Returns an array of analysis names.
+    """
+    
+    self.names = []
+    for analysis in self._analyses:
+        self.names.append(analysis.name)
+    return self.names

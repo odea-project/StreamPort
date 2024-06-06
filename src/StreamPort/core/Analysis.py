@@ -31,29 +31,18 @@ class Analysis:
     if not isinstance(self.name, str):
       print("Analysis name not conform!")
       valid = False
-    if not isinstance(self.replicate, str):
+    if not isinstance(self.replicate, str) and self.replicate is not None:
       print("Analysis replicate name not conform!")
       valid = False
-    if not isinstance(self.blank, str):
+    if not isinstance(self.blank, str) and self.blank is not None:
       print("Analysis blank name not conform!")
       valid = False
-    if isinstance(self.data, dict):
-      if self.data != {}:
-        for key in self.data:
-          if not isinstance(self.data[key], np.ndarray):
-            print("Analysis data must be a numpy array!")
-            valid = False
-        if len(set([self.data[key].ndim for key in self.data])) != 1:
-          print("Analysis data arrays must have only one dimension!")
-          valid = False
-        if len(set([len(self.data[key]) for key in self.data])) != 1:
-          print("Analysis data arrays must have the same length!")
-          valid = False
-    else:
+    if not isinstance(self.data, dict):
       print("Analysis data must be a dict!")
       valid = False
     if not valid:
       print("Issue/s found with analysis", self.name)
+    return valid
 
   def __str__(self):
     """

@@ -1,16 +1,20 @@
 from ..core.CoreEngine import CoreEngine
-from ..core.Analysis import Analysis
+from ..ml.MachineLearningAnalysis import MachineLearningAnalysis
 import pandas as pd
+import numpy as np
 import os
+from sklearn.decomposition import PCA 
+import matplotlib.pyplot as plt
 
 class MachineLearningEngine(CoreEngine):
 
     """
     A class for running machine learning that inherits from CoreEngine class.
     
-    """   
+    """  
+
  
-    def __init__(self, headers=None, settings=None, analyses=None, results=None):
+    def __init__(self, headers=None, settings=None, analyses=None, results=None, classes=None):
 
         """ 
         Initializes the MachineLearningEngine instance
@@ -23,56 +27,221 @@ class MachineLearningEngine(CoreEngine):
         """
 
         super().__init__(headers, settings, analyses, results)
+        self._classes=[]
 
-    def read_csv(self, path=None):
+    def add_analyses_from_csv(self, path=None):
         """
         Method for reading a csv file, where rows are analyses (obversations) and colums are variables.
 
         Args:
             path (str, optional): The path to the csv file. (extra details about the csv structure for user)
+        
+        Raises:
+            ValurError: if the structure of the csv file is not expected
+            FileNotFoundError: if the csv file does not exist
         """
 
         if path is not None:
-            # if file exists else warning
             if os.path.exists(path):
                 df = pd.read_csv(path)  
-                # if check the structure of the csv
                 structure = {
                     "number_of_rows": df.shape[0],
                     "number_of_columns": df.shape[1],
                 }
+
                 if structure["number_of_rows"] == 0 or structure["number_of_columns"] == 0:
                     raise ValueError("The structure of the CSV file is not as expected.")
                 else:
-                    print(f"Structure of the CSV file: {structure}")   
+                    print(f"Structure of the CSV file: {structure}")
             else :
                 raise FileNotFoundError(f"The file {path} does not exist.")
         else:
             return None
-
-        # collect the names of the analyses  
-        #analyses_names = df.items()
+        
         analyses_name = df.iloc[:,0].tolist()
 
-        # if checking if there are no duplicated names in rows, warn the user
         if df.duplicated('name', keep='first').any():
-            print("Warning: Duplicate analysis names found in the CSV file.")
+            print("Warning: Duplicate analysis names found in the CSV file. Only the first will be added!")
 
-        #columns_count = df.shape[1]
-        #rows_count = df.shape[0]
+        column_names = df.columns.tolist()[1:]
 
-        column_names = df.columns.tolist()[1:] # x value for all analyses
-        # remove the first column name from column_names (i.e. name)
-            
-        # loop to each row, as each row is an analysis
-        #for index, row in df.iterrows():
-        # extract the raw values and add it to the y arrayS
-        row_value = df.iloc[0, 1:].tolist()[1:]
-        # each analysis is added with self.add_analyses(anal1)  
-        anal1 = [
-            Analyses(name=analyses_name[0], data={"x": column_names, "y": row_value})
-            ]
-    
-        self.add_analyses(anal1)
+
+        for index, row in df.iterrows():
+            row_value = row.tolist()[1:]
+            ana = MachineLearningAnalysis(name=str(analyses_name[index]), data={"x": np.array(column_names), "y": np.array(row_value)}) 
+            if ana.validate():
+                self.add_analyses(ana)
+            else:
+                print(f"Analysis {analyses_name[index]} did not pass validation.")
+
+
+    def add_classes_from_csv(self, class_path=None):
+        """
+        Method for reading a csv file, where rows are analyses (obversations) and colums are variables.
+
+        Args:
+            path (str, optional): The path to the csv file. (extra details about the csv structure for user)
+        
+        Raises:
+            ValurError: if the structure of the csv file is not expected
+            FileNotFoundError: if the csv file does not exist
+        """
+
+        if class_path is not None:
+            if os.path.exists(class_path):
+                df = pd.read_csv(class_path)  
+                structure = {
+                    "number_of_rows": df.shape[0],
+                    "number_of_columns": df.shape[1],
+                }
+
+                if structure["number_of_rows"] == 0 or structure["number_of_columns"] == 0:
+                    raise ValueError("The structure of the CSV file is not as expected.")
+                else:
+                    print(f"Structure of the CSV file: {structure}")
+            else :
+                raise FileNotFoundError(f"The file {class_path} does not exist.")
+        else:
+            return None
+        
+        class_name = df.iloc[:,1].tolist()
+
+        if df.duplicated('name', keep='first').any():
+            print("Warning: Duplicate classes names found in the CSV file. Only the first will be added!")
+
+        column_names = df.columns.tolist()[1:]
+
+
+        for index, row in df.iterrows():
+            row_value = row.tolist()[1:]
+            ana = MachineLearningAnalysis(name=str(class_name[index]), data={"x": np.array(column_names), "y": np.array(row_value)}) 
+            if ana.validate():
+                self.add_classes(class_name[index])
+            else:
+                print(f"Analysis {class_name[index]} did not pass validation.")
      
+    def get_data(self):
+        """
+        Method for collapse all data arrays from analyses into a matrix for statistics
+
+        """
+     
+        if not self._analyses:
+            print("No analyses found")
+            return None
+        
+        x_values = self._analyses[0].data["x"]
+    
+        matrix = []
+        for analysis in self._analyses:
+            y_values = analysis.data["y"]
+            matrix.append(y_values)
+        
+        df_matrix = pd.DataFrame(matrix, columns=x_values)
+        
+        return df_matrix
+    
+    def add_classes(self, classes):
+        """
+        Adds classes (a array of string) to each analysis and use it for classification of the PCA results
+        
+        Args:
+            classes(str or list[str]): The classes or list of classes to add.
+        
+        Raises:
+            TypeError: if the classes parameter is not an instance o a list of instances of string array
+            TypeError: if any element in the list of classes is not an instance of string array
+        """
+        if not self._analyses:
+            print("No analyses found")
+            return None
+
+        if self._classes is None:
+            self._classes = []
+
+        if isinstance(classes, list):
+            for class_list in classes:
+                if not isinstance(class_list, str):
+                    raise TypeError("Each element in the classes list must be a instance of MachineLearningAnaylsis class")
+                if class_list not in self._classes:
+                    self._classes.append(class_list)
+        else:
+            if not isinstance(classes, str):
+                raise TypeError("The classes must be an instance or a list of MachineLearningAnalysis class")
+            if classes not in self._classes:
+                self._classes.append(classes)
+
+    def get_classes(self):
+        """
+        Method to get the added classes.
+        """
+        return self._classes
+   
+
+    def make_pca(self):
+        # Create a method in the ML engine to perfom PCA and collect the results
+        """
+        Method to perform PCA and collect the results
+        """
+        if not self._analyses:
+            print("No analyses found")
+            return None
+
+        # get the settings for PCA from _settings attribute or get_settings from self
+        settings = self.get_settings(self)
+        if settings is None:
+            print("no pca setting found")
+            return None
+        # to find the number of components
+        # settings_obj = _settings[which is class MakePCA], return the first
+        for setting in self._settings:
+            if setting.call == "MakePCA":  
+                settings_obj = setting
+                break
+        else:
+            settings_obj = None
+        if settings_obj:
+            result = settings_obj.run(self)
+            self.add_results({"PCA": result})
+        else:
+            print("no pca settings found")
+    
+
+    def plot_pca(self):
+        # make a plot method in the ML engine for the PCA results and classes
+        """
+        Method to plot the PCA results and classes
+        """
+        if not self._analyses:
+            print("No analyses found")
+            return None
+        
+        pca_results = self.get_results("PCA")
+        if pca_results is None:
+            print("No pca results found")
+            return None
+        
+        classes = self.get_classes()
+        if classes is None:
+            print("No classes found")
+            return
+
+        pca_comp1 = pca_results[:, 0]
+        pca_comp2 = pca_results[:, 1]
+
+        for cls in classes:
+            index = np.where(np.array(classes) == cls)
+            plt.scatter(pca_comp1[index], pca_comp2[index], edgecolors='k', label=cls)
             
+            for idx in index:
+                plt.annotate(cls, (pca_comp1[idx], pca_comp2[idx]), color='black')
+            
+        plt.scatter(pca_comp1, pca_comp2, alpha=0.2)
+
+        plt.xlabel("PCA 1")
+        plt.ylabel("PCA 2")
+        plt.title('PCA')
+        plt.legend()
+        plt.show()
+
+     
