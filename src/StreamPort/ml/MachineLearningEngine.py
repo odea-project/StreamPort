@@ -142,7 +142,6 @@ class MachineLearningEngine(CoreEngine):
         return df_matrix
     
     def add_classes(self, classes):
-        # added classes (a array of strings) to each analysis and then use it for classification of the PCA results
         """
         Adds classes (a array of string) to each analysis and use it for classification of the PCA results
         
@@ -175,9 +174,6 @@ class MachineLearningEngine(CoreEngine):
     def get_classes(self):
         """
         Method to get the added classes.
-
-        Returns:
-            list: List of classes added to the engine.
         """
         return self._classes
    
@@ -197,7 +193,6 @@ class MachineLearningEngine(CoreEngine):
             print("no pca setting found")
             return None
         # to find the number of components
-        #n_components = settings
         # settings_obj = _settings[which is class MakePCA], return the first
         for setting in self._settings:
             if setting.call == "MakePCA":  
@@ -205,18 +200,12 @@ class MachineLearningEngine(CoreEngine):
                 break
         else:
             settings_obj = None
-        # result = settings_obj.run(self)
         if settings_obj:
             result = settings_obj.run(self)
-        # self.add_results(result)
             self.add_results({"PCA": result})
         else:
             print("no pca settings found")
-
-        # pca = PCA(n_components=n_components) 
-        # data = self.get_data() 
-        # pca_results = pca.fit_transform(data)
-        # return pca_results
+    
 
     def plot_pca(self):
         # make a plot method in the ML engine for the PCA results and classes
@@ -228,11 +217,31 @@ class MachineLearningEngine(CoreEngine):
             return None
         
         pca_results = self.get_results("PCA")
-        plt.scatter(pca_results[:, 0], pca_results[:, 1])
+        if pca_results is None:
+            print("No pca results found")
+            return None
+        
+        classes = self.get_classes()
+        if classes is None:
+            print("No classes found")
+            return
 
-        plt.xlabel('PCA Component 1')
-        plt.ylabel('PCA Component 2')
-        plt.title('PCA result')
+        pca_comp1 = pca_results[:, 0]
+        pca_comp2 = pca_results[:, 1]
+
+        for cls in classes:
+            index = np.where(np.array(classes) == cls)
+            plt.scatter(pca_comp1[index], pca_comp2[index], edgecolors='k', label=cls)
+            
+            for idx in index:
+                plt.annotate(cls, (pca_comp1[idx], pca_comp2[idx]), color='black')
+            
+        plt.scatter(pca_comp1, pca_comp2, alpha=0.2)
+
+        plt.xlabel("PCA 1")
+        plt.ylabel("PCA 2")
+        plt.title('PCA')
+        plt.legend()
         plt.show()
 
      
