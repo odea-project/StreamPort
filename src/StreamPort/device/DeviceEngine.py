@@ -2,7 +2,7 @@ from ..core.CoreEngine import CoreEngine
 from ..device.DeviceAnalysis import DeviceAnalysis
 
 #CHECK WHETHER PACKAGES HAVE SUFFICIENT SUPPORT
-#Numpy has fft, check also if other stat methods can be implemented without importing tsfresh 
+#Numpy has fft, check also if other stats methods can be implemented without importing tsfresh 
 
 #enable file parsing and OS operations with os module
 import os
@@ -19,6 +19,14 @@ import chardet
 import pandas as pd
 import numpy as np
 
+#module to enable time decomposition
+from statsmodels.tsa.seasonal import seasonal_decompose
+
+
+"""
+GLOBAL VARIABLES
+"""
+
 
 #format (str): Defines the manner in which Datetime objects/strings are to be parsed and/or formatted.
 format = '%H:%M:%S %m/%d/%y'
@@ -28,6 +36,8 @@ datetime_pattern = re.compile(r'(\d{2}:\d{2}:\d{2} \d{1,2}/\d{1,2}/\d{2})')
 
 #file_format (Regex string): Regular expression to enable filtering throught data folders to find pertinent chemstation files
 file_format = re.compile(r'^\d{6}_[A-Za-z]+.*? \d{2}-\d{2}-\d{2}$')
+
+
 
 class DeviceEngine(CoreEngine):
 
@@ -41,7 +51,7 @@ class DeviceEngine(CoreEngine):
         headers (ProjectHeaders, optional): The project headers. Instance of ProjectHeaders class or dict.
         settings (list, optional): The list of settings. Instance or list of instances of ProcessingSettings class.
         analyses (list, optional): The list of analyses. Instance or list of instances of DeviceAnalysis class.
-        results (dict, optional): The dictionary of results.
+        results (dict, optional): The dictionary of results computed using varying Processing Settings.
         history (dict, optional): The dictionary of all relational data processed by this object.
         
     Instance Attributes (Unique to each DeviceEngine instance/object):
@@ -53,12 +63,7 @@ class DeviceEngine(CoreEngine):
         _method_ids (list(str)): List of all unique analyses identified by method and date of experiment.
 
 
-    Methods: (specified are methods only belonging to child class. For superclass methods, see CoreEngine)
-
-        get_analyses(self, analyses(str/int/list(str/int))):
-                Overrides superclass method of same name.
-                Allows for flexibility in input to find analyses using subwords of identifying strings for analyses(e.g. 'Pac', '08/23', ..).
-                Returns only a list of DeviceAnalysis Objects.
+    Methods: (specified are methods only belonging to child class or modified to fit child class specifications. For superclass methods, see CoreEngine)
 
         print(self):
                 Prints the object and analyses.
@@ -68,16 +73,24 @@ class DeviceEngine(CoreEngine):
                 If source not specified, searches cwd(current working directory) for compatible data.
                 Curves are grouped by unique Method ID and date of experiment.
 
+        get_analyses(self, analyses(str/int/list(str/int))):
+                Overrides superclass method of same name.
+                Allows for flexibility in input to find analyses using subwords of identifying strings for analyses(e.g. 'Pac', '08/23', ..).
+                Returns only a list of DeviceAnalysis Objects.
+                
         plot_analyses(self, analyses(str/datetime/list(str/datetime))) : 
                 Creates an interactive plot of (pressure) curves against time.
                 Unique for unique Method IDs.
                 To be expanded to handle other data(e.g. device conditions, curve features).
                 (Possible future upgrade)User can specify resolution and/or curve smoothing ratio.
 
-        get_features(self, features_list(str/list, optional)) :
-                Extracts features from curves and arranges data appropriately for further processing and ML operations.
-                If target features not specified, default list(mean, min, max, std) applied.
+        get_features(self, data(dict), features_list(list(str), optional)) :
+                Extracts features from (pressure) curves and arranges data appropriately for further processing and ML operations.
+                If target features not specified, default list(mean, min, max, std, skew, kurtosis) applied.
 
+        get_seasonal_components(self, data(dict)) :
+                Breaks (pressure) curves down into their respective trend, seasonal and residual components for further analysis.
+                        
         drop_features(self, features_list(str/list of feature/column name(s), optional)) :
                 Removes undesired features from prepared dataset. 
                 Essentially acts like df.drop(columns), where the columns are features to remove.
@@ -112,7 +125,11 @@ class DeviceEngine(CoreEngine):
 
 
     def find_analyses(self):
+        """
+        Searches for analyses in the given source or current working directory if source is not provided.
+        Prepares the available analyses and return a list of analyses objects that conform to data processing format.
 
+        """
         #All instances of DeviceEngine will use the same Datetime methods for analysis.
         #Use predefined global datetime format and search pattern.
         global format 
@@ -321,7 +338,11 @@ class DeviceEngine(CoreEngine):
                             print('runtime : ' + runtime + '\n')
                                             
                         except FileNotFoundError:
-
+                            
+                            """
+                            This area is to be extended to handle other device data(Temp, Actual Logs).
+                            Future implementation includes calling SignalExtraction when the required csv files are absent.
+                            """
                             print("File doesn't exist")
 
                         finally:
@@ -332,15 +353,16 @@ class DeviceEngine(CoreEngine):
                                                                 curves_list[-1], 
                                                                 on = 'Time')
 
-                        #experiment date for analysis name. Name is name from Analyses object             
-                        analysis_name = "Analysis - " + method_suffix
+                        #experiment date and method ID as identifier for analysis name. Name is name from Analyses object             
+                        analysis_name = method_suffix
 
                         if curve_header:
                             #if pressure curve exists for current analysis, mention in analysis key
                             analysis_key = "Device Pressure Analysis - " + start_date_string
                         
                         else:
-                            analysis_key = "Analysis - " + start_date_string
+                            #individual analyses(runs) in data are identified by their start date
+                            analysis_key = analysis_name + start_date_string
 
                         analysis_data = {'Method' : method_suffix, 
                                          'Sample' : curve_header, 
@@ -359,12 +381,12 @@ class DeviceEngine(CoreEngine):
                         #add every encountered analysis to device history
                         self._history.update(analysis)    
 
-                        #dataframe for current identifier(method_suffix and date)
-                        merged_df = curves_list[0]
+                    #dataframe for current identifier(method_suffix and date)
+                    merged_df = curves_list[0]
 
-                        #finally add complete dataframe for given method and date to analysis object's data attribute. 
-                        #This completes the analysis object.
-                        analyses_dict.update({'Pressure Dataframe' : merged_df})
+                    #finally add complete dataframe for given method and date to analysis object's data attribute. 
+                    #This completes the analysis object.
+                    analyses_dict.update({'Pressure Dataframe' : merged_df})
 
                     #list of analyses populated with individual analysis objects
                     analyses_list.append(DeviceAnalysis(name = analysis_name, data = analyses_dict))
@@ -377,10 +399,6 @@ class DeviceEngine(CoreEngine):
                     #add current method ID to list of known/encountered method types, no duplicates
                     self._method_ids.append(method_suffix)
 
-                #update experiments dict with new set of runs
-                #self._history.update({method_suffix : merged_df})
-
-
                 print("Dataframe for method : " + method_suffix)
                 print(merged_df.head()) 
 
@@ -389,7 +407,10 @@ class DeviceEngine(CoreEngine):
 
 
     def get_analyses(self, analyses):
+        """
+        Identical superclass method is modified here to return only a list, and also to return any value with matching subwords rather than the exact key.
 
+        """
         result = []
 
         if analyses is not None:
@@ -440,13 +461,75 @@ class DeviceEngine(CoreEngine):
 
 
     def get_features(self, data, features_list):
-        #processing settings come in here. 
-        #Settings are decided in DeviceProcSettings and passed as data and features_list
+        """
+        #Settings are decided in DeviceProcSettings and passed as data(dict) and features_list(list(str))
+        #additional features that complement information from given set of features are runtime and runtype.
+        
+        """
+        #runtime of each sample indicates possible faults with the run
+        runtime = {}
 
-        extracted_features = data.iloc[:, 1:].agg(features_list)
-        print(extracted_features)
+        #runtype describes whether run was a flush(blank) or a sample run
+        runtype = {}
 
-        return(extracted_features)
+        for analysis_key in data:
+            if analysis_key == 'Pressure Dataframe':
+                pressure_dataframe = data[analysis_key]
+                
+                #sample names are extracted from data, time column is ignored
+                sample_names = pressure_dataframe.columns[1:] 
+                #DeviceProcSettings sets features to be extracted from data using self.parameters passed as features_list
+                extracted_features = pressure_dataframe[sample_names].agg(features_list)
+
+                for sample in sample_names:
+                    if 'blank' in sample:
+                        #'0' denotes a blank run or flush
+                        runtype.update({sample : 0})
+
+                    else:
+                        #'1' denotes a sample run
+                        runtype.update({sample : 1})
+
+            else:
+                 
+                runtime.update({data[analysis_key]['Sample'] : data[analysis_key]['Runtime']})
+
+        run_features = pd.DataFrame([runtime, runtype], 
+                                    columns=runtype.keys())
+        run_features.index = ['Runtime', 'Runtype']
+
+
+        #combine the extracted pressure curve features with run features
+        new_features = pd.concat([extracted_features, run_features], 
+                                 axis = 0)
+
+        return new_features
+    
+
+
+    def get_seasonal_components(self, data):
+        """
+        Break each sample's time-series curve down into its components : Trend, Seasonal, and Residual(Noise)
+        Return value is the ditionary originally passed as input to this function. 
+        Now it has been modified with additional seasonal component data for each individual curve
+    
+        """
+        for analysis_key in data:
+            if 'Device Pressure Analysis' in analysis_key:
+                sample_name = (data[analysis_key])['Sample']
+                sample_curve = (data[analysis_key])['Curve']
+                decomp = seasonal_decompose(sample_curve[sample_name], 
+                                        model = 'additive', 
+                                        period = 10,  
+                                        extrapolate_trend = 10)
+            
+                #components for current curve
+                trend, seasonal, residual = pd.Series(decomp.trend), pd.Series(decomp.seasonal), pd.Series(decomp.resid)
+                data[analysis_key].update({'Trend' : trend, 
+                                    'Seasonal' : seasonal,
+                                    'Residual' : residual})
+
+        return data
 
 
 
@@ -454,4 +537,3 @@ class DeviceEngine(CoreEngine):
 
         return()
     
-

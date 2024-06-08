@@ -3,8 +3,6 @@ from ..core.CoreEngine import Analysis
 import plotly.graph_objects as go
 #plotly needs to be added to requirements.txt
 
-import pandas as pd
-
 class DeviceAnalysis(Analysis):
 
     """
@@ -19,7 +17,7 @@ class DeviceAnalysis(Analysis):
     Instance Attributes:
         _analysis_type (str/list(str), optional): Marker(s) to specify the type of data the current Analysis is related to (pressure, temperature, ..)
 
-        ***Note*** : _anatype must have same size as data.
+        ***Note*** : _analysis_type must have same size as data.
 
     Methods: (specified are methods only belonging to child class. For superclass methods, see Analysis)
 
@@ -76,7 +74,7 @@ class DeviceAnalysis(Analysis):
 
         # Create the layout
         layout = go.Layout(
-        title="Pressure/" + identifier, 
+        title="Pressure/Time Curve(s) - " + identifier, 
         xaxis=dict(title="Time(min)"),
         yaxis=dict(title="Pressure(bar)"),
         showlegend=True
@@ -88,54 +86,18 @@ class DeviceAnalysis(Analysis):
                     
         
 
-    def feature_finder(self):
+    def feature_finder(self, algorithm):
         #this function returns analysis objects that are compatible with the chosen Processing Settings, for further analysis.
-        self.validate()
-
-        for key in self.data:
-            if 'Device Pressure Analysis' in key:
-                return self    
-        
-            else:  
-                print(f"Skipping {self.name} because its data is not a dictionary with a 'Pressure Analysis' key.")
-
+        if algorithm == "pressure_features" or "seasonal_decomposition":
+            for key in self.data:
+                if 'Device Pressure Analysis' in key:
+                    return self    
+            
+                else:  
+                    print(f"Skipping {self.name} because its data is not a dictionary with a 'Pressure Analysis' key.")
 
 
-    """
-    def add_features():
-        
-        sample_names = []
-        runtime = pd.DataFrame()
-        runtype = pd.DataFrame()
+            
 
-        for d in self.data:
 
-            sample_names.append(self.data[d]['Sample'])
 
-            if self.data[d]['Method'] in d:
-                runtime = pd.concat([runtime, pd.Series(self.data[d]['Runtime'])], 
-                                    axis = 1)            
-
-                if 'blank' in self.data[d]['Sample'] :
-
-                    runtype = pd.concat([runtype, pd.Series(0)], 
-                                        axis = 1)
-                
-                else:
-
-                    runtype = pd.concat([runtype, pd.Series(1)], 
-                                        axis = 1)
-                    
-        runtime.columns = sample_names            
-        runtime.name = "Runtime"
-
-        runtype.columns = sample_names        
-        runtype.name = "Runtype"
-
-        extracted_features = pd.concat([extracted_features, runtime.astype(str)], axis = 0)
-
-        extracted_features = pd.concat([extracted_features, runtype.astype(int)], axis = 0)
-
-        print(extracted_features.T)
-        return extracted_features
-"""
