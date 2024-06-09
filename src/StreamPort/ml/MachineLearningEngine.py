@@ -3,8 +3,9 @@ from ..ml.MachineLearningAnalysis import MachineLearningAnalysis
 import pandas as pd
 import numpy as np
 import os
-from sklearn.decomposition import PCA 
 import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
+
 
 class MachineLearningEngine(CoreEngine):
 
@@ -14,7 +15,7 @@ class MachineLearningEngine(CoreEngine):
     """  
 
  
-    def __init__(self, headers=None, settings=None, analyses=None, results=None, classes=None):
+    def __init__(self, headers=None, settings=None, analyses=None, results=None):
 
         """ 
         Initializes the MachineLearningEngine instance
@@ -162,12 +163,12 @@ class MachineLearningEngine(CoreEngine):
         if isinstance(classes, list):
             for class_list in classes:
                 if not isinstance(class_list, str):
-                    raise TypeError("Each element in the classes list must be a instance of MachineLearningAnaylsis class")
+                    raise TypeError("Each element in the classes list must be a string")
                 if class_list not in self._classes:
                     self._classes.append(class_list)
         else:
             if not isinstance(classes, str):
-                raise TypeError("The classes must be an instance or a list of MachineLearningAnalysis class")
+                raise TypeError("The classes must be an instance or a string")
             if classes not in self._classes:
                 self._classes.append(classes)
 
@@ -188,23 +189,33 @@ class MachineLearningEngine(CoreEngine):
             return None
 
         # get the settings for PCA from _settings attribute or get_settings from self
-        settings = self.get_settings(self)
+        settings = self.get_settings(settings="MakePCA")
         if settings is None:
             print("no pca setting found")
             return None
         # to find the number of components
         # settings_obj = _settings[which is class MakePCA], return the first
-        for setting in self._settings:
-            if setting.call == "MakePCA":  
-                settings_obj = setting
+        for settings in self._settings:
+            if settings.call == "MakePCA":  
+                settings_obj = settings
                 break
         else:
             settings_obj = None
+        # result = settings_obj.run(self)
         if settings_obj:
             result = settings_obj.run(self)
-            self.add_results({"PCA": result})
+        # self.add_results(result)
+        
+        # create a class for model representation
+        # add an attribute with model type: PCA, PLS, etc.
+
+        # get data from the model
+        # plot data from model
+        # predict with model based on new data
+
+            self.add_results({"model": result})
         else:
-            print("no pca settings found")
+            print("no pca settings object found")
     
 
     def plot_pca(self):
@@ -224,7 +235,7 @@ class MachineLearningEngine(CoreEngine):
         classes = self.get_classes()
         if classes is None:
             print("No classes found")
-            return
+            return None
 
         pca_comp1 = pca_results[:, 0]
         pca_comp2 = pca_results[:, 1]
@@ -245,3 +256,27 @@ class MachineLearningEngine(CoreEngine):
         plt.show()
 
      
+    def make_cluster(self, n_clusters=4):
+        if not self._analyses:
+            print("No analyses found")
+            return None
+        
+        pca_results = self.get_results("PCA")
+        if pca_results is None:
+            print("No pca results found")
+            return None
+      
+        kmeans = KMeans(n_clusters=n_clusters)
+        clusters = kmeans.fit_predict(pca_results)
+
+        pca_comp1 = pca_results[:, 0]
+        pca_comp2 = pca_results[:, 1]
+
+        plt.scatter(pca_comp1, pca_comp2, c=clusters)
+        plt.scatter(kmeans.cluster_centers_[:, 0], kmeans.cluster_centers_[:, 1], c='red')
+
+        plt.xlabel("PCA 1")
+        plt.ylabel("PCA 2")
+        plt.title('PCA with KMeans Clustering')
+        plt.show()
+
