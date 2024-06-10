@@ -1,5 +1,6 @@
 from ..core.CoreEngine import Analysis
 
+import pandas as pd
 import plotly.graph_objects as go
 #plotly needs to be added to requirements.txt
 
@@ -53,24 +54,33 @@ class DeviceAnalysis(Analysis):
 
 
 
-    def plot(self):
+    def plot(self, features = False):
 
         # Initialize traces and buttons
-        traces = []
-
-        identifier = self.name
-
+        traces = []          
+        identifier = self.name 
         key = 'Pressure Dataframe'
+        for analysis_key in self.data:
+            if 'Device Pressure Analysis' in analysis_key:
+                #data = (self.data[analysis_key])['Curve']
+                data = self.data[key]
+                time_axis = data['Time']
+            if features == True : 
+                data = pd.DataFrame({f"{analysis_key}_trend" : (self.data[analysis_key])['Trend'], 
+                                     f"{analysis_key}_seasonal" : (self.data[analysis_key])['Seasonal'],
+                                     f"{analysis_key}_residual" : (self.data[analysis_key])['Residual']}) 
 
-        # Iterate over columns (excluding the first one)
-        data = self.data[key]
-        curves = data.columns[1:]
-        time_axis = data.columns[0]
+                if 'Seasonal frequencies' in self.data[analysis_key]:
 
-        for sample in curves:
-            # Create a scatter trace for each column
-            trace = go.Scatter(x=data[time_axis], y=data[sample], visible=True, name=sample)
-            traces.append(trace)
+                    data = pd.merge([data, {f"{analysis_key}_transformed_seasonal" : pd.Series(self.data[analysis_key]['Seasonal frequencies'])}], 
+                                    axis = 1)   
+
+            # Iterate over columns (excluding the first one)
+            curves = data.columns[1:]
+            for sample in curves:
+                # Create a scatter trace for each column
+                trace = go.Scatter(x=time_axis, y=data[sample], visible=True, name=sample)
+                traces.append(trace)
 
         # Create the layout
         layout = go.Layout(
@@ -88,7 +98,7 @@ class DeviceAnalysis(Analysis):
 
     def feature_finder(self, algorithm):
         #this function returns analysis objects that are compatible with the chosen Processing Settings, for further analysis.
-        if algorithm == "pressure_features" or "seasonal_decomposition":
+        if "pressure_features" or "seasonal_decomposition" in algorithm:
             for key in self.data:
                 if 'Device Pressure Analysis' in key:
                     return self    

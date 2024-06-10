@@ -22,6 +22,8 @@ import numpy as np
 #module to enable time decomposition
 from statsmodels.tsa.seasonal import seasonal_decompose
 
+#Module to perform fourier transformation on seasonal components of curves
+from scipy import fftpack
 
 """
 GLOBAL VARIABLES
@@ -259,8 +261,11 @@ class DeviceEngine(CoreEngine):
                         run_file = os.path.join(current_run_folder, run_type)
                         character_encoding = get_encoding(run_file)
 
+                        """
                         #**faulty runs are restarted with same run name after minimum of a day(as seen so far)
                         #**if run within a single .D folder is started and completed more than once, it may indicate an anomaly 
+
+                        """
                         times_started = 0
 
                         with open(run_file, encoding = character_encoding) as f:                                  
@@ -446,13 +451,16 @@ class DeviceEngine(CoreEngine):
         
 
 
-    def plot_analyses(self, analyses):
+    def plot_analyses(self, analyses, features =False):
 
         if not isinstance(analyses, type(None)):
 
             curves_to_plot = self.get_analyses(analyses)
             for ana in curves_to_plot:
-                ana.plot()
+                if features == True:
+                    ana.plot(features = True)
+                else:
+                    ana.plot()
 
         else:
 
@@ -490,7 +498,7 @@ class DeviceEngine(CoreEngine):
                         #'1' denotes a sample run
                         runtype.update({sample : 1})
 
-            else:
+            elif 'Device Pressure Analysis' in analysis_key:
                  
                 runtime.update({data[analysis_key]['Sample'] : data[analysis_key]['Runtime']})
 
@@ -530,6 +538,24 @@ class DeviceEngine(CoreEngine):
                                     'Residual' : residual})
 
         return data
+
+
+
+    def make_fourier_transform(self, results):
+        """
+        Transform seasonal component of results from get_seasonal_components() using Fast Fourier Transform.
+        Behaviour of (pressure) curves can now be better analysed by inspecting them in the frequency domain.
+
+        """
+        for analysis_name in results:
+            data = results[analysis_name]
+            for analysis_key in data:
+                if 'Seasonal' in (data[analysis_key]):
+                    seasonal = (data[analysis_key])['Seasonal']
+                    transformed_seasonal = fftpack.fft(seasonal.values)
+                    data[analysis_key].update({'Seasonal frequencies' : transformed_seasonal})
+            results[analysis_name].update({analysis_name : data})
+        return results
 
 
 
