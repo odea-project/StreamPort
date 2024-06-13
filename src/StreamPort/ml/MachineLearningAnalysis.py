@@ -6,6 +6,16 @@ class MachineLearningAnalysis(Analysis):
     """
     Represents MachineLearningAnalysis class that inherits from Analysis class
 
+    Attributes:
+        name (str): The name of the analysis. 
+        replicate (str): The name of the replicate.
+        blank (str): The name of the blank.
+        data (dict): The data of the analysis.
+        classes (str): The name of the classes.
+
+    Methods: 
+        validate (self): Validates the analysis object.
+
     """
 
     def __init__(self, name=None, replicate=None, blank=None, data=None, classes=None):

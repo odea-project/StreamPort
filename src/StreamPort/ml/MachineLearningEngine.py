@@ -11,6 +11,22 @@ class MachineLearningEngine(CoreEngine):
 
     """
     A class for running machine learning that inherits from CoreEngine class.
+
+    Attributes:
+        headers (ProjectHeaders, optional): The project headers. Instance of ProjectHeaders class.
+        settings (list, optional): The list of settings. Instance or list of instances of ProcessingSettings class.
+        analyses (list, optional): The list of analyses. Instance or list of instances of MachineLearningAnalysis class.
+        results (dict, optional): The dictionary of results.
+    
+    Methods:
+        __init__ (self, headers=None, settings=None, analyses=None, results=None): Initializes the CoreEngine instance.
+        add_analyses_from_csv (self, path): Reads a CSV file and adds analyses to the engine.
+        add_classes_from_csv (self, path): Readas a CSV file and adds classes to the engine.
+        get_data (self): Get data array from analyses.
+        add_classes (self, classes): Adds classes to each analysis for classification.
+        get_classes (self): Get the added classes.
+        make_pca (self): Perform PCA and collects the results.
+        plot_pca (self): Plots the PCA results and classes.
     
     """  
 
@@ -126,7 +142,7 @@ class MachineLearningEngine(CoreEngine):
         Method for collapse all data arrays from analyses into a matrix for statistics
 
         """
-     
+        
         if not self._analyses:
             print("No analyses found")
             return None
@@ -179,7 +195,7 @@ class MachineLearningEngine(CoreEngine):
         return self._classes
    
 
-    def make_pca(self):
+    def make_model(self):
         # Create a method in the ML engine to perfom PCA and collect the results
         """
         Method to perform PCA and collect the results
@@ -189,18 +205,18 @@ class MachineLearningEngine(CoreEngine):
             return None
 
         # get the settings for PCA from _settings attribute or get_settings from self
-        settings = self.get_settings(settings="MakePCA")
+        settings = self.get_settings(settings="MakeModel")
         if settings is None:
-            print("no pca setting found")
+            print("No pca setting found")
             return None
         # to find the number of components
         # settings_obj = _settings[which is class MakePCA], return the first
         for settings in self._settings:
-            if settings.call == "MakePCA":  
+            if settings.call == "MakeModel":  
                 settings_obj = settings
                 break
-        else:
-            settings_obj = None
+            else:
+                settings_obj = None
         # result = settings_obj.run(self)
         if settings_obj:
             result = settings_obj.run(self)
@@ -215,7 +231,7 @@ class MachineLearningEngine(CoreEngine):
 
             self.add_results({"model": result})
         else:
-            print("no pca settings object found")
+            print("No pca settings object found")
     
 
     def plot_pca(self):
@@ -227,7 +243,13 @@ class MachineLearningEngine(CoreEngine):
             print("No analyses found")
             return None
         
-        pca_results = self.get_results("PCA")
+        pca_results = self.get_results("model")
+
+        # if pca_results.model_type not in "PCA":
+        #     return None
+
+        # pca_results.plot()
+
         if pca_results is None:
             print("No pca results found")
             return None
@@ -261,7 +283,7 @@ class MachineLearningEngine(CoreEngine):
             print("No analyses found")
             return None
         
-        pca_results = self.get_results("PCA")
+        pca_results = self.get_results("model")
         if pca_results is None:
             print("No pca results found")
             return None
