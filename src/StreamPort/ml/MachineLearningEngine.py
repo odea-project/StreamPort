@@ -249,7 +249,7 @@ class MachineLearningEngine(CoreEngine):
         #     return None
 
         # pca_results.plot()
-
+        
         if pca_results is None:
             print("No pca results found")
             return None
@@ -261,7 +261,8 @@ class MachineLearningEngine(CoreEngine):
 
         pca_comp1 = pca_results[:, 0]
         pca_comp2 = pca_results[:, 1]
-
+        
+        # for plot pca scores
         for cls in classes:
             index = np.where(np.array(classes) == cls)
             plt.scatter(pca_comp1[index], pca_comp2[index], edgecolors='k', label=cls)
@@ -273,11 +274,37 @@ class MachineLearningEngine(CoreEngine):
 
         plt.xlabel("PCA 1")
         plt.ylabel("PCA 2")
-        plt.title('PCA')
+        plt.title('PCA scores')
         plt.legend()
         plt.show()
 
+
+    def plot_data(self):
+        """
+        Method for general plot of data from the analysis.
+        
+        """
+
+        if not self._analyses:
+            print("No analyses found")
+            return None
+
+        data = self.get_data()
+        if data is None:
+            print("No data found")
+            return None
+
+        plt.figure(figsize=(12, 8))
+        for i, analysis in enumerate(self._analyses):
+                    plt.plot(data.columns, data.iloc[i], label=analysis.name)
      
+        plt.xlabel('Feature')
+        plt.ylabel('Value')
+        plt.title('General Data')
+        plt.legend()
+        plt.show()
+     
+
     def make_cluster(self, n_clusters=4):
         if not self._analyses:
             print("No analyses found")

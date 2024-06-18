@@ -1,5 +1,6 @@
 from ..core.ProcessingSettings import ProcessingSettings
 from sklearn.decomposition import PCA
+import numpy as np
 
 # Processing method specific class
 class MakeModel(ProcessingSettings):
@@ -25,12 +26,18 @@ class MakeModelPCASKL(MakeModel):
     def run(self, engine):
         data = engine.get_data()
 
-        #if (self.parameters.get("center_data", None)):
+        if (self.parameters.get("center_data", None)):
             # mean center the data before PCA
-
-        pca = PCA(n_components=self.parameters.get("n_components", None)) 
-        pca_results = pca.fit_transform(data)
-        
+            mean = np.mean(data, axis=0)
+            center_data = data - mean
+            # Perform PCA on centered data
+            pca = PCA(n_components=self.parameters.get("n_components", None))
+            pca_results = pca.fit_transform(center_data)
+        else:
+            # Perform PCA directly on uncentered data
+            pca = PCA(n_components=self.parameters.get("n_components", None))
+            pca_results = pca.fit_transform(data)
+            
         # the pca_results should be a general model object to be algorithm dependent structure
         return {"model": pca_results}
 
