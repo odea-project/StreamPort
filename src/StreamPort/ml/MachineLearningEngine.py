@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import os
 import matplotlib.pyplot as plt
-from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
 
 
 class MachineLearningEngine(CoreEngine):
@@ -119,15 +119,10 @@ class MachineLearningEngine(CoreEngine):
             else :
                 raise FileNotFoundError(f"The file {class_path} does not exist.")
         else:
-            return None
+            return None       
         
-        class_name = df.iloc[:,1].tolist()
-
-        if df.duplicated('name', keep='first').any():
-            print("Warning: Duplicate classes names found in the CSV file. Only the first will be added!")
-
+        class_name = df['class'].tolist()
         column_names = df.columns.tolist()[1:]
-
 
         for index, row in df.iterrows():
             row_value = row.tolist()[1:]
@@ -193,12 +188,11 @@ class MachineLearningEngine(CoreEngine):
         Method to get the added classes.
         """
         return self._classes
-   
 
     def make_model(self):
         # Create a method in the ML engine to perfom PCA and collect the results
         """
-        Method to perform PCA and collect the results
+        Method to perform plot and collect the results
         """
         if not self._analyses:
             print("No analyses found")
@@ -207,7 +201,7 @@ class MachineLearningEngine(CoreEngine):
         # get the settings for PCA from _settings attribute or get_settings from self
         settings = self.get_settings(settings="MakeModel")
         if settings is None:
-            print("No pca setting found")
+            print("No setting found")
             return None
         # to find the number of components
         # settings_obj = _settings[which is class MakePCA], return the first
@@ -231,8 +225,34 @@ class MachineLearningEngine(CoreEngine):
 
             self.add_results({"model": result})
         else:
-            print("No pca settings object found")
+            print("No settings object found")
     
+    def plot_data(self):
+        """
+        Method for general plot of data from the analysis.
+        
+        """
+        # add argument to optionally choose the x val as rows or cols
+        # look at plotly for interactive plotting https://plotly.com/python/
+
+        if not self._analyses:
+            print("No analyses found")
+            return None
+
+        data = self.get_data()
+        if data is None:
+            print("No data found")
+            return None
+
+        plt.figure(figsize=(12, 8))
+        for i, analysis in enumerate(self._analyses):
+                    plt.plot(data.columns, data.iloc[i], label=analysis.name)
+     
+        plt.xlabel('Feature')
+        plt.ylabel('Value')
+        plt.title('General Data')
+        plt.legend()
+        plt.show()
 
     def plot_pca(self):
         # make a plot method in the ML engine for the PCA results and classes
@@ -243,7 +263,7 @@ class MachineLearningEngine(CoreEngine):
             print("No analyses found")
             return None
         
-        pca_results = self.get_results("model")
+        pca_results, pca = self.get_results("pca_model")
 
         # if pca_results.model_type not in "PCA":
         #     return None
@@ -277,55 +297,52 @@ class MachineLearningEngine(CoreEngine):
         plt.title('PCA scores')
         plt.legend()
         plt.show()
-
-
-    def plot_data(self):
-        """
-        Method for general plot of data from the analysis.
         
-        """
-
-        if not self._analyses:
-            print("No analyses found")
-            return None
-
-        data = self.get_data()
-        if data is None:
-            print("No data found")
-            return None
-
-        plt.figure(figsize=(12, 8))
-        for i, analysis in enumerate(self._analyses):
-                    plt.plot(data.columns, data.iloc[i], label=analysis.name)
-     
-        plt.xlabel('Feature')
-        plt.ylabel('Value')
-        plt.title('General Data')
-        plt.legend()
-        plt.show()
-     
-
-    def make_cluster(self, n_clusters=4):
-        if not self._analyses:
-            print("No analyses found")
-            return None
-        
-        pca_results = self.get_results("model")
-        if pca_results is None:
-            print("No pca results found")
-            return None
-      
-        kmeans = KMeans(n_clusters=n_clusters)
-        clusters = kmeans.fit_predict(pca_results)
-
-        pca_comp1 = pca_results[:, 0]
-        pca_comp2 = pca_results[:, 1]
-
-        plt.scatter(pca_comp1, pca_comp2, c=clusters)
-        plt.scatter(kmeans.cluster_centers_[:, 0], kmeans.cluster_centers_[:, 1], c='red')
-
+        # for plot pca loading
+        loadings = pca.components_.T
+        plt.scatter(loadings[:, 0], loadings[:, 1], alpha=0.5)
         plt.xlabel("PCA 1")
         plt.ylabel("PCA 2")
-        plt.title('PCA with KMeans Clustering')
+        plt.title('PCA loadings')
         plt.show()
 
+    def plot_dbscan(self):
+        if not self._analyses:
+            print("No analyses found")
+            return None
+
+        dbscan_results = self.get_results("dbscan_model")
+        if dbscan_results is None:
+            print("No dbscan results found")
+            return None
+
+        classes = self.get_classes()
+        if classes is None:
+            print("No classes found")
+            return None
+        
+        data=self.get_data()
+        pca = PCA(n_components=2)  
+        dbscan_data = pca.fit_transform(data) 
+        
+        dbscan_comp1 = dbscan_data[:, 0]
+        dbscan_comp2 = dbscan_data[:, 1]
+
+        unique_labels = np.unique(dbscan_results)
+        colors = plt.cm.Spectral(np.linspace(0, 1, len(unique_labels)))
+
+        for label, color in zip(unique_labels, colors):
+            if label == -1:
+                
+                color = "black"
+
+            class_member_mask = (dbscan_results == label)
+            xy = dbscan_data[class_member_mask]
+            plt.scatter(xy[:, 0], xy[:, 1], color=color, edgecolor='k', label=f'Cluster {label}')
+
+        plt.scatter(dbscan_comp1, dbscan_comp2, alpha=0.2)
+        plt.xlabel('comp1')
+        plt.ylabel('comp2')
+        plt.title('DBSCAN Clustering')
+        plt.colorbar(label='Cluster Label')
+        plt.show()
