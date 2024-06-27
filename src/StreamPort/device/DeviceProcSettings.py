@@ -33,18 +33,20 @@ class ExtractPressureFeatures(ExtractFeatures):
         result = analysis.feature_finder(self.algorithm)
         results.update({result.name: result.data})
 
-    for key in results:
+    for key in list(results):
+      
       data = results[key]
-      extracted_features = engine.get_features(data, self.parameters)  
-      results[key].update({f"{key}_pressure_features": extracted_features})
-        
+      changed_data = engine.get_features(data, self.parameters)  
+      results.update({key: changed_data})
+      
+
     return results
   
 
 # Algorithm specific class
 class DecomposeCurves(ExtractFeatures):
   """
-  Calculate desired features, plot and return them
+  Calculate desired features and return them
 
   """
   def __init__(self):
@@ -61,31 +63,20 @@ class DecomposeCurves(ExtractFeatures):
         result = analysis.feature_finder(self.algorithm)
         results.update({result.name: result.data})
 
-    for key in results:
+    for key in list(results):
       data = results[key]
-      seasonal_components = engine.get_seasonal_components(data)
-      results[key].update({f"{key}_pressure_components": seasonal_components})
-
-    #self._plot_results(engine, results)
-
-    return results
-"""
-  def _plot_results(self, engine, results):
+      #updates analysis data and returns list of 3 combined dataframes to hold resapective components of all curves
+      changed_data = engine.get_seasonal_components(data)
+      results.update({key: changed_data})
     
-"""
-    #Private method to be called in run(). Try block in case used otherwise.
-"""  
-    try:
-      for key in results: 
-        engine.add_analyses(DeviceAnalysis(name=f"{key}_components", data=results[key]))
-        engine.plot_analyses(f"{key}_components")
-        engine.remove_analyses(f"{key}_components")
-    except TypeError:
-      print('No input provided!')
-"""      
+    return results
 
 
 class FourierTransform(ExtractFeatures):
+  """
+  Perform Fourier Analysis on data.
+
+  """
   def __init__(self):
     super().__init__()
     self.algorithm = "seasonal_decomposition_transformed"
@@ -100,19 +91,9 @@ class FourierTransform(ExtractFeatures):
         result = analysis.feature_finder(self.algorithm)
         results.update({result.name: result.data})
     
-    transformed_seasonal = engine.make_fourier_transform(results)
-    #self._plot_results(engine, transformed_seasonal)
-    return transformed_seasonal  
-"""  
-  def _plot_results(self, engine, results):
-"""
-    #Private method to be called in run(). Try block in case used otherwise.
-"""  
-    try:
-      for key in results: 
-        engine.add_analyses(DeviceAnalysis(name=f"{key}_transform", data=results[key]))
-        engine.plot_analyses(f"{key}_transform")
-        engine.remove_analyses(f"{key}_transform")
-    except TypeError:
-      print('No input provided!')
-"""  
+    for key in results:
+      data = results[key]
+      transformed_data = engine.make_fourier_transform(data)
+      results.update({key : transformed_data})
+  
+    return results
