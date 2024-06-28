@@ -15,11 +15,14 @@ class ExtractFeatures(ProcessingSettings):
 class ExtractPressureFeatures(ExtractFeatures):
   """
   This function will set the conditions to handle feature extraction from pressure data.
+  Smoothed defaults to false.
   Additional features related to the pressure curves(runtime, runtype) are also added.   
   """
-  def __init__(self, parameters=None):
+  _smoothed = None
+  def __init__(self, parameters=None, smoothed = None):
     #user-defined dict/list of features (passed as parameters argument) can be extracted from data.
     super().__init__()
+    self._smoothed = smoothed 
     self.algorithm = "pressure_features"
     self.parameters = ['min', 'max', 'mean', 'std', 'skew', 'kurtosis'] if isinstance(parameters, type(None)) else parameters
 
@@ -30,13 +33,12 @@ class ExtractPressureFeatures(ExtractFeatures):
       results = {}
       analyses = engine.get_analyses([i for i in range(0,len(engine._analyses))])
       for analysis in analyses:
-        result = analysis.feature_finder(self.algorithm)
-        results.update({result.name: result.data})
+        results.update({analysis.name: analysis.data})
 
     for key in list(results):
       
       data = results[key]
-      changed_data = engine.get_features(data, self.parameters)  
+      changed_data = engine.get_features(data, self.parameters, self._smoothed)  
       results.update({key: changed_data})
       
 
@@ -46,11 +48,14 @@ class ExtractPressureFeatures(ExtractFeatures):
 # Algorithm specific class
 class DecomposeCurves(ExtractFeatures):
   """
-  Calculate desired features and return them
+  Decompose curves into their components (Trend, Seasonal(periods), Residual(noise)). 
+  Period defaults to 10.
 
   """
-  def __init__(self):
+  _period = None
+  def __init__(self, period=None):
     super().__init__()
+    self._period = period 
     self.algorithm = "seasonal_decomposition"
   
   def run(self, engine):
@@ -60,13 +65,12 @@ class DecomposeCurves(ExtractFeatures):
       results = {}
       analyses = engine.get_analyses([i for i in range(0,len(engine._analyses))])
       for analysis in analyses:
-        result = analysis.feature_finder(self.algorithm)
-        results.update({result.name: result.data})
+        results.update({analysis.name: analysis.data})
 
     for key in list(results):
       data = results[key]
       #updates analysis data and returns list of 3 combined dataframes to hold resapective components of all curves
-      changed_data = engine.get_seasonal_components(data)
+      changed_data = engine.get_seasonal_components(data, self._period)
       results.update({key: changed_data})
     
     return results
@@ -88,12 +92,41 @@ class FourierTransform(ExtractFeatures):
       results = {}
       analyses = engine.get_analyses([i for i in range(0,len(engine._analyses))])
       for analysis in analyses:
-        result = analysis.feature_finder(self.algorithm)
-        results.update({result.name: result.data})
+        results.update({analysis.name: analysis.data})
     
-    for key in results:
+    for key in list(results):
       data = results[key]
       transformed_data = engine.make_fourier_transform(data)
       results.update({key : transformed_data})
+  
+    return results
+
+
+
+class MovingAverage(ExtractFeatures):
+  """
+  Perform rolling mean to smooth data. Period defaults to 10.
+
+  """
+  _period = None
+  def __init__(self, parameters= None, period= None):
+    super().__init__()
+    self._period = period 
+    self.parameters = ['min', 'max', 'mean', 'std'] if isinstance(parameters, type(None)) else parameters
+    self.algorithm = "moving_average"
+
+  def run(self, engine):
+    if engine._results.__len__() > 0:
+      results = engine._results
+    else:
+      results = {}
+      analyses = engine.get_analyses([i for i in range(0,len(engine._analyses))])
+      for analysis in analyses:
+        results.update({analysis.name: analysis.data})
+    
+    for key in list(results):
+      data = results[key]
+      smoothed_data = engine.get_rolling_stats(data, self.parameters, self._period)
+      results.update({key : smoothed_data})
   
     return results

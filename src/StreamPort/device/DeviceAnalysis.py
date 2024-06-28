@@ -27,7 +27,7 @@ class DeviceAnalysis(Analysis):
 
         plot (self, analyses(DataFrame/list(DataFrame))) : Plots the selected (pressure) curves.
 
-        get_features (self, features_df(DataFrame), features_list(list(str)) : add features extracted by DeviceEngine to DeviceAnalysis object.
+        feature_finder (self, features_df(DataFrame), features_list(list(str)) : add features extracted by DeviceEngine to DeviceAnalysis object.
             
     """
 
@@ -55,30 +55,42 @@ class DeviceAnalysis(Analysis):
 
 
 
-    def plot(self, interactive = False, features = False, decomp = False, transform = False):
-
-        #set interactive or not. Static plots are default, user can choose interactive by setting 'interactive = True' 
-        # Initialize traces and buttons
+    def plot(self, interactive = False, features = False, decomp = False, transform = False, rolling = False):
+        """
+        Plots analyses data based on user input. Plots pressure curves by default.
+        Args:
+            features: input to toggle whether feature plot should be made.
+            decomp: input to toggle seasonal components of curves.
+            transform: input to toggle fourier transform of raw - and corresponding seasonal - curves.
+            interactive: Set interactive or not. Static plots are default, user can choose interactive by setting 'interactive = True' 
+        ***Note***features, decomp and transform may only be plotted one at a time. 
+        """
+        #Initialize traces and buttons
         curves = {}          
-        identifier = self.name 
-        
+        num_figs = 1
         df_keys = []
         for key in list(self.data): 
             if not 'Dataframe' in key:
                 df_keys.append(key) 
  
         for analysis_key in df_keys:
-            num_figs = 1
             data = self.data[analysis_key]
             sample = data['Sample']
             time_axis = data['Curve']['Time']
+            identifier = data['Method'] 
 
             if features == True:
-                curves.update({sample : data['Features'].T}) 
+                decomp = False
+                transform = False
+                rolling = False
+                curves.update({sample : (data['Features'].T)}) 
                 title_suffix = 'features'
                 time_axis = data['Features'].index
                 
             elif decomp == True :
+                transform = False
+                features = False
+                rolling = False
                 num_figs = 3
                 curves.update({sample : (data['Trend'], 
                                                     data['Seasonal'], 
@@ -86,37 +98,54 @@ class DeviceAnalysis(Analysis):
                 title_suffix = 'components'
 
             elif transform == True:
-                num_figs = 2
-                curves.update({sample: (data['Seasonal frequencies'], 
-                                                         data['Raw curve frequencies'])}) 
+                features = False
+                decomp = False
+                rolling = False
+                num_figs = 1
+                curves.update({sample : (data['Raw curve frequencies'])})
+                if 'Seasonal frequencies' in data:
+                    num_figs = num_figs + 1
+                    curves[sample] = curves[sample] + (data['Seasonal frequencies'], )
                 title_suffix = 'frequencies'
+
+            elif rolling == True:
+                features = False
+                decomp = False
+                transform = False
+                num_figs = 4
+                curves.update({sample : (data['Rolling statistics'].iloc[:, 0], 
+                                         data['Rolling statistics'].iloc[:, 1], 
+                                         data['Rolling statistics'].iloc[:, 2], 
+                                         data['Rolling statistics'].iloc[:, 3])})
+                title_suffix = 'rolling statistics'
 
             else:
                 curves.update({sample : data['Curve'][sample]}) 
                 title_suffix = 'Curve(s)'
-                
+
+              
         # Create subplots with the specified number of rows
         fig = make_subplots(rows=num_figs, cols=1, shared_xaxes=True)
-        for feature_key in list(curves):
+        for sample_name in list(curves):
+            ytext = ["Pressure (bar)"]
+            xtext = "Time (min)"
             for i in range(num_figs):
-                ytext = ["Pressure (bar)"]
-                xtext = "Time (min)"
-
+                curve = curves[sample_name]
+                if isinstance(curve, tuple):
+                    curve = curve[i]
+            
                 if num_figs == 1:
-                    curve = curves[feature_key]
-                    if features == True:
-                        xtext = "Features"
-
-                elif num_figs > 1:
-                    curve = curves[feature_key][i]
-                    if num_figs == 2:
-                        ytext = ["Pressures(Seasonal)", "Pressures(Raw)"]
-                        xtext = "Frequencies"
-                    elif num_figs == 3:
-                        ytext = ["Trend", "Seasonal", "Residual"]
+                    xtext = "Features"
+                elif num_figs == 2:
+                    ytext = ["Pressures(Raw)", "Pressures(Seasonal)"]
+                    xtext = "Frequencies"
+                elif num_figs == 3:
+                    ytext = ["Trend", "Seasonal", "Residual"]
+                elif num_figs == 4:
+                    ytext = ['rollmin', 'rollmax', 'rollmean', 'rollstd']
                         
                 # Create a scatter trace for each column        
-                trace = go.Scatter(x=time_axis, y=curve, visible=True, name=feature_key)
+                trace = go.Scatter(x=time_axis, y=curve, visible=True, name=sample_name)
                 fig.add_trace(trace, row=i + 1, col=1)
                 fig.update_yaxes(title_text= ytext[i], row=i + 1, col=1)
                 fig.update_xaxes(title_text=xtext, row=i + 1, col=1)
@@ -131,17 +160,6 @@ class DeviceAnalysis(Analysis):
         fig.show()             
         
         
-
-    def feature_finder(self, algorithm):
-        #this function returns analysis objects that are compatible with the chosen Processing Settings, for further analysis.
-        if "pressure_features" or "seasonal_decomposition" in algorithm:
-            for key in self.data:
-                if 'Device Pressure Analysis' in key:
-                    return self    
-            
-                else:  
-                    print(f"Skipping {self.name} because its data is not a dictionary with a 'Pressure Analysis' key.")
-
 
             
 

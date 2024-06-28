@@ -495,12 +495,13 @@ class DeviceEngine(CoreEngine):
 
 
 
-    def get_features(self, data, features_list):
+    def get_features(self, data, features_list, smoothed):
         """
-        #Settings are decided in DeviceProcSettings and passed as data(dict) and features_list(list(str))
+        #Settings are decided in DeviceProcSettings and passed as data(dict) and features_list(list(str)) and smoothed(bool).
         #additional features that complement information from given set of features are runtime and runtype/class label.
         
         """
+        smoothed = smoothed if isinstance(smoothed, bool) else False
         #runtime of each sample indicates possible faults with the run
         runtime = {}
 
@@ -513,7 +514,14 @@ class DeviceEngine(CoreEngine):
                 
                 #update each Device Pressure Analysis with its features in addition to creating the combined dataframe
                 curve = data[analysis_key]['Curve']
+                #'pct_change' transformation is first used on pressure curves to emphasise focus on changes in the curve over time.
+                #features extracted from 'pct_change' curves hepl better model curve behaviour.
                 curve_features = curve.iloc[:, 1].agg(features_list)
+                if smoothed == True:    
+                    smoothed_curve_features = (curve.iloc[:, 1].agg('pct_change')*100).agg(features_list)
+                    smoothed_curve_features.index = [f"{i}_percent_change" for i in smoothed_curve_features.index]
+                    curve_features = smoothed_curve_features
+
                 data[analysis_key].update({'Features' : curve_features})
                  
                 runtime.update({data[analysis_key]['Sample'] : data[analysis_key]['Runtime']})
@@ -532,6 +540,11 @@ class DeviceEngine(CoreEngine):
                 #DeviceProcSettings sets features to be extracted from data using self.parameters passed as features_list
                 extracted_features = pressure_dataframe[sample_names].agg(features_list)
 
+                if smoothed == True:    
+                    smoothed_features = (pressure_dataframe[sample_names].agg('pct_change')*100).agg(features_list)
+                    smoothed_features.index = [f"{i}_percent_change" for i in smoothed_features.index]
+                    extracted_features = smoothed_curve_features
+
                 #combine the extracted pressure curve features with run features
                 extracted_features = pd.concat([extracted_features, run_features], 
                                  axis = 0)
@@ -542,13 +555,14 @@ class DeviceEngine(CoreEngine):
     
 
 
-    def get_seasonal_components(self, data):
+    def get_seasonal_components(self, data, period):
         """
         Break each sample's time-series curve down into its components : Trend, Seasonal, and Residual(Noise)
         Return value is a list of dataframes containing seasonal components of all curves of the dict originally passed as input to this function. 
         Now each 'Device Pressure Analysis' dict has been modified with additional seasonal component data for each individual curve
     
         """
+        period = period if not isinstance(period, type(None)) else 10
         #separate dataframes to hold decomposed time components of all curves 
         curves_trend = pd.DataFrame()
         curves_seasonality = pd.DataFrame()
@@ -562,7 +576,7 @@ class DeviceEngine(CoreEngine):
                 sample_curve = (data[analysis_key])['Curve']
                 decomp = seasonal_decompose(sample_curve[sample_name], 
                                         model = 'additive', 
-                                        period = 10,  
+                                        period = period,  
                                         extrapolate_trend = 10)
             
                 #components for current curve
@@ -585,7 +599,7 @@ class DeviceEngine(CoreEngine):
                 curves_residual = pd.concat([curves_residual, residual],
                                          axis = 1)
                 
-            elif 'Pressure Dataframe' in analysis_key:
+            elif 'Dataframe' in analysis_key:
                 
                 #fixed analyses_dict creation error in find_analyses
                 data.update({analysis_key.replace('Pressure', 'Trend') : curves_trend, 
@@ -608,29 +622,27 @@ class DeviceEngine(CoreEngine):
         """
         transformed_curves = pd.DataFrame()
         transformed_seasonals = pd.DataFrame()
+    
         for analysis_key in list(data):
     
             if 'Device Pressure Analysis' in analysis_key and 'Seasonal' in (data[analysis_key]):
-                seasonal = (data[analysis_key])['Seasonal']
                 curve = (data[analysis_key])['Curve'].iloc[:, 1]
-
-                transformed_seasonal = fftpack.fft(seasonal.values)
                 transformed_curve = fftpack.fft(curve.values)
-
                 #convert result frequencies array into absolute values for better readability
-                transformed_seasonal = abs(transformed_seasonal)
                 transformed_curve = abs(transformed_curve)
-
-                data[analysis_key].update({'Seasonal frequencies' : transformed_seasonal,
-                                           'Raw curve frequencies' : transformed_curve})
-                
+                data[analysis_key].update({'Raw curve frequencies' : transformed_curve})
                 transformed_curves = pd.concat([transformed_curves, pd.Series(transformed_curve, name = curve.name)], axis = 1)
-                transformed_seasonals = pd.concat([transformed_seasonals, pd.Series(transformed_seasonal, name = seasonal.name)], axis = 1)
+                if 'Seasonal' in data[analysis_key]:
+                    seasonal = (data[analysis_key])['Seasonal']
+                    transformed_seasonal = fftpack.fft(seasonal.values)
+                    transformed_seasonal = abs(transformed_seasonal)
+                    data[analysis_key].update({'Curve seasonal frequencies' : transformed_seasonal})
+                    transformed_seasonals = pd.concat([transformed_seasonals, pd.Series(transformed_seasonal, name = seasonal.name)], axis = 1)
                 
-            elif 'Pressure Dataframe' in analysis_key:
-
+            elif 'Dataframe' in analysis_key:
                 data.update({analysis_key.replace('Pressure', 'Raw curve frequencies') : transformed_curves})
-                data.update({analysis_key.replace('Pressure', 'Curve seasonal frequencies') : transformed_seasonals})
+                if 'Seasonal' in data[analysis_key]:
+                    data.update({analysis_key.replace('Pressure', 'Curve seasonal frequencies') : transformed_seasonals})
 
             else:
                 continue
@@ -638,6 +650,50 @@ class DeviceEngine(CoreEngine):
         #return transformed data. 
         return data
 
+
+
+    def get_rolling_stats(self, data, features_list, period):
+        """
+        Compute rolling features of (pressure) curves over a specified window. Period defaults to 10 
+        """
+        period = period if isinstance(period, int) else 3
+        roll_stats = pd.DataFrame()
+        
+        for analysis_key in list(data):
+            smoothed_curves = pd.DataFrame() 
+            if 'Device Pressure Analysis' in analysis_key and features_list != []:
+                curve = (data[analysis_key])['Curve'].iloc[:, 1]
+                for feature in features_list:
+
+                    if feature == 'mean':
+                        smoothed_curve = curve.rolling(window=period).mean()
+
+                    elif feature == 'min':
+                        smoothed_curve = curve.rolling(window=period).min()
+
+                    elif feature  == 'max':
+                        smoothed_curve = curve.rolling(window=period).max()
+
+                    elif feature == 'std':
+                        smoothed_curve = curve.rolling(window=period).std()
+
+                    feature = f"{curve.name}_roll_{feature}"
+                    smoothed_curve.name = feature
+                    smoothed_curves = pd.concat([smoothed_curves, smoothed_curve], axis = 1)
+                roll_stats = pd.concat([roll_stats, smoothed_curves], axis = 1)
+                data[analysis_key].update({'Rolling statistics' : smoothed_curves})
+                
+            elif 'Dataframe' in analysis_key:
+
+                data.update({analysis_key.replace('Pressure', 'Rolling statistics') : roll_stats})
+                
+
+            else:
+                print('Please provide valid list of features')
+                continue
+
+        #return transformed data. 
+        return data
 
 
     def get_results(self, results):
@@ -680,21 +736,24 @@ class DeviceEngine(CoreEngine):
         for i in result:
             new_object = DeviceAnalysis(name = f"result_{list(i)[0]}", data = i)
 
-            if features == 'features':    
+            if features == 'base':    
                 new_object.plot(features = True) 
                         
-            elif features == 'decomp':
+            elif features == 'decompose':
                 new_object.plot(decomp = True) 
 
             elif features == 'transform':
                 new_object.plot(transform = True)
                 
+            elif features == 'rolling':
+                new_object.plot(rolling = True)
+
             else:
                 new_object.plot()
 
 
                 
-    def drop_features(self, features_list):
+    def drop_features(self, results, features=''):
 
         return()
     
