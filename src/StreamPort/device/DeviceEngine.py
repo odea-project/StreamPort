@@ -400,7 +400,7 @@ class DeviceEngine(CoreEngine):
                         #build dictionary of analyses per unique method or date of data import
                         analysis = {analysis_key : analysis_data}
 
-                        #analysis data. single item of data attribute of analyses object
+                        #analysis data. data attribute of analyses object
                         analyses_dict.update(analysis)
 
                         #add every encountered analysis to device history
@@ -483,14 +483,12 @@ class DeviceEngine(CoreEngine):
 
         """
         if not isinstance(analyses, type(None)):
-
             #retrieve list of analysis objects based on user input 
             curves_to_plot = self.get_analyses(analyses)
             for ana in curves_to_plot:
                 ana.plot()
 
         else:
-
             print("No analyses found!\nAdd new analyses to enable plotting")
 
 
@@ -504,19 +502,17 @@ class DeviceEngine(CoreEngine):
         smoothed = smoothed if isinstance(smoothed, bool) else False
         #runtime of each sample indicates possible faults with the run
         runtime = {}
-
         #runtype describes whether run was a flush(blank), a sample run or the first run of the day.
         runtype = {}
 
         for analysis_key in list(data):
-            
             if 'Device Pressure Analysis' in analysis_key:
-                
                 #update each Device Pressure Analysis with its features in addition to creating the combined dataframe
                 curve = data[analysis_key]['Curve']
                 #'pct_change' transformation is first used on pressure curves to emphasise focus on changes in the curve over time.
                 #features extracted from 'pct_change' curves hepl better model curve behaviour.
                 curve_features = curve.iloc[:, 1].agg(features_list)
+                
                 if smoothed == True:    
                     smoothed_curve_features = (curve.iloc[:, 1].agg('pct_change')*100).agg(features_list)
                     smoothed_curve_features.index = [f"{i}_percent_change" for i in smoothed_curve_features.index]
@@ -625,7 +621,7 @@ class DeviceEngine(CoreEngine):
     
         for analysis_key in list(data):
     
-            if 'Device Pressure Analysis' in analysis_key and 'Seasonal' in (data[analysis_key]):
+            if 'Device Pressure Analysis' in analysis_key:
                 curve = (data[analysis_key])['Curve'].iloc[:, 1]
                 transformed_curve = fftpack.fft(curve.values)
                 #convert result frequencies array into absolute values for better readability
@@ -654,9 +650,9 @@ class DeviceEngine(CoreEngine):
 
     def get_rolling_stats(self, data, features_list, period):
         """
-        Compute rolling features of (pressure) curves over a specified window. Period defaults to 10 
+        Compute rolling features of (pressure) curves over a specified window. Period defaults to 5
         """
-        period = period if isinstance(period, int) else 3
+        period = period if isinstance(period, int) else 5
         roll_stats = pd.DataFrame()
         
         for analysis_key in list(data):
@@ -676,6 +672,9 @@ class DeviceEngine(CoreEngine):
 
                     elif feature == 'std':
                         smoothed_curve = curve.rolling(window=period).std()
+
+                    elif feature == 'ema':
+                        smoothed_curve = curve.ewm(span=period).mean()
 
                     feature = f"{curve.name}_roll_{feature}"
                     smoothed_curve.name = feature
@@ -702,14 +701,14 @@ class DeviceEngine(CoreEngine):
 
         Args:
         results (str or list): The key(s) of the result(s) to retrieve.
-        update to results : int input returns the results entry that lies on a list-like index within the dictionary. input 4 returns the 5th entry of the results dict.
+        Mods : int input returns the results entry that lies on a list-like index within the dictionary. input 4 returns the 5th entry of the results dict.
 
         Returns:
         list(dict or any): If `results` is a string, returns the corresponding result value.
-                If `results` is a list, returns a dictionary with the key-value pairs
-                of the requested results. If `results` is neither a string nor a list,
-                returns all the results.
-                Mod : Always returns a list of found values.
+                If `results` is a list, returns a dictionary with the key-value pairs of the requested results. 
+                If `results` is neither a string nor a list, returns all the results.
+                
+        Mod : Always returns a list of found values.
 
         """
         if isinstance(results, str):
@@ -728,7 +727,7 @@ class DeviceEngine(CoreEngine):
 
     def plot_results(self, results, features=''):
         """
-        Plot the computed (and added) results of feature extraction, seasonal decomposition or fourier transform.
+        Plot the computed (and added) results of feature extraction, seasonal decomposition, fourier transform or rolling statistics.
         
         """
         result = self.get_results(results)
@@ -752,8 +751,67 @@ class DeviceEngine(CoreEngine):
                 new_object.plot()
 
 
-                
-    def drop_features(self, results, features=''):
+                    
+    def remove_results(self, results, features=''):
+        """
+        Removes the specified results from the internal results dictionary.
+        Mods : Drop select features using 'features' argument from chosen results.
 
-        return()
-    
+        Args:
+        results: The results to be removed. It can be an integer, a string, or a list of integers or strings.
+
+        Returns:    
+        None
+        """
+        if features == 'base':
+            feature_string = ['Features']
+        elif features == 'decompose':
+            feature_string = ['Trend', 'Seasonal', 'Residual']
+        elif features == 'transform':
+            feature_string = ['Raw curve frequencies', 'Curve seasonal frequencies']
+        elif features == 'rolling':
+            feature_string = ['Rolling statistics']
+
+        for feature in feature_string:
+
+            if self._results.__len__() == 0:
+                return
+            if isinstance(results, int):
+                keys = list(self._results.keys())
+                if results < len(keys):
+                    result = self._results[keys[results]]
+                    ana_keys = [key for key in result if feature in key]
+                    for key in ana_keys:
+                        del result[key]
+                    self._results.update({keys[results] : result})
+                    
+            if isinstance(results, str):
+                if results in self._results:
+                    result = self._results[results]
+                    ana_keys = [key for key in result if feature in key]
+                    for key in ana_keys:
+                        del result[key]
+                    self._results.update({results : result})
+
+            if isinstance(results, list):
+                for result in results:
+                    if isinstance(result, int):
+                        keys = list(self._results.keys())
+                        if result < len(keys):
+                            result_dict = self._results[keys[result]]
+                            ana_keys = [key for key in result_dict if feature in key]
+                            for key in ana_keys:
+                                del result_dict[key]
+                            self._results.update({keys[result] : result_dict})
+                            
+                    elif isinstance(result, str):
+                        if result in self._results:
+                            result_dict = self._results[result]
+                            ana_keys = [key for key in result_dict if feature in key]
+                            for key in ana_keys:
+                                del result_dict[key]
+                            self._results.update({result : result_dict})    
+
+            else:
+                self._results = {}
+

@@ -103,7 +103,7 @@ class FourierTransform(ExtractFeatures):
 
 
 
-class MovingAverage(ExtractFeatures):
+class RollingStats(ExtractFeatures):
   """
   Perform rolling mean to smooth data. Period defaults to 10.
 
@@ -112,7 +112,7 @@ class MovingAverage(ExtractFeatures):
   def __init__(self, parameters= None, period= None):
     super().__init__()
     self._period = period 
-    self.parameters = ['min', 'max', 'mean', 'std'] if isinstance(parameters, type(None)) else parameters
+    self.parameters = ['min', 'max', 'mean', 'std', 'ema'] if isinstance(parameters, type(None)) else parameters
     self.algorithm = "moving_average"
 
   def run(self, engine):
