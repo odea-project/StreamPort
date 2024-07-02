@@ -437,15 +437,15 @@ class DeviceEngine(CoreEngine):
 
 
 
-    def get_analyses(self, analyses):
+    def get_analyses(self, analyses=None):
         """
         Identical superclass method is modified here to return only a list, and also to return any value with matching subwords rather than the exact key.
 
         """
-        result = []
+        result = self._analyses
 
-        if analyses is not None:
-
+        if analyses != None:
+            result = []
             if isinstance(analyses, int) and analyses < len(self._analyses):
                 result.append(self._analyses[analyses])
             
@@ -468,28 +468,22 @@ class DeviceEngine(CoreEngine):
             else:
                 print("Analysis not found!")
 
-            return result
-
-        elif not analyses:
-
+        else:
             print("Provided data is not sufficient or does not exist! Existing analyses will be returned.")
-            return self._analyses
+            
+        return result
         
 
 
-    def plot_analyses(self, analyses):
+    def plot_analyses(self, analyses=None):
         """
         Plots each analysis dataframe by calling plot() function of respective DeviceAnalysis objects
 
         """
-        if not isinstance(analyses, type(None)):
-            #retrieve list of analysis objects based on user input 
-            curves_to_plot = self.get_analyses(analyses)
-            for ana in curves_to_plot:
-                ana.plot()
-
-        else:
-            print("No analyses found!\nAdd new analyses to enable plotting")
+        #retrieve list of analysis objects based on user input 
+        curves_to_plot = self.get_analyses(analyses)
+        for ana in curves_to_plot:
+            ana.plot()
 
 
 
@@ -628,17 +622,17 @@ class DeviceEngine(CoreEngine):
                 transformed_curve = abs(transformed_curve)
                 data[analysis_key].update({'Raw curve frequencies' : transformed_curve})
                 transformed_curves = pd.concat([transformed_curves, pd.Series(transformed_curve, name = curve.name)], axis = 1)
-                if 'Seasonal' in data[analysis_key]:
-                    seasonal = (data[analysis_key])['Seasonal']
-                    transformed_seasonal = fftpack.fft(seasonal.values)
-                    transformed_seasonal = abs(transformed_seasonal)
-                    data[analysis_key].update({'Curve seasonal frequencies' : transformed_seasonal})
-                    transformed_seasonals = pd.concat([transformed_seasonals, pd.Series(transformed_seasonal, name = seasonal.name)], axis = 1)
+                #if 'Seasonal' in data[analysis_key]:
+                seasonal = (data[analysis_key])['Seasonal']
+                transformed_seasonal = fftpack.fft(seasonal.values)
+                transformed_seasonal = abs(transformed_seasonal)
+                data[analysis_key].update({'Curve seasonal frequencies' : transformed_seasonal})
+                transformed_seasonals = pd.concat([transformed_seasonals, pd.Series(transformed_seasonal, name = seasonal.name)], axis = 1)
                 
             elif 'Dataframe' in analysis_key:
                 data.update({analysis_key.replace('Pressure', 'Raw curve frequencies') : transformed_curves})
-                if 'Seasonal' in data[analysis_key]:
-                    data.update({analysis_key.replace('Pressure', 'Curve seasonal frequencies') : transformed_seasonals})
+                #if 'Seasonal' in data[analysis_key]:
+                data.update({analysis_key.replace('Pressure', 'Curve seasonal frequencies') : transformed_seasonals})
 
             else:
                 continue
@@ -695,12 +689,12 @@ class DeviceEngine(CoreEngine):
         return data
 
 
-    def get_results(self, results):
+    def get_results(self, results=None):
         """
         Retrieves the results from the CoreEngine.
 
         Args:
-        results (str or list): The key(s) of the result(s) to retrieve.
+        results (str or list): The key(s) of the result(s) to retrieve. Absence of an argument returns all known results for the current device.
         Mods : int input returns the results entry that lies on a list-like index within the dictionary. input 4 returns the 5th entry of the results dict.
 
         Returns:
@@ -711,44 +705,64 @@ class DeviceEngine(CoreEngine):
         Mod : Always returns a list of found values.
 
         """
+        result_dict = self._results
+
         if isinstance(results, str):
-            return [self._results.get(results, None)]
-        elif isinstance(results, list):
-            out_results = {}
-            for result in results:
-                out_results[result] = self._results.get(result, None)
-            return [out_results]
-        elif isinstance(results, int):
-            return [self._results[([key for key in list(self._results)])[results]]]
-        else:
-            return [self._results]
-
+            result_dict = {}
+            result_pattern = re.compile('^.+' + results + '.+$')
+            for key in self._results:
+                if re.match(result_pattern, key):
+                    result_dict.update({key : self._results[key]}) 
+            
+        elif isinstance(results, int) and results < len(self._results):
+            key_list = list(self._results.keys())
+            result_dict = {key_list[results] : self._results[key_list[results]]}
         
+        elif isinstance(results, list):
+            results_out = {}
+            for result in results:
+                if isinstance(result, str):
+                    result_pattern = re.compile('^.+' + result + '.+$')
+                    for key in self._results:
+                        if re.match(result_pattern, key):
+                            results_out.update({key : self._results[key]}) 
+                elif isinstance(result, int) and result < len(self._results):
+                    key_list = self._results.keys()
+                    results_out.update({key_list[results] : self._results[key_list[results]]})
+            result_dict = results_out
 
-    def plot_results(self, results, features=''):
+        elif results == None:
+            print('Invalid Input! Returning all existing results!')
+
+        return result_dict
+    
+
+
+    def plot_results(self, results=None, features=''):
         """
         Plot the computed (and added) results of feature extraction, seasonal decomposition, fourier transform or rolling statistics.
         
         """
-        result = self.get_results(results)
+        result_dict = self.get_results(results)
         
-        for i in result:
-            new_object = DeviceAnalysis(name = f"result_{list(i)[0]}", data = i)
+        for res in list(result_dict):
+            #for i in result_list:
+                new_object = DeviceAnalysis(name = f"result_{res}", data = result_dict[res])
 
-            if features == 'base':    
-                new_object.plot(features = True) 
-                        
-            elif features == 'decompose':
-                new_object.plot(decomp = True) 
+                if features == 'base':    
+                    new_object.plot(features = True) 
+                            
+                elif features == 'decompose':
+                    new_object.plot(decomp = True) 
 
-            elif features == 'transform':
-                new_object.plot(transform = True)
-                
-            elif features == 'rolling':
-                new_object.plot(rolling = True)
+                elif features == 'transform':
+                    new_object.plot(transform = True)
+                    
+                elif features == 'rolling':
+                    new_object.plot(rolling = True)
 
-            else:
-                new_object.plot()
+                else:
+                    new_object.plot()
 
 
                     

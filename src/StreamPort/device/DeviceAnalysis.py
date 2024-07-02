@@ -101,11 +101,9 @@ class DeviceAnalysis(Analysis):
                 features = False
                 decomp = False
                 rolling = False
-                num_figs = 1
-                curves.update({sample : (data['Raw curve frequencies'])})
-                if 'Seasonal frequencies' in data:
-                    num_figs = num_figs + 1
-                    curves[sample] = curves[sample] + (data['Seasonal frequencies'], )
+                curves.update({sample : (data['Raw curve frequencies'], 
+                                         data['Curve seasonal frequencies'])})
+                num_figs =  2
                 title_suffix = 'frequencies'
 
             elif rolling == True:
@@ -137,7 +135,7 @@ class DeviceAnalysis(Analysis):
                 if num_figs == 1:
                     xtext = "Features"
                 elif num_figs == 2:
-                    ytext = ["Pressures(Raw)", "Pressures(Seasonal)"]
+                    ytext = ["Amplitude(Raw)", "Amplitude(Seasonal)"]
                     xtext = "Frequencies"
                 elif num_figs == 3:
                     ytext = ["Trend", "Seasonal", "Residual"]

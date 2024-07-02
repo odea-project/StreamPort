@@ -15,7 +15,7 @@ class ExtractFeatures(ProcessingSettings):
 class ExtractPressureFeatures(ExtractFeatures):
   """
   This function will set the conditions to handle feature extraction from pressure data.
-  Smoothed defaults to false.
+  Smoothed defaults to false. smoothed = True first smoothes the curve by percentage change per datapoint before extracting features.
   Additional features related to the pressure curves(runtime, runtype) are also added.   
   """
   _smoothed = None
