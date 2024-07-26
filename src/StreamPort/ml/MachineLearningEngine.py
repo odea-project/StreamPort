@@ -5,6 +5,8 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
+import plotly.graph_objects as go
+import plotly.express as px
 
 
 class MachineLearningEngine(CoreEngine):
@@ -229,7 +231,7 @@ class MachineLearningEngine(CoreEngine):
     
     def plot_data(self):
         """
-        Method for general plot of data from the analysis.
+        Method for general plot of data from the analysis using Plotly.
         
         """
         # add argument to optionally choose the x val as rows or cols
@@ -243,16 +245,13 @@ class MachineLearningEngine(CoreEngine):
         if data is None:
             print("No data found")
             return None
-
-        plt.figure(figsize=(12, 8))
+        
+        fig = go.Figure()
         for i, analysis in enumerate(self._analyses):
-                    plt.plot(data.columns, data.iloc[i], label=analysis.name)
-     
-        plt.xlabel('Feature')
-        plt.ylabel('Value')
-        plt.title('General Data')
-        plt.legend()
-        plt.show()
+            fig.add_trace(go.Scatter(x=data.columns, y=data.iloc[i], name=analysis.name))
+        
+        fig.update_layout(title='General Data', xaxis_title='Feature', yaxis_title='Value')
+        fig.show()    
 
     def plot_pca(self):
         # make a plot method in the ML engine for the PCA results and classes
@@ -263,13 +262,15 @@ class MachineLearningEngine(CoreEngine):
             print("No analyses found")
             return None
         
+        feature_names = self._analyses[0].data['x']
+        if feature_names is None:
+            print("No feature names found")
+            return None
+        
         pca_results, pca = self.get_results("pca_model")
-
         # if pca_results.model_type not in "PCA":
         #     return None
-
-        # pca_results.plot()
-        
+        # pca_results.plot() 
         if pca_results is None:
             print("No pca results found")
             return None
@@ -279,34 +280,39 @@ class MachineLearningEngine(CoreEngine):
             print("No classes found")
             return None
 
-        pca_comp1 = pca_results[:, 0]
-        pca_comp2 = pca_results[:, 1]
-        
-        # for plot pca scores
-        for cls in classes:
-            index = np.where(np.array(classes) == cls)
-            plt.scatter(pca_comp1[index], pca_comp2[index], edgecolors='k', label=cls)
-            
-            for idx in index:
-                plt.annotate(cls, (pca_comp1[idx], pca_comp2[idx]), color='black')
-            
-        plt.scatter(pca_comp1, pca_comp2, alpha=0.2)
+        # for 2d plot pca scores
+        pca_df = pd.DataFrame(data=pca_results[:, :2], columns=['PC1', 'PC2'])
+        fig = px.scatter(pca_df,
+                        x='PC1', 
+                        y='PC2',
+                        title='PCA Scores',
+                        labels={'PC1': 'Principal Component 1', 'PC2': 'Principal Component 2'},
+                        template='plotly'
+        )
+        fig.show()   
 
-        plt.xlabel("PCA 1")
-        plt.ylabel("PCA 2")
-        plt.title('PCA scores')
-        plt.legend()
-        plt.show()
-        
         # for plot pca loading
-        loadings = pca.components_.T
-        plt.scatter(loadings[:, 0], loadings[:, 1], alpha=0.5)
-        plt.xlabel("PCA 1")
-        plt.ylabel("PCA 2")
-        plt.title('PCA loadings')
-        plt.show()
+        loadings = pd.DataFrame(pca.components_[:2].T, columns=['PC1', 'PC2'], index=feature_names)
+        fig = px.scatter(
+            loadings, 
+            x='PC1', 
+            y='PC2',
+            text=loadings.index,
+            title='PCA Loadings',
+            labels={'PC1': 'Principal Component 1', 'PC2': 'Principal Component 2'},
+            template='plotly'
+        )
+        fig.update_traces(
+            textposition='top center',
+            textfont=dict(
+                size=12
+            ),
+            marker=dict(size=10)
+        )
+        fig.show()
 
     def plot_dbscan(self):
+
         if not self._analyses:
             print("No analyses found")
             return None

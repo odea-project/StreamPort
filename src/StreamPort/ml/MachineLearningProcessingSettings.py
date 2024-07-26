@@ -3,6 +3,7 @@ from sklearn.decomposition import PCA
 from sklearn.cluster import DBSCAN
 import numpy as np
 
+
 # Processing method specific class
 class MakeModel(ProcessingSettings):
     def __init__(self):
