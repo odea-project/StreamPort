@@ -1,9 +1,9 @@
 from ..core.CoreEngine import Analysis
 
-import plotly.graph_objects as go
-#plotly needs to be added to requirements.txt
-
 import pandas as pd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+#plotly needs to be added to requirements.txt
 
 class DeviceAnalysis(Analysis):
 
@@ -19,7 +19,7 @@ class DeviceAnalysis(Analysis):
     Instance Attributes:
         _analysis_type (str/list(str), optional): Marker(s) to specify the type of data the current Analysis is related to (pressure, temperature, ..)
 
-        ***Note*** : _anatype must have same size as data.
+        ***Note*** : _analysis_type must have same size as data.
 
     Methods: (specified are methods only belonging to child class. For superclass methods, see Analysis)
 
@@ -27,14 +27,16 @@ class DeviceAnalysis(Analysis):
 
         plot (self, analyses(DataFrame/list(DataFrame))) : Plots the selected (pressure) curves.
 
-        get_features (self, features_df(DataFrame), features_list(list(str)) : add features extracted by DeviceEngine to DeviceAnalysis object.
+        feature_finder (self, features_df(DataFrame), features_list(list(str)) : add features extracted by DeviceEngine to DeviceAnalysis object.
             
     """
+
 
     def __init__(self, name=None, replicate=None, blank=None, data=None, analysis_type=None):
         
         super().__init__(name, replicate, blank, data)
         self._analysis_type = str(analysis_type) if not isinstance(analysis_type, type(None)) else "Unknown"
+
 
 
     def validate(self):
@@ -48,85 +50,116 @@ class DeviceAnalysis(Analysis):
             dict_list = self.data[i]     
             if isinstance(dict_list, dict) or isinstance(dict_list, list):
                 pass
+            else:
+                print("Data format must be conform")
 
 
-    def plot(self, analyses):
 
-        def make_plot(data):
+    def plot(self, interactive = False, features = False, decomp = False, transform = False, rolling = False):
+        """
+        Plots analyses data based on user input. Plots pressure curves by default.
+        Args:
+            features: input to toggle whether feature plot should be made.
+            decomp: input to toggle seasonal components of curves.
+            transform: input to toggle fourier transform of raw - and corresponding seasonal - curves.
+            interactive: Set interactive or not. Static plots are default, user can choose interactive by setting 'interactive = True' 
+        ***Note***features, decomp and transform may only be plotted one at a time. 
+        """
+        #Initialize traces and buttons
+        curves = {}          
+        num_figs = 1
+        df_keys = []
+        for key in list(self.data): 
+            if not 'Dataframe' in key:
+                df_keys.append(key) 
+ 
+        for analysis_key in df_keys:
+            data = self.data[analysis_key]
+            sample = data['Sample']
+            time_axis = data['Curve']['Time']
+            identifier = data['Method'] 
+
+            if features == True:
+                decomp = False
+                transform = False
+                rolling = False
+                curves.update({sample : (data['Features'].T)}) 
+                title_suffix = 'features'
+                time_axis = data['Features'].index
+                
+            elif decomp == True :
+                transform = False
+                features = False
+                rolling = False
+                num_figs = 3
+                curves.update({sample : (data['Trend'], 
+                                                    data['Seasonal'], 
+                                                    data['Residual'])}) 
+                title_suffix = 'components'
+
+            elif transform == True:
+                features = False
+                decomp = False
+                rolling = False
+                curves.update({sample : (data['Raw curve frequencies'], 
+                                         data['Curve seasonal frequencies'])})
+                num_figs =  2
+                title_suffix = 'frequencies'
+
+            elif rolling == True:
+                features = False
+                decomp = False
+                transform = False
+                num_figs = 4
+                curves.update({sample : (data['Rolling statistics'].iloc[:, 0], 
+                                         data['Rolling statistics'].iloc[:, 1], 
+                                         data['Rolling statistics'].iloc[:, 2], 
+                                         data['Rolling statistics'].iloc[:, 3])})
+                title_suffix = 'rolling statistics'
+
+            else:
+                curves.update({sample : data['Curve'][sample]}) 
+                title_suffix = 'Curve(s)'
+
+              
+        # Create subplots with the specified number of rows
+        fig = make_subplots(rows=num_figs, cols=1, shared_xaxes=True)
+        for sample_name in list(curves):
+            ytext = ["Pressure (bar)"]
+            xtext = "Time (min)"
+            for i in range(num_figs):
+                curve = curves[sample_name]
+                if isinstance(curve, tuple):
+                    curve = curve[i]
             
-            # Initialize traces and buttons
-            traces = []
+                if num_figs == 1:
+                    xtext = "Features"
+                elif num_figs == 2:
+                    ytext = ["Amplitude(Raw)", "Amplitude(Seasonal)"]
+                    xtext = "Frequencies"
+                elif num_figs == 3:
+                    ytext = ["Trend", "Seasonal", "Residual"]
+                elif num_figs == 4:
+                    ytext = ['rollmin', 'rollmax', 'rollmean', 'rollstd']
+                        
+                # Create a scatter trace for each column        
+                trace = go.Scatter(x=time_axis, y=curve, visible=True, name=sample_name)
+                fig.add_trace(trace, row=i + 1, col=1)
+                fig.update_yaxes(title_text= ytext[i], row=i + 1, col=1)
+                fig.update_xaxes(title_text=xtext, row=i + 1, col=1)
+                
+                
+        # Update the overall layout
+        fig.update_layout(
+                        title="Pressure/Time " + title_suffix + " - " + identifier,
+                        showlegend=True  # Set to True if legend must be visible
+                        )
 
-            identifier = data.columns[0] + self.name
-
-            x_axis = data.iloc[:, 0]
-            # Iterate over columns (excluding the first one)
-            for col in data.columns[1:]:
-                # Create a scatter trace for each column
-                trace = go.Scatter(x=x_axis, y=data[col], visible=True, name=col)
-                traces.append(trace)
-
-            # Create the layout
-            layout = go.Layout(
-                title="Pressure/" + identifier, 
-                xaxis=dict(title="Time(min)"),
-                yaxis=dict(title="Pressure(bar)"),
-                showlegend=True
-            )
-            #the created traces and layouts are used for the final plots
-
-            fig = go.Figure(data=traces, layout=layout)
-            fig.show() 
-
-        if isinstance(analyses, list):
-            for i in analyses:
-                make_plot(i)
-
-        else:
-            make_plot(analyses)
+        fig.show()             
+        
         
 
-    def get_features(self, features_df, features_list):
+            
 
-        if not isinstance(features_df, type(None)):
 
-            extracted_features = features_df.iloc[ : , 1 : ].agg(features_list)
 
-        else:
-
-            print("No data was provided!")
-
-        sample_names = []
-        runtime = pd.DataFrame()
-        runtype = pd.DataFrame()
-
-        for d in self.data:
-
-            sample_names.append(self.data[d]['Sample'])
-
-            if self.data[d]['Method'] in d:
-                runtime = pd.concat([runtime, pd.Series(self.data[d]['Runtime'])], 
-                                    axis = 1)            
-
-                if 'blank' in self.data[d]['Sample'] :
-
-                    runtype = pd.concat([runtype, pd.Series(0)], 
-                                        axis = 1)
-                
-                else:
-
-                    runtype = pd.concat([runtype, pd.Series(1)], 
-                                        axis = 1)
-                    
-        runtime.columns = sample_names            
-        runtime.name = "Runtime"
-
-        runtype.columns = sample_names        
-        runtype.name = "Runtype"
-
-        extracted_features = pd.concat([extracted_features, runtime.astype(str)], axis = 0)
-
-        extracted_features = pd.concat([extracted_features, runtype.astype(int)], axis = 0)
-
-        print(extracted_features.T)
-        return extracted_features
