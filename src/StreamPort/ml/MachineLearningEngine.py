@@ -189,6 +189,7 @@ class MachineLearningEngine(CoreEngine):
         """
         Method to get the added classes.
         """
+
         return self._classes
 
     def make_model(self):
@@ -282,14 +283,20 @@ class MachineLearningEngine(CoreEngine):
 
         # for 2d plot pca scores
         pca_df = pd.DataFrame(data=pca_results[:, :2], columns=['PC1', 'PC2'])
-        fig = px.scatter(pca_df,
-                        x='PC1', 
-                        y='PC2',
-                        title='PCA Scores',
-                        labels={'PC1': 'Principal Component 1', 'PC2': 'Principal Component 2'},
-                        template='plotly'
+        if len(classes) != len(pca_df):
+            classes = (classes* len(pca_df))[:len(pca_df)]
+
+        pca_df['class'] = classes
+        fig = px.scatter(
+            pca_df,
+            x='PC1',
+            y='PC2',
+            color='class',
+            title='PCA Scores',
+            labels={'PC1': 'Principal Component 1', 'PC2': 'Principal Component 2'},
+            template='plotly'
         )
-        fig.show()   
+        fig.show() 
 
         # for plot pca loading
         loadings = pd.DataFrame(pca.components_[:2].T, columns=['PC1', 'PC2'], index=feature_names)
