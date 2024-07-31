@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 import plotly.graph_objects as go
 import plotly.express as px
+import webbrowser
 
 
 class MachineLearningEngine(CoreEngine):
@@ -252,7 +253,7 @@ class MachineLearningEngine(CoreEngine):
             fig.add_trace(go.Scatter(x=data.columns, y=data.iloc[i], name=analysis.name))
         
         fig.update_layout(title='General Data', xaxis_title='Feature', yaxis_title='Value')
-        fig.show()    
+        fig.write_html('general_data_plot.html')    
 
     def plot_pca(self):
         # make a plot method in the ML engine for the PCA results and classes
@@ -296,7 +297,7 @@ class MachineLearningEngine(CoreEngine):
             labels={'PC1': 'Principal Component 1', 'PC2': 'Principal Component 2'},
             template='plotly'
         )
-        fig.show() 
+        fig.write_html('pca_scores_plot.html')
 
         # for plot pca loading
         loadings = pd.DataFrame(pca.components_[:2].T, columns=['PC1', 'PC2'], index=feature_names)
@@ -316,7 +317,7 @@ class MachineLearningEngine(CoreEngine):
             ),
             marker=dict(size=10)
         )
-        fig.show()
+        fig.write_html('pca_loadings_plot.html')
 
     def plot_dbscan(self):
 
