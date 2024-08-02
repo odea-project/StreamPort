@@ -3,18 +3,37 @@ from ..ml.MachineLearningAnalysis import MachineLearningAnalysis
 import pandas as pd
 import numpy as np
 import os
-from sklearn.decomposition import PCA 
 import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+import plotly.graph_objects as go
+import plotly.express as px
+
 
 class MachineLearningEngine(CoreEngine):
 
     """
     A class for running machine learning that inherits from CoreEngine class.
+
+    Attributes:
+        headers (ProjectHeaders, optional): The project headers. Instance of ProjectHeaders class.
+        settings (list, optional): The list of settings. Instance or list of instances of ProcessingSettings class.
+        analyses (list, optional): The list of analyses. Instance or list of instances of MachineLearningAnalysis class.
+        results (dict, optional): The dictionary of results.
+    
+    Methods:
+        __init__ (self, headers=None, settings=None, analyses=None, results=None): Initializes the CoreEngine instance.
+        add_analyses_from_csv (self, path): Reads a CSV file and adds analyses to the engine.
+        add_classes_from_csv (self, path): Readas a CSV file and adds classes to the engine.
+        get_data (self): Get data array from analyses.
+        add_classes (self, classes): Adds classes to each analysis for classification.
+        get_classes (self): Get the added classes.
+        make_pca (self): Perform PCA and collects the results.
+        plot_pca (self): Plots the PCA results and classes.
     
     """  
 
  
-    def __init__(self, headers=None, settings=None, analyses=None, results=None, classes=None):
+    def __init__(self, headers=None, settings=None, analyses=None, results=None):
 
         """ 
         Initializes the MachineLearningEngine instance
@@ -102,15 +121,10 @@ class MachineLearningEngine(CoreEngine):
             else :
                 raise FileNotFoundError(f"The file {class_path} does not exist.")
         else:
-            return None
+            return None       
         
-        class_name = df.iloc[:,1].tolist()
-
-        if df.duplicated('name', keep='first').any():
-            print("Warning: Duplicate classes names found in the CSV file. Only the first will be added!")
-
+        class_name = df['class'].tolist()
         column_names = df.columns.tolist()[1:]
-
 
         for index, row in df.iterrows():
             row_value = row.tolist()[1:]
@@ -125,7 +139,7 @@ class MachineLearningEngine(CoreEngine):
         Method for collapse all data arrays from analyses into a matrix for statistics
 
         """
-     
+        
         if not self._analyses:
             print("No analyses found")
             return None
@@ -162,12 +176,12 @@ class MachineLearningEngine(CoreEngine):
         if isinstance(classes, list):
             for class_list in classes:
                 if not isinstance(class_list, str):
-                    raise TypeError("Each element in the classes list must be a instance of MachineLearningAnaylsis class")
+                    raise TypeError("Each element in the classes list must be a string")
                 if class_list not in self._classes:
                     self._classes.append(class_list)
         else:
             if not isinstance(classes, str):
-                raise TypeError("The classes must be an instance or a list of MachineLearningAnalysis class")
+                raise TypeError("The classes must be an instance or a string")
             if classes not in self._classes:
                 self._classes.append(classes)
 
@@ -175,37 +189,71 @@ class MachineLearningEngine(CoreEngine):
         """
         Method to get the added classes.
         """
-        return self._classes
-   
 
-    def make_pca(self):
+        return self._classes
+
+    def make_model(self):
         # Create a method in the ML engine to perfom PCA and collect the results
         """
-        Method to perform PCA and collect the results
+        Method to perform plot and collect the results
         """
         if not self._analyses:
             print("No analyses found")
             return None
 
         # get the settings for PCA from _settings attribute or get_settings from self
-        settings = self.get_settings(self)
+        settings = self.get_settings(settings="MakeModel")
         if settings is None:
-            print("no pca setting found")
+            print("No setting found")
             return None
         # to find the number of components
         # settings_obj = _settings[which is class MakePCA], return the first
-        for setting in self._settings:
-            if setting.call == "MakePCA":  
-                settings_obj = setting
+        for settings in self._settings:
+            if settings.call == "MakeModel":  
+                settings_obj = settings
                 break
-        else:
-            settings_obj = None
+            else:
+                settings_obj = None
+        # result = settings_obj.run(self)
         if settings_obj:
             result = settings_obj.run(self)
-            self.add_results({"PCA": result})
+        # self.add_results(result)
+        
+        # create a class for model representation
+        # add an attribute with model type: PCA, PLS, etc.
+
+        # get data from the model
+        # plot data from model
+        # predict with model based on new data
+
+            self.add_results({"model": result})
         else:
-            print("no pca settings found")
+            print("No settings object found")
     
+    def plot_data(self):
+        """
+        Method for general plot of data from the analysis using Plotly.
+        
+        """
+        # add argument to optionally choose the x val as rows or cols
+        # look at plotly for interactive plotting https://plotly.com/python/
+
+        if not self._analyses:
+            print("No analyses found")
+            return None
+
+        data = self.get_data()
+        if data is None:
+            print("No data found")
+            return None
+        
+        fig = go.Figure()
+        for i, analysis in enumerate(self._analyses):
+            fig.add_trace(go.Scatter(x=data.columns, y=data.iloc[i], name=analysis.name))
+        
+        fig.update_layout(title='General Data', xaxis_title='Feature', yaxis_title='Value')
+        fig.write_html('general_data_plot.html')  
+        #save the control fault 
 
     def plot_pca(self):
         # make a plot method in the ML engine for the PCA results and classes
@@ -216,7 +264,15 @@ class MachineLearningEngine(CoreEngine):
             print("No analyses found")
             return None
         
-        pca_results = self.get_results("PCA")
+        feature_names = self._analyses[0].data['x']
+        if feature_names is None:
+            print("No feature names found")
+            return None
+        
+        pca_results, pca = self.get_results("pca_model")
+        # if pca_results.model_type not in "PCA":
+        #     return None
+        # pca_results.plot() 
         if pca_results is None:
             print("No pca results found")
             return None
@@ -224,24 +280,81 @@ class MachineLearningEngine(CoreEngine):
         classes = self.get_classes()
         if classes is None:
             print("No classes found")
-            return
+            return None
 
-        pca_comp1 = pca_results[:, 0]
-        pca_comp2 = pca_results[:, 1]
+        # for 2d plot pca scores
+        pca_df = pd.DataFrame(data=pca_results[:, :2], columns=['PC1', 'PC2'])
+        if len(classes) != len(pca_df):
+            classes = (classes* len(pca_df))[:len(pca_df)]
 
-        for cls in classes:
-            index = np.where(np.array(classes) == cls)
-            plt.scatter(pca_comp1[index], pca_comp2[index], edgecolors='k', label=cls)
-            
-            for idx in index:
-                plt.annotate(cls, (pca_comp1[idx], pca_comp2[idx]), color='black')
-            
-        plt.scatter(pca_comp1, pca_comp2, alpha=0.2)
+        pca_df['class'] = classes
+        fig = px.scatter(
+            pca_df,
+            x='PC1',
+            y='PC2',
+            color='class',
+            title='PCA Scores',
+            labels={'PC1': 'Principal Component 1', 'PC2': 'Principal Component 2'},
+            template='plotly'
+        )
+        fig.write_html('pca_scores_plot.html')
 
-        plt.xlabel("PCA 1")
-        plt.ylabel("PCA 2")
-        plt.title('PCA')
-        plt.legend()
+        # for plot pca loading
+        loadings = pd.DataFrame(pca.components_[:2].T, columns=['PC1', 'PC2'], index=feature_names)
+        fig = px.scatter(
+            loadings, 
+            x='PC1', 
+            y='PC2',
+            text=loadings.index,
+            title='PCA Loadings',
+            labels={'PC1': 'Principal Component 1', 'PC2': 'Principal Component 2'},
+            template='plotly'
+        )
+        fig.update_traces(
+            textposition='top center',
+            textfont=dict(size=12),
+            marker=dict(size=10)
+        )
+        fig.write_html('pca_loadings_plot.html')
+
+    def plot_dbscan(self):
+
+        if not self._analyses:
+            print("No analyses found")
+            return None
+
+        dbscan_results = self.get_results("dbscan_model")
+        if dbscan_results is None:
+            print("No dbscan results found")
+            return None
+
+        classes = self.get_classes()
+        if classes is None:
+            print("No classes found")
+            return None
+        
+        data=self.get_data()
+        pca = PCA(n_components=2)  
+        dbscan_data = pca.fit_transform(data) 
+        
+        dbscan_comp1 = dbscan_data[:, 0]
+        dbscan_comp2 = dbscan_data[:, 1]
+
+        unique_labels = np.unique(dbscan_results)
+        colors = plt.cm.Spectral(np.linspace(0, 1, len(unique_labels)))
+
+        for label, color in zip(unique_labels, colors):
+            if label == -1:
+                
+                color = "black"
+
+            class_member_mask = (dbscan_results == label)
+            xy = dbscan_data[class_member_mask]
+            plt.scatter(xy[:, 0], xy[:, 1], color=color, edgecolor='k', label=f'Cluster {label}')
+
+        plt.scatter(dbscan_comp1, dbscan_comp2, alpha=0.2)
+        plt.xlabel('comp1')
+        plt.ylabel('comp2')
+        plt.title('DBSCAN Clustering')
+        plt.colorbar(label='Cluster Label')
         plt.show()
-
-     
