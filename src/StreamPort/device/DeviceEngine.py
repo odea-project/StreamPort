@@ -206,7 +206,7 @@ class DeviceEngine(CoreEngine):
                 else:
                         
                     #type of files to read withing each .D folder
-                    run_type = r'RUN.LOG'  
+                    runtype = r'RUN.LOG'  
                     #acq_type = r'acq.txt' not needed until further updates
                     filetype = r'Pressure.CSV'
 
@@ -215,12 +215,6 @@ class DeviceEngine(CoreEngine):
 
                     #curve headers/names
                     curves = []    
-
-                    #store blank headers
-                    blanks = []
-
-                    #store sample headers
-                    samples = []
 
                     #assess number of runs in current directory to set appropriate headers in pressure curve DataFrame
                     num_runs = len(runs_list)
@@ -257,8 +251,8 @@ class DeviceEngine(CoreEngine):
 
                         method_suffix = filename[-2]
 
-                        #read .log file within each .D folder and extract run_type(blank/sample) for individual runs
-                        run_file = os.path.join(current_run_folder, run_type)
+                        #read .log file within each .D folder and extract runtype(blank/sample) for individual runs
+                        run_file = os.path.join(current_run_folder, runtype)
                         character_encoding = get_encoding(run_file)
 
                         """
@@ -267,9 +261,11 @@ class DeviceEngine(CoreEngine):
 
                         """
                         times_started = 0
-
+                        log_data = []
                         with open(run_file, encoding = character_encoding) as f:                                  
                             for line in f:
+                                log_data.append(line)
+
                                 if "blank" in line:
                                     blank_identifier = 1
 
@@ -300,6 +296,8 @@ class DeviceEngine(CoreEngine):
 
                         f.close()
 
+                        print('This files logs')
+                        print(log_data)
 
                         try:
                             
@@ -308,7 +306,7 @@ class DeviceEngine(CoreEngine):
                                 pressure_suffix = 1
                                 suffix_digits = 3
                                 #assign class label 2 to first run of every experiment 
-                                run_class = 2
+                                run_type = 2
                         
                             #if blank run encountered on reading current run's .LOG file, name run column with '-blank' as identifier
                             if blank_identifier == 1:
@@ -317,11 +315,11 @@ class DeviceEngine(CoreEngine):
 
                                 #assign class label 0 to blanks
                                 if pressure_suffix != 1:
-                                    run_class = 0 
+                                    run_type = 0 
 
                                 #add blank run headers to list of blanks
                                 curve_header = "Sample - " + (str(pressure_suffix).zfill(suffix_digits) + run_suffix)
-                                blanks.append(curve_header)
+                                
 
                             else:
 
@@ -330,11 +328,11 @@ class DeviceEngine(CoreEngine):
 
                                 #assign class label 1 to samples
                                 if pressure_suffix != 1:
-                                    run_class = 1
+                                    run_type = 1
 
                                 #add sample run headers to samples list, keep trailing pressure suffix for future analysis
                                 curve_header = "Sample - " + run_suffix  
-                                samples.append(curve_header)
+                                
 
                             curves.append([curve_header, start_date_string])
 
@@ -363,7 +361,7 @@ class DeviceEngine(CoreEngine):
                             This area is to be extended to handle other device data(Temp, Actual Logs).
                             Future implementation includes calling SignalExtraction when the required csv files are absent.
                             """
-                            print("File {target_file} doesn't exist")
+                            print(f"File {target_file} doesn't exist")
 
                         finally:
 
@@ -373,54 +371,38 @@ class DeviceEngine(CoreEngine):
                                                                 curves_list[-1], 
                                                                 on = 'Time')
 
-                        #experiment date and method ID as identifier for analysis name. Name is name from Analyses object             
-                        analysis_name = f"Analysis - {method_suffix}"
-
                         if curve_header:
                             #if pressure curve exists for current analysis, mention in analysis key
-                            analysis_key = "Device Pressure Analysis - " + start_date_string
-                        
+                            #experiment date and method ID as identifier for analysis name. Name is name from Analyses object             
+                            analysis_name = f"Device Pressure Analysis - {method_suffix} | Start time: {start_date_string}"
+                            analysis_type = 'pressure'
+
                         else:
                             #individual analyses(runs) in data are identified by their start date.
                             #The last successful start date is the final start date.
-                            analysis_key = analysis_name + start_date_string
+                            analysis_name = f"Analysis - {method_suffix} | Start time: {start_date_string}"
 
                         #each 'Device Pressure Analysis' dict like below refers to an individual run within a set of consecutive runs for a particular method on a particular date.
                         #This will be updated during operations concerning the particular runs such as feature extraction.
                         #the larger dict holding these individual dicts is the data of a single DeviceAnalysis object.
                         analysis_data = {'Method' : method_suffix, 
                                          'Sample' : curve_header, 
-                                         'Class' : run_class,
+                                         'Runtype' : run_type,
                                          'Start date' : start_date_string, 
                                          'Runtime' : runtime, 
                                          'Idle time' : "NA",
                                          'Number of Trials' : times_started, 
-                                         'Curve' : curves_list[-1]}
-
-                        #build dictionary of analyses per unique method or date of data import
-                        analysis = {analysis_key : analysis_data}
-
-                        #analysis data. data attribute of analyses object
-                        analyses_dict.update(analysis)
+                                         'Curve' : curves_list[-1], 
+                                         'Log' : log_data}
 
                         #add every encountered analysis to device history
-                        self._history.update(analysis)    
+                        self._history.update({analysis_name : analysis_data})    
 
-                    #dataframe for current identifier(method_suffix and date)
-                    merged_df = curves_list[0]
+                        #create new DeviceAnalysis object.
+                        new_object = DeviceAnalysis(name = analysis_name, data = analysis_data, analysis_type = analysis_type)
 
-                    #finally add complete dataframe for given method and date to analysis object's data attribute. 
-                    #This completes the analysis object.
-                    analyses_dict.update({f"{method_suffix}_Pressure Dataframe" : merged_df})
-
-                    #create new DeviceAnalysis object.
-                    new_object = DeviceAnalysis(name = analysis_name, data = analyses_dict)
-
-                    #list of analyses populated with individual analysis objects
-                    analyses_list.append(new_object)
-
-                    #clear analyses_dict for next iteration
-                    analyses_dict = {}
+                        #list of analyses populated with individual analysis objects
+                        analyses_list.append(new_object)
 
                 if not method_suffix:
                     continue
@@ -430,29 +412,27 @@ class DeviceEngine(CoreEngine):
                     #add current method ID to list of known/encountered method types, no duplicates
                     self._method_ids.append(method_suffix)
 
-                print("Dataframe for method : " + method_suffix)
-                print(merged_df.head()) 
-
         return analyses_list
 
 
 
     def get_analyses(self, analyses=None):
         """
-        Identical superclass method is modified here to return only a list, and also to return any value with matching subwords rather than the exact key.
+        Identical superclass method is modified here to return only a list, 
+        and also to return any value with matching subwords rather than the exact key.
 
         """
-        result = self._analyses
+        ana_list = self._analyses
 
         if analyses != None:
-            result = []
+            ana_list = []
             if isinstance(analyses, int) and analyses < len(self._analyses):
-                result.append(self._analyses[analyses])
+                ana_list.append(self._analyses[analyses])
             
             elif isinstance(analyses, str):
                 for analysis in self._analyses:
                     if analyses in analysis.name:
-                        result.append(analysis)
+                        ana_list.append(analysis)
                     
             elif isinstance(analyses, list):
                 analyses_out = []
@@ -463,7 +443,7 @@ class DeviceEngine(CoreEngine):
                         for a in self._analyses:
                             if analysis in a.name:
                                 analyses_out.append(a)
-                result = analyses_out
+                ana_list = analyses_out
             
             else:
                 print("Analysis not found!")
@@ -471,19 +451,7 @@ class DeviceEngine(CoreEngine):
         else:
             print("Provided data is not sufficient or does not exist! Existing analyses will be returned.")
             
-        return result
-        
-
-
-    def plot_analyses(self, analyses=None):
-        """
-        Plots each analysis dataframe by calling plot() function of respective DeviceAnalysis objects
-
-        """
-        #retrieve list of analysis objects based on user input 
-        curves_to_plot = self.get_analyses(analyses)
-        for ana in curves_to_plot:
-            ana.plot()
+        return ana_list        
 
 
 
@@ -494,52 +462,35 @@ class DeviceEngine(CoreEngine):
         
         """
         smoothed = smoothed if isinstance(smoothed, bool) else False
+
         #runtime of each sample indicates possible faults with the run
         runtime = {}
+
         #runtype describes whether run was a flush(blank), a sample run or the first run of the day.
         runtype = {}
 
-        for analysis_key in list(data):
-            if 'Device Pressure Analysis' in analysis_key:
-                #update each Device Pressure Analysis with its features in addition to creating the combined dataframe
-                curve = data[analysis_key]['Curve']
-                #'pct_change' transformation is first used on pressure curves to emphasise focus on changes in the curve over time.
-                #features extracted from 'pct_change' curves hepl better model curve behaviour.
-                curve_features = curve.iloc[:, 1].agg(features_list)
+        #update each Device Pressure Analysis with its features in addition to creating the combined dataframe
+        curve = data['Curve']
+        #'pct_change' transformation is first used on pressure curves to emphasise focus on changes in the curve over time.
+        #features extracted from 'pct_change' curves hepl better model curve behaviour.
+        curve_features = curve.iloc[:, 1].agg(features_list)
                 
-                if smoothed == True:    
-                    smoothed_curve_features = (curve.iloc[:, 1].agg('pct_change')*100).agg(features_list)
-                    smoothed_curve_features.index = [f"{i}_percent_change" for i in smoothed_curve_features.index]
-                    curve_features = smoothed_curve_features
-
-                data[analysis_key].update({'Features' : curve_features})
+        if smoothed == True:    
+            smoothed_curve_features = (curve.iloc[:, 1].agg('pct_change')*100).agg(features_list)
+            smoothed_curve_features.index = [f"{i}_percent_change" for i in smoothed_curve_features.index]
+            curve_features = smoothed_curve_features
                  
-                runtime.update({data[analysis_key]['Sample'] : data[analysis_key]['Runtime']})
-                runtype.update({data[analysis_key]['Sample'] : data[analysis_key]['Class']})
+        runtime.update({data['Sample'] : data['Runtime']})
+        runtype.update({data['Sample'] : data['Runtype']})
 
-            elif 'Pressure Dataframe' in analysis_key:
-                pressure_dataframe = data[analysis_key]
-                
-                run_features = pd.DataFrame([runtime, runtype], 
+        run_features = pd.DataFrame([runtime, runtype], 
                                     columns=runtype.keys())
                 
-                run_features.index = ['Runtime', 'Class']
+        run_features.index = ['Runtime', 'Runtype']
 
-                #sample names are extracted from data, time column is ignored
-                sample_names = pressure_dataframe.columns[1:] 
-                #DeviceProcSettings sets features to be extracted from data using self.parameters passed as features_list
-                extracted_features = pressure_dataframe[sample_names].agg(features_list)
+        curve_features = pd.concat([curve_features, run_features], axis = 0)
 
-                if smoothed == True:    
-                    smoothed_features = (pressure_dataframe[sample_names].agg('pct_change')*100).agg(features_list)
-                    smoothed_features.index = [f"{i}_percent_change" for i in smoothed_features.index]
-                    extracted_features = smoothed_curve_features
-
-                #combine the extracted pressure curve features with run features
-                extracted_features = pd.concat([extracted_features, run_features], 
-                                 axis = 0)
-                
-                data.update({analysis_key.replace('Pressure', 'Features') : extracted_features})
+        data.update({'Features' : curve_features})
 
         return data
     
@@ -548,57 +499,25 @@ class DeviceEngine(CoreEngine):
     def get_seasonal_components(self, data, period):
         """
         Break each sample's time-series curve down into its components : Trend, Seasonal, and Residual(Noise)
-        Return value is a list of dataframes containing seasonal components of all curves of the dict originally passed as input to this function. 
+        Return value is the updated data containing seasonal components of all curves of the dict originally passed as input to this function. 
         Now each 'Device Pressure Analysis' dict has been modified with additional seasonal component data for each individual curve
     
         """
         period = period if not isinstance(period, type(None)) else 10
-        #separate dataframes to hold decomposed time components of all curves 
-        curves_trend = pd.DataFrame()
-        curves_seasonality = pd.DataFrame()
-        curves_residual = pd.DataFrame()
 
-        
-        for analysis_key in list(data):
+        sample_name = data['Sample']
+        sample_curve = data['Curve']
+        decomp = seasonal_decompose(sample_curve[sample_name], 
+                                    model = 'additive', 
+                                    period = period,  
+                                    extrapolate_trend = 10)
             
-            if 'Device Pressure Analysis' in analysis_key:
-                sample_name = (data[analysis_key])['Sample']
-                sample_curve = (data[analysis_key])['Curve']
-                decomp = seasonal_decompose(sample_curve[sample_name], 
-                                        model = 'additive', 
-                                        period = period,  
-                                        extrapolate_trend = 10)
-            
-                #components for current curve
-                trend, seasonal, residual = pd.Series(decomp.trend), pd.Series(decomp.seasonal), pd.Series(decomp.resid)
-                #rename time components according to samples
-                trend.name = sample_name
-                seasonal.name = sample_name
-                residual.name = sample_name
-
-                data[analysis_key].update({'Trend' : trend, 
-                                    'Seasonal' : seasonal,
-                                    'Residual' : residual})
-                
-                curves_trend = pd.concat([curves_trend, trend],
-                                         axis = 1)
-                
-                curves_seasonality = pd.concat([curves_seasonality, seasonal],
-                                         axis = 1)
-                
-                curves_residual = pd.concat([curves_residual, residual],
-                                         axis = 1)
-                
-            elif 'Dataframe' in analysis_key:
-                
-                #fixed analyses_dict creation error in find_analyses
-                data.update({analysis_key.replace('Pressure', 'Trend') : curves_trend, 
-                            analysis_key.replace('Pressure', 'Seasonal') : curves_seasonality,
-                            analysis_key.replace('Pressure', 'Residual') : curves_residual})
-                
-            else:
-                continue
-            
+        #components for current curve
+        trend, seasonal, residual = pd.Series(decomp.trend, name=sample_name), pd.Series(decomp.seasonal, name=sample_name), pd.Series(decomp.resid, name=sample_name)
+  
+        data.update({'Trend' : trend, 
+                                'Seasonal' : seasonal,
+                                'Residual' : residual})    
     
         return data
 
@@ -610,33 +529,25 @@ class DeviceEngine(CoreEngine):
         Behaviour of (pressure) curves can now be better analysed by inspecting them in the frequency domain.
         
         """
-        transformed_curves = pd.DataFrame()
-        transformed_seasonals = pd.DataFrame()
-    
-        for analysis_key in list(data):
-    
-            if 'Device Pressure Analysis' in analysis_key:
-                curve = (data[analysis_key])['Curve'].iloc[:, 1]
-                transformed_curve = fftpack.fft(curve.values)
-                #convert result frequencies array into absolute values for better readability
-                transformed_curve = abs(transformed_curve)
-                data[analysis_key].update({'Raw curve frequencies' : transformed_curve})
-                transformed_curves = pd.concat([transformed_curves, pd.Series(transformed_curve, name = curve.name)], axis = 1)
-                #if 'Seasonal' in data[analysis_key]:
-                seasonal = (data[analysis_key])['Seasonal']
-                transformed_seasonal = fftpack.fft(seasonal.values)
-                transformed_seasonal = abs(transformed_seasonal)
-                data[analysis_key].update({'Curve seasonal frequencies' : transformed_seasonal})
-                transformed_seasonals = pd.concat([transformed_seasonals, pd.Series(transformed_seasonal, name = seasonal.name)], axis = 1)
-                
-            elif 'Dataframe' in analysis_key:
-                data.update({analysis_key.replace('Pressure', 'Raw curve frequencies') : transformed_curves})
-                #if 'Seasonal' in data[analysis_key]:
-                data.update({analysis_key.replace('Pressure', 'Curve seasonal frequencies') : transformed_seasonals})
+        curve = data['Curve'].iloc[:, 1]
+        transformed_curve = fftpack.fft(curve.values)
+        #convert result frequencies array into absolute values for better readability
+        transformed_curve = abs(transformed_curve)
+        transformed_curve = pd.Series(transformed_curve, name=curve.name)
+        data.update({'Raw curve frequencies' : transformed_curve})
 
-            else:
-                continue
+        #if 'Seasonal' in data[analysis_key]:
+        seasonal = data['Seasonal']
+        transformed_seasonal = fftpack.fft(seasonal.values)
+        transformed_seasonal = abs(transformed_seasonal)
+        transformed_seasonal = pd.Series(transformed_seasonal, name=curve.name)
+        data.update({'Curve seasonal frequencies' : transformed_seasonal})
 
+        residual = data['Residual']
+        transformed_residual = fftpack.fft(residual.values)
+        transformed_residual = abs(transformed_residual)
+        transformed_residual = pd.Series(transformed_residual, name=curve.name)
+        data.update({'Curve noise frequencies' : transformed_residual})
         #return transformed data. 
         return data
 
@@ -647,62 +558,53 @@ class DeviceEngine(CoreEngine):
         Compute rolling features of (pressure) curves over a specified window. Period defaults to 5
         """
         period = period if isinstance(period, int) else 5
-        roll_stats = pd.DataFrame()
+        #roll_stats = pd.DataFrame()
         
-        for analysis_key in list(data):
-            smoothed_curves = pd.DataFrame() 
-            if 'Device Pressure Analysis' in analysis_key and features_list != []:
-                curve = (data[analysis_key])['Curve'].iloc[:, 1]
-                for feature in features_list:
+        
+        smoothed_curves = pd.DataFrame() 
+            
+        curve = data['Curve'].iloc[:, 1]
+        for feature in features_list:
 
-                    if feature == 'mean':
-                        smoothed_curve = curve.rolling(window=period).mean()
+            if feature == 'mean':
+                smoothed_curve = curve.rolling(window=period).mean()
 
-                    elif feature == 'min':
-                        smoothed_curve = curve.rolling(window=period).min()
+            elif feature == 'min':
+                smoothed_curve = curve.rolling(window=period).min()
 
-                    elif feature  == 'max':
-                        smoothed_curve = curve.rolling(window=period).max()
+            elif feature  == 'max':
+                smoothed_curve = curve.rolling(window=period).max()
 
-                    elif feature == 'std':
-                        smoothed_curve = curve.rolling(window=period).std()
+            elif feature == 'std':
+                smoothed_curve = curve.rolling(window=period).std()
 
-                    elif feature == 'ema':
-                        smoothed_curve = curve.ewm(span=period).mean()
+            elif feature == 'ema':
+                smoothed_curve = curve.ewm(span=period).mean()
 
-                    feature = f"{curve.name}_roll_{feature}"
-                    smoothed_curve.name = feature
-                    smoothed_curves = pd.concat([smoothed_curves, smoothed_curve], axis = 1)
-                roll_stats = pd.concat([roll_stats, smoothed_curves], axis = 1)
-                data[analysis_key].update({'Rolling statistics' : smoothed_curves})
-                
-            elif 'Dataframe' in analysis_key:
+            feature = f"{curve.name}_roll_{feature}"
+            smoothed_curve.name = feature
+            smoothed_curves = pd.concat([smoothed_curves, smoothed_curve], axis = 1)
 
-                data.update({analysis_key.replace('Pressure', 'Rolling statistics') : roll_stats})
-                
-
-            else:
-                print('Please provide valid list of features')
-                continue
-
+        data.update({'Rolling statistics' : smoothed_curves})
+        
         #return transformed data. 
         return data
 
 
+
     def get_results(self, results=None):
         """
-        Retrieves the results from the CoreEngine.
+        Retrieves the results from CoreEngine.
 
         Args:
         results (str or list): The key(s) of the result(s) to retrieve. Absence of an argument returns all known results for the current device.
-        Mods : int input returns the results entry that lies on a list-like index within the dictionary. input 4 returns the 5th entry of the results dict.
+        Mods : int type input returns the results entry that lies on a list-like index within the dictionary. 
+            e.g: input 4 returns the 5th entry of the results dict.
 
         Returns:
-        list(dict or any): If `results` is a string, returns the corresponding result value.
+        dict or any: If `results` is a string, returns the corresponding result value.
                 If `results` is a list, returns a dictionary with the key-value pairs of the requested results. 
-                If `results` is neither a string nor a list, returns all the results.
-                
-        Mod : Always returns a list of found values.
+                If `results` is neither a string nor a list, returns all the results.   
 
         """
         result_dict = self._results
@@ -737,35 +639,7 @@ class DeviceEngine(CoreEngine):
         return result_dict
     
 
-
-    def plot_results(self, results=None, features=''):
-        """
-        Plot the computed (and added) results of feature extraction, seasonal decomposition, fourier transform or rolling statistics.
-        
-        """
-        result_dict = self.get_results(results)
-        
-        for res in list(result_dict):
-            #for i in result_list:
-                new_object = DeviceAnalysis(name = f"result_{res}", data = result_dict[res])
-
-                if features == 'base':    
-                    new_object.plot(features = True) 
-                            
-                elif features == 'decompose':
-                    new_object.plot(decomp = True) 
-
-                elif features == 'transform':
-                    new_object.plot(transform = True)
-                    
-                elif features == 'rolling':
-                    new_object.plot(rolling = True)
-
-                else:
-                    new_object.plot()
-
-
-                    
+                
     def remove_results(self, results, features=''):
         """
         Removes the specified results from the internal results dictionary.
@@ -782,7 +656,7 @@ class DeviceEngine(CoreEngine):
         elif features == 'decompose':
             feature_string = ['Trend', 'Seasonal', 'Residual']
         elif features == 'transform':
-            feature_string = ['Raw curve frequencies', 'Curve seasonal frequencies']
+            feature_string = ['Raw curve frequencies', 'Curve seasonal frequencies', 'Curve noise frequencies']
         elif features == 'rolling':
             feature_string = ['Rolling statistics']
 
@@ -829,3 +703,163 @@ class DeviceEngine(CoreEngine):
             else:
                 self._results = {}
 
+
+
+    def prepare_plots(self, plot_list):
+        """
+        Group and organize data appropriately into unique set of runs/experiments using method ids and dates.
+        Args:
+            list/dict of desired data.
+        Returns:
+            prepared list/dict of newly created analyses objects grouped appropriately.
+
+        """
+        if isinstance(plot_list, list):
+            anas_to_plot = plot_list 
+
+        elif isinstance(plot_list, dict):
+            anas_to_plot = [DeviceAnalysis(name = res, data = plot_list[res]) for res in list(plot_list)]
+        
+        num_analyses = len(anas_to_plot)
+        
+        #create list of distinct analyses data dicts present in found analyses. 
+        curves, samples, features, trends, seasonals, residuals, raw_freqs, seasonal_freqs, noise_freqs, methods = [], [], [], [], [], [], [], [], [], []
+
+        for ana in anas_to_plot:
+            method = ana.data
+            curves.append(method['Curve'])
+            samples.append(method['Sample'])
+            features.append(method['Features'])
+            trends.append(method['Trend'])
+            seasonals.append(method['Seasonal'])
+            residuals.append(method['Residual'])
+            raw_freqs.append(method['Raw curve frequencies'])
+            seasonal_freqs.append(method['Curve seasonal frequencies'])
+            noise_freqs.append(method['Curve noise frequencies'])
+            methods.append(method['Method'])
+        
+        plot_data = anas_to_plot[0]
+        df = curves[0]
+        new_method =  methods[0]
+        these_samples = [samples[0]]
+
+        #list of newly created analysis objects to be plotted
+        objects_list = []
+        
+        for i in range(1, num_analyses):            
+            next_curve = curves[i]
+
+            next_method = methods[i]
+
+            if next_method == new_method:
+                df = pd.concat([df, next_curve], axis = 0)
+
+                features[0] = pd.concat([features[0], features[i]], axis = 0)
+
+                trends[0] = pd.concat([trends[0], trends[i]], axis = 1)
+                seasonals[0] = pd.concat([seasonals[0], seasonals[i]], axis = 1)
+                residuals[0] = pd.concat([residuals[0], residuals[i]], axis = 1)
+
+                raw_freqs[0] = pd.concat( [ raw_freqs[0], raw_freqs[i] ], 
+                                               axis = 1)
+                seasonal_freqs[0] = pd.concat( [ seasonal_freqs[0], seasonal_freqs[i] ], 
+                                               axis = 1)
+                noise_freqs[0] = pd.concat([noise_freqs[0], noise_freqs[i]], 
+                                           axis = 1)
+                
+                these_samples.append(samples[i])
+
+            else:
+                plot_data.data['Curve'] = df
+
+                plot_data.data['Features'] = features[0]
+
+                trends[0].columns = these_samples
+                seasonals[0].columns = these_samples
+                residuals[0].columns = these_samples
+                plot_data.data['Trend'] = trends[0]
+                plot_data.data['Seasonal'] = seasonals[0]
+                plot_data.data['Residual'] = residuals[0]
+
+                raw_freqs[0].columns = these_samples
+                seasonal_freqs[0].columns = these_samples
+                noise_freqs[0].columns = these_samples
+                plot_data.data['Raw curve frequencies'] = raw_freqs[0]
+                plot_data.data['Curve seasonal frequencies'] = seasonal_freqs[0]
+                plot_data.data['Curve noise frequencies'] = noise_freqs[0]                
+
+                objects_list.append(DeviceAnalysis(name = plot_data.name, data = plot_data.data))
+
+                plot_data = anas_to_plot[i]
+                df = next_curve
+                these_samples = []
+
+            new_method = next_method
+        
+        #loop ends before adding last item(when mismatched). Add this item to list of objects
+        plot_data.data['Curve'] = df
+        plot_data.data['Features'] = features[0]
+       
+        trends[0].name = samples[-1]
+        seasonals[0].name = samples[-1]
+        residuals[0].name = samples[-1]
+        plot_data.data['Trend'] = trends[0]
+        plot_data.data['Seasonal'] = seasonals[0]
+        plot_data.data['Residual'] = residuals[0]
+
+        raw_freqs[0].name = samples[-1]
+        seasonal_freqs[0].name = samples[-1]
+        noise_freqs[0].name = samples[-1]
+        plot_data.data['Raw curve frequencies'] = raw_freqs[0]
+        plot_data.data['Curve seasonal frequencies'] = seasonal_freqs[0]
+        plot_data.data['Curve noise frequencies'] = noise_freqs[0] 
+                
+        objects_list.append(DeviceAnalysis(name = plot_data.name, data = plot_data.data))
+        
+        return objects_list
+
+
+
+    def plot_analyses(self, analyses=None):
+        """
+        Plots each analysis dataframe by calling plot() function of respective DeviceAnalysis objects
+
+        """
+        #retrieve list of analysis objects based on user input 
+        anas_to_plot = self.get_analyses(analyses)
+
+        objects_list = self.prepare_plots(anas_to_plot)    
+
+        for ana in objects_list:
+            ana.plot()
+            del ana
+    
+    
+
+    def plot_results(self, results=None, features='', type=None):
+        """
+        Plot the computed (and added) results of feature extraction, seasonal decomposition, fourier transform or rolling statistics.
+        ***FIX DUPLICATES AND FEATURE PLOTS BUG. 
+        """
+        result_dict = self.get_results(results)
+
+        objects_list = self.prepare_plots(result_dict)
+
+        for ana in objects_list:        
+
+            if features == 'base':    
+                ana.plot(features = True, type = type) 
+                            
+            elif features == 'decompose':
+                ana.plot(decomp = True, type = type) 
+
+            elif features == 'transform':
+                ana.plot(transform = True, type = type)
+                    
+            elif features == 'rolling':
+                ana.plot(rolling = True)
+
+            else:
+                ana.plot()
+
+            del ana
