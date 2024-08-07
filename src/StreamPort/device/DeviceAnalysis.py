@@ -97,7 +97,7 @@ class DeviceAnalysis(Analysis):
       
         
 
-    def plot(self, interactive = False, features = False, decomp = False, transform = False, rolling = False, type = None):
+    def plot(self, interactive = False, features = False, decomp = False, transform = False, type = None):
         """
         Plots analyses data based on user input. Plots pressure curves by default.
         Args:
@@ -107,13 +107,6 @@ class DeviceAnalysis(Analysis):
             interactive: Set interactive or not. Static plots are default, user can choose interactive by setting 'interactive = True' 
         ***Note***features, decomp and transform may only be plotted one at a time. 
         """
-        def palette(n):
-            colors = []
-            for _ in range(n):
-                color = "#{:06x}".format(random.randint(0, 0xFFFFFF))
-                colors.append(color)
-            return colors
-
         #Initialize traces and buttons
         curves = {}          
         num_figs = 1
@@ -122,18 +115,22 @@ class DeviceAnalysis(Analysis):
         
         time_axis = data['Curve']['Time']
         identifier = data['Method'] 
-        logs = data['Log']
  
         samples = data['Curve'].drop(['Time'], axis=1)
         samples = samples.columns
         num_labels = len(samples)
-        colors_list = palette(num_labels)
+
+        #distinct set of colors selected for each of the samples
+        colors_list = [f'hsv({i*360/num_labels}, 100%, 100%)' for i in range(num_labels)]
+        #randomly insert black and gray to improve contrast
+        colors_list.insert(random.randint(0, num_labels-1), 'black')
+        colors_list.insert(random.randint(0, num_labels-1), 'gray')
 
         for sample in samples:
             if features == True:
                     decomp = False
                     transform = False
-                    rolling = False
+                    
                     curves.update({sample : (data['Features'][sample])}) 
                     title_suffix = 'features'
                     feature_flag = 1
@@ -142,7 +139,7 @@ class DeviceAnalysis(Analysis):
             elif decomp == True :
                     transform = False
                     features = False
-                    rolling = False
+                    
                     num_figs = 3
                     curves.update({sample : (data['Trend'][sample], 
                                                         data['Seasonal'][sample], 
@@ -152,23 +149,12 @@ class DeviceAnalysis(Analysis):
             elif transform == True:
                     features = False
                     decomp = False
-                    rolling = False
+                    
                     curves.update({sample : (data['Raw curve frequencies'][sample], 
                                             data['Curve seasonal frequencies'][sample], 
                                             data['Curve noise frequencies'][sample])})
                     num_figs =  3
                     title_suffix = 'frequencies'
-
-            elif rolling == True:
-                    features = False
-                    decomp = False
-                    transform = False
-                    num_figs = 4
-                    curves.update({sample : (data['Rolling statistics'].iloc[:, 0], 
-                                            data['Rolling statistics'].iloc[:, 1], 
-                                            data['Rolling statistics'].iloc[:, 2], 
-                                            data['Rolling statistics'].iloc[:, 3])})
-                    title_suffix = 'rolling statistics'
 
             else:
                     curves.update({sample : data['Curve'][sample]}) 
@@ -192,18 +178,19 @@ class DeviceAnalysis(Analysis):
                 elif num_figs == 3 and 'frequencies' in curve:
                     ytext = ["Amplitude(Raw)", "Amplitude(Seasonal)", "Amplitude(Residual)"]
                     xtext = "Frequencies"
-                elif num_figs == 3:
+                elif num_figs == 3 and not 'frequencies' in curve:
                     ytext = ["Trend", "Seasonal", "Residual"]
                     xtext = "Time (min)"
-                else:
-                    ytext = ['rollmin', 'rollmax', 'rollmean', 'rollstd']
 
                 if plot_type != 0:        
                     # Create a scatter trace for each column        
-                    trace = go.Box(x=time_axis, y=curve, visible=True, name=sample_name, fillcolor= colors_list[index], legendgroup=f'group{index}') # hoverinfo=logs
+                    fig.add_trace(go.Box(x=time_axis, y=curve, visible=True, name=sample_name, marker=dict(color=colors_list[index], opacity=0.8), legendgroup=f'group{index}'), row=i + 1, col=1) 
+
                 else:
-                    trace = go.Scatter(x=time_axis, y=curve, visible=True, name=sample_name, fillcolor= colors_list[index], legendgroup=f'group{index}')
-                fig.add_trace(trace, row=i + 1, col=1)
+                    fig.add_trace(go.Scatter(x=time_axis, y=curve, visible=True, name=sample_name, mode='lines',
+                                    marker=dict(size=5, color=colors_list[index], line=dict(width=0)), legendgroup=f'group{index}'), row=i + 1, col=1)
+
+                
                 fig.update_yaxes(title_text= ytext[i], row=i + 1, col=1)
                 fig.update_xaxes(title_text=xtext, row=i + 1, col=1)
                 
@@ -211,7 +198,8 @@ class DeviceAnalysis(Analysis):
         # Update the overall layout
         fig.update_layout(
                         title="Pressure/Time " + title_suffix + " - " + identifier,
-                        showlegend=True  # Set to True if legend must be visible
+                        showlegend=True,  # Set to True if legend must be visible
+                        legend = dict(borderwidth = 0)
                         )
 
         fig.show()             
