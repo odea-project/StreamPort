@@ -344,10 +344,23 @@ class DeviceEngine(CoreEngine):
 
                             target_file = os.path.join(current_run_folder, target_file)
 
+
+                            """FIX THIS!!!
+                            
+                            def read_mixed_csv(file_path, cols):
+                                with open(file_path, 'r') as file:
+                                    first_line = file.readline()
+                                    if ',' in first_line:
+                                        decimal = ','
+                                    else:
+                                        decimal = '.'
+                            
+                            """
+
                             #add pressure curve to list of curves for current method  
                             curves_list.append(pd.read_csv(target_file, 
                                                                 sep = ";",
-                                                                #decimal = ",",
+                                                                decimal = ",",
                                                                 header = None, 
                                                                 names = cols))
                             
