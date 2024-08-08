@@ -2,7 +2,6 @@ from ..core.CoreEngine import CoreEngine
 from ..device.DeviceAnalysis import DeviceAnalysis
 
 #CHECK WHETHER PACKAGES HAVE SUFFICIENT SUPPORT
-#Numpy has fft, check also if other stats methods can be implemented without importing tsfresh 
 
 #enable file parsing and OS operations with os module
 import os
@@ -21,9 +20,7 @@ import numpy as np
 
 #module to enable time decomposition
 from statsmodels.tsa.seasonal import seasonal_decompose
-
-#Module to perform fourier transformation on seasonal components of curves
-from scipy import fftpack
+from sklearn import preprocessing as scaler
 
 """
 GLOBAL VARIABLES
@@ -346,21 +343,26 @@ class DeviceEngine(CoreEngine):
 
 
                             """FIX THIS!!!
-                            
-                            def read_mixed_csv(file_path, cols):
+                            """
+                            def align_data(file_path):
+                                decimal = '.'
                                 with open(file_path, 'r') as file:
                                     first_line = file.readline()
                                     if ',' in first_line:
-                                        decimal = ','
-                                    else:
-                                        decimal = '.'
+                                        decimal = ','                                    
+                                    
+                                file.close()
+
+                                return decimal
+
+                            decimal = align_data(target_file)        
+
                             
-                            """
 
                             #add pressure curve to list of curves for current method  
                             curves_list.append(pd.read_csv(target_file, 
                                                                 sep = ";",
-                                                                decimal = ",",
+                                                                decimal = decimal,
                                                                 header = None, 
                                                                 names = cols))
                             
@@ -543,7 +545,7 @@ class DeviceEngine(CoreEngine):
         
         """
         curve = data['Curve'].iloc[:, 1]
-        transformed_curve = fftpack.fft(curve.values)
+        transformed_curve = np.fft.fft(curve.values)
         #convert result frequencies array into absolute values for better readability
         transformed_curve = abs(transformed_curve)
         transformed_curve = pd.Series(transformed_curve, name=curve.name)
@@ -551,13 +553,13 @@ class DeviceEngine(CoreEngine):
 
         #if 'Seasonal' in data[analysis_key]:
         seasonal = data['Seasonal']
-        transformed_seasonal = fftpack.fft(seasonal.values)
+        transformed_seasonal = np.fft.fft(seasonal.values)
         transformed_seasonal = abs(transformed_seasonal)
         transformed_seasonal = pd.Series(transformed_seasonal, name=curve.name)
         data.update({'Curve seasonal frequencies' : transformed_seasonal})
 
         residual = data['Residual']
-        transformed_residual = fftpack.fft(residual.values)
+        transformed_residual = np.fft.fft(residual.values)
         transformed_residual = abs(transformed_residual)
         transformed_residual = pd.Series(transformed_residual, name=curve.name)
         data.update({'Curve noise frequencies' : transformed_residual})
@@ -566,42 +568,50 @@ class DeviceEngine(CoreEngine):
 
 
 
-    def get_rolling_stats(self, data, features_list, period):
+    def scale_data(self, data, type, replace):
         """
-        Compute rolling features of (pressure) curves over a specified window. Period defaults to 5
-        """
-        period = period if isinstance(period, int) else 5
-        #roll_stats = pd.DataFrame()
-        
-        
-        smoothed_curves = pd.DataFrame() 
-            
-        curve = data['Curve'].iloc[:, 1]
-        for feature in features_list:
+        Scale data according to user input. Default values take over if no input.
+        should fix call to prepare_data()
+        """ 
+        prepared_data = self.prepare_data(data)
+        scaled_df = pd.DataFrame()
 
-            if feature == 'mean':
-                smoothed_curve = curve.rolling(window=period).mean()
+        for data in prepared_data:
+            features_df = data.data['Features'].T
+            features = features_df.columns
 
-            elif feature == 'min':
-                smoothed_curve = curve.rolling(window=period).min()
+            for feature in features:
 
-            elif feature  == 'max':
-                smoothed_curve = curve.rolling(window=period).max()
+                if type == 'minmax':
+                    mm = scaler.MinMaxScaler()
+                    scaled_data = mm.fit_transform(features_df[feature])
 
-            elif feature == 'std':
-                smoothed_curve = curve.rolling(window=period).std()
+                elif type == 'std':
+                        std = scaler.StandardScaler()
+                        scaled_data = std.fit_transform(features_df[feature])
 
-            elif feature == 'ema':
-                smoothed_curve = curve.ewm(span=period).mean()
+                elif type == 'robust':
+                        rob = scaler.RobustScaler()
+                        scaled_data = rob.fit_transform(features_df[feature])
 
-            feature = f"{curve.name}_roll_{feature}"
-            smoothed_curve.name = feature
-            smoothed_curves = pd.concat([smoothed_curves, smoothed_curve], axis = 1)
+                elif type == 'maxabs':
+                        mabs = scaler.MaxAbsScaler()
+                        scaled_data = mabs.fit_transform(features_df[feature])
 
-        data.update({'Rolling statistics' : smoothed_curves})
-        
+                elif type == 'norm':
+                        norm = scaler.Normalizer()
+                        scaled_data = norm.fit_transform(features_df[feature])
+
+                scaled_data = pd.Series(scaled_data, name = feature)
+                scaled_df = pd.concat([scaled_df, scaled_data])
+
+            if replace == False:
+                    data.data.update({f"Features scaled" : scaled_df})
+            else:
+                    data.data.update({'Features' : scaled_df})
+
         #return transformed data. 
-        return data
+        return prepared_data
 
 
 
@@ -670,8 +680,6 @@ class DeviceEngine(CoreEngine):
             feature_string = ['Trend', 'Seasonal', 'Residual']
         elif features == 'transform':
             feature_string = ['Raw curve frequencies', 'Curve seasonal frequencies', 'Curve noise frequencies']
-        elif features == 'rolling':
-            feature_string = ['Rolling statistics']
 
         for feature in feature_string:
 
@@ -718,7 +726,7 @@ class DeviceEngine(CoreEngine):
 
 
 
-    def prepare_plots(self, plot_list):
+    def prepare_data(self, data_list):
         """
         Group and organize data appropriately into unique set of runs/experiments using method ids and dates.
         Args:
@@ -727,11 +735,11 @@ class DeviceEngine(CoreEngine):
             prepared list/dict of newly created analyses objects grouped appropriately.
 
         """
-        if isinstance(plot_list, list):
-            anas_to_plot = plot_list 
+        if isinstance(data_list, list):
+            anas_to_plot = data_list 
 
-        elif isinstance(plot_list, dict):
-            anas_to_plot = [DeviceAnalysis(name = res, data = plot_list[res]) for res in list(plot_list)]
+        elif isinstance(data_list, dict):
+            anas_to_plot = [DeviceAnalysis(name = res, data = data_list[res]) for res in list(data_list)]
         
         num_analyses = len(anas_to_plot)
         
@@ -841,7 +849,7 @@ class DeviceEngine(CoreEngine):
         #retrieve list of analysis objects based on user input 
         anas_to_plot = self.get_analyses(analyses)
 
-        objects_list = self.prepare_plots(anas_to_plot)    
+        objects_list = self.prepare_data(anas_to_plot)    
 
         for ana in objects_list:
             ana.plot()
@@ -849,28 +857,25 @@ class DeviceEngine(CoreEngine):
     
     
 
-    def plot_results(self, results=None, features='', type=None):
+    def plot_results(self, results=None, features='', type=None, scaled=True):
         """
-        Plot the computed (and added) results of feature extraction, seasonal decomposition, fourier transform or rolling statistics.
-        ***FIX DUPLICATES AND FEATURE PLOTS BUG. 
+        Plot the computed (and added) results of feature extraction, seasonal decomposition, fourier transform.
+    
         """
         result_dict = self.get_results(results)
 
-        objects_list = self.prepare_plots(result_dict)
+        objects_list = self.prepare_data(result_dict)
 
         for ana in objects_list:        
 
-            if features == 'base':    
-                ana.plot(features = True, type = type) 
+            if features == 'base': 
+                ana.plot(features = True, type = type, scaled = scaled) 
                             
             elif features == 'decompose':
                 ana.plot(decomp = True, type = type) 
 
             elif features == 'transform':
                 ana.plot(transform = True, type = type)
-                    
-            elif features == 'rolling':
-                ana.plot(rolling = True)
 
             else:
                 ana.plot()

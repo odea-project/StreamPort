@@ -56,7 +56,6 @@ class DecomposeCurves(ExtractFeatures):
   def __init__(self, period=None):
     super().__init__()
     self._period = period 
-    self.algorithm = "seasonal_decomposition"
   
   def run(self, engine):
     if engine._results.__len__() > 0:
@@ -83,7 +82,6 @@ class FourierTransform(ExtractFeatures):
   """
   def __init__(self):
     super().__init__()
-    self.algorithm = "seasonal_decomposition_transformed"
 
   def run(self, engine):
     if engine._results.__len__() > 0:
@@ -103,17 +101,16 @@ class FourierTransform(ExtractFeatures):
 
 
 
-class RollingStats(ExtractFeatures):
+class Scaler(ProcessingSettings):
   """
-  Perform rolling mean to smooth data. Period defaults to 10.
+  Scale data based on user input. Defaults to Normalizer
 
   """
-  _period = None
-  def __init__(self, parameters= None, period= None):
-    super().__init__()
-    self._period = period 
-    self.parameters = ['min', 'max', 'mean', 'std', 'ema'] if isinstance(parameters, type(None)) else parameters
-    self.algorithm = "moving_average"
+  def __init__(self, parameters= None, replace= None):
+    super().__init__() 
+    self.parameters = 'norm' if isinstance(parameters, type(None)) else parameters
+    self.replace = replace if not isinstance(replace, type(None)) else False
+    self.algorithm = "scaling"
 
   def run(self, engine):
     if engine._results.__len__() > 0:
@@ -124,9 +121,7 @@ class RollingStats(ExtractFeatures):
       for analysis in analyses:
         results.update({analysis.name: analysis.data})
     
-    for key in list(results):
-      data = results[key]
-      smoothed_data = engine.get_rolling_stats(data, self.parameters, self._period)
-      results.update({key : smoothed_data})
-  
+    scaled_data = engine.scale_data(results, self.parameters, self.replace)
+    results.update({scaled_data})
+
     return results

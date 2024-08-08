@@ -3,6 +3,7 @@ from ..core.CoreEngine import Analysis
 import random
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.io as pio
 from plotly.subplots import make_subplots
 #plotly needs to be added to requirements.txt
 
@@ -97,14 +98,14 @@ class DeviceAnalysis(Analysis):
       
         
 
-    def plot(self, interactive = False, features = False, decomp = False, transform = False, type = None):
+    def plot(self, interactive = True, features = False, decomp = False, transform = False, type = None, scaled = True):
         """
         Plots analyses data based on user input. Plots pressure curves by default.
         Args:
             features: input to toggle whether feature plot should be made.
             decomp: input to toggle seasonal components of curves.
             transform: input to toggle fourier transform of raw - and corresponding seasonal - curves.
-            interactive: Set interactive or not. Static plots are default, user can choose interactive by setting 'interactive = True' 
+            interactive: Set interactive or not. 
         ***Note***features, decomp and transform may only be plotted one at a time. 
         """
         #Initialize traces and buttons
@@ -130,16 +131,18 @@ class DeviceAnalysis(Analysis):
             if features == True:
                     decomp = False
                     transform = False
-                    
-                    curves.update({sample : (data['Features'][sample])}) 
-                    title_suffix = 'features'
+                    curves.update({sample : (data['Features'][sample])})
+                    if scaled == True and 'scaled' in list(data):
+                        curves.update({sample : (data['Features scaled'][sample])}) 
+                        title_suffix = 'features(scaled)'
+                    else:
+                        title_suffix = 'features'
                     feature_flag = 1
                     time_axis = data['Features'].index
                     
             elif decomp == True :
                     transform = False
                     features = False
-                    
                     num_figs = 3
                     curves.update({sample : (data['Trend'][sample], 
                                                         data['Seasonal'][sample], 
@@ -148,8 +151,7 @@ class DeviceAnalysis(Analysis):
 
             elif transform == True:
                     features = False
-                    decomp = False
-                    
+                    decomp = False                   
                     curves.update({sample : (data['Raw curve frequencies'][sample], 
                                             data['Curve seasonal frequencies'][sample], 
                                             data['Curve noise frequencies'][sample])})
@@ -184,7 +186,7 @@ class DeviceAnalysis(Analysis):
 
                 if plot_type != 0:        
                     # Create a scatter trace for each column        
-                    fig.add_trace(go.Box(x=time_axis, y=curve, visible=True, name=sample_name, marker=dict(color=colors_list[index], opacity=0.8), legendgroup=f'group{index}'), row=i + 1, col=1) 
+                    fig.add_trace(go.Box(x=time_axis, y=curve, visible=True, name=sample_name, marker=dict(color=colors_list[index], opacity=0.4), legendgroup=f'group{index}'), row=i + 1, col=1) 
 
                 else:
                     fig.add_trace(go.Scatter(x=time_axis, y=curve, visible=True, name=sample_name, mode='lines',
@@ -202,8 +204,11 @@ class DeviceAnalysis(Analysis):
                         legend = dict(borderwidth = 0)
                         )
 
-        fig.show()             
+        if interactive == True:
+            fig.show()             
         
+        else:
+            pio.show(fig, renderer='png')   
         
 
             
