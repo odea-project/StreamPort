@@ -18,11 +18,11 @@ class ExtractPressureFeatures(ExtractFeatures):
   Smoothed defaults to false. smoothed = True first smoothes the curve by percentage change per datapoint before extracting features.
   Additional features related to the pressure curves(runtime, runtype) are also added.   
   """
-  _smoothed = None
-  def __init__(self, parameters=None, smoothed = None):
+  _weighted = None
+  def __init__(self, parameters=None, weighted = None):
     #user-defined dict/list of features (passed as parameters argument) can be extracted from data.
     super().__init__()
-    self._smoothed = smoothed 
+    self._weighted = weighted 
     self.algorithm = "pressure_features"
     self.parameters = ['min', 'max', 'mean', 'std', 'skew', 'kurtosis'] if isinstance(parameters, type(None)) else parameters
 
@@ -38,7 +38,7 @@ class ExtractPressureFeatures(ExtractFeatures):
     for key in list(results):
       
       data = results[key]
-      changed_data = engine.get_features(data, self.parameters, self._smoothed)  
+      changed_data = engine.get_features(data, self.parameters, self._weighted)  
       results.update({key: changed_data})
       
 
@@ -122,6 +122,7 @@ class Scaler(ProcessingSettings):
         results.update({analysis.name: analysis.data})
     
     scaled_data = engine.scale_data(results, self.parameters, self.replace)
-    results.update({scaled_data})
+    for data in scaled_data:
+      results.update({data.name : data.data})
 
     return results

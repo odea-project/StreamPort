@@ -132,7 +132,7 @@ class DeviceAnalysis(Analysis):
                     decomp = False
                     transform = False
                     curves.update({sample : (data['Features'][sample])})
-                    if scaled == True and 'scaled' in list(data):
+                    if scaled == True and 'Features scaled' in list(data):
                         curves.update({sample : (data['Features scaled'][sample])}) 
                         title_suffix = 'features(scaled)'
                     else:

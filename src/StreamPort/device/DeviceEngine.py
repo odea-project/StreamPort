@@ -135,9 +135,6 @@ class DeviceEngine(CoreEngine):
         global datetime_pattern
         global file_format
 
-        #initialize analysis dictionary to build analysis objects
-        analyses_dict = {}
-
         analyses_list = []
 
         #function to get encoding of data(UTF-8, UTF-16...) for appropriate applications.
@@ -302,34 +299,31 @@ class DeviceEngine(CoreEngine):
                             if not pressure_suffix.isdecimal():                 
                                 pressure_suffix = 1
                                 suffix_digits = 3
-                                #assign class label 2 to first run of every experiment 
-                                run_type = 2
                         
                             #if blank run encountered on reading current run's .LOG file, name run column with '-blank' as identifier
                             if blank_identifier == 1:
                                     
                                 run_suffix = '-blank'
 
-                                #assign class label 0 to blanks
-                                if pressure_suffix != 1:
-                                    run_type = 0 
+                                #assign class label 0 to blanks                               
+                                run_type = 0 
 
                                 #add blank run headers to list of blanks
-                                curve_header = "Sample - " + (str(pressure_suffix).zfill(suffix_digits) + run_suffix)
-                                
+                                curve_header = "Sample - " + (str(pressure_suffix).zfill(suffix_digits) + run_suffix)    
 
                             else:
 
                                 #sample runs indicated with sample name
                                 run_suffix = filename[-1]
 
-                                #assign class label 1 to samples
-                                if pressure_suffix != 1:
-                                    run_type = 1
+                                #assign class label 1 to samples 
+                                run_type = 1
 
                                 #add sample run headers to samples list, keep trailing pressure suffix for future analysis
                                 curve_header = "Sample - " + run_suffix  
-                                
+
+                            #run-number from filename is used as batch position ('.D' = 1, '002.D' = 2, '003.D' = 3...)    
+                            batch_position = pressure_suffix
 
                             curves.append([curve_header, start_date_string])
 
@@ -341,8 +335,8 @@ class DeviceEngine(CoreEngine):
 
                             target_file = os.path.join(current_run_folder, target_file)
 
-
-                            """FIX THIS!!!
+                            """
+                            align_data handles data using varying decimal identifiers('.' or ',') 
                             """
                             def align_data(file_path):
                                 decimal = '.'
@@ -357,18 +351,21 @@ class DeviceEngine(CoreEngine):
 
                             decimal = align_data(target_file)        
 
-                            
-
-                            #add pressure curve to list of curves for current method  
-                            curves_list.append(pd.read_csv(target_file, 
+                            pressure_file = pd.read_csv(target_file, 
                                                                 sep = ";",
                                                                 decimal = decimal,
                                                                 header = None, 
-                                                                names = cols))
+                                                                names = cols)
+                            
+                            curve_runtime = (int(pressure_file['Time'].max()) - int(pressure_file['Time'].min())) * 60 # convert to seconds
+
+                            #add pressure curve to list of curves for current method  
+                            curves_list.append(pressure_file)
                             
                             print(curve_header + ' : \n' + 'start date : ' + start_date_string)
                             print('end date : ' + end_date_string)
                             print('runtime : ' + str(runtime) + '\n')
+                            print('runtime observed from curve : ' + str(curve_runtime) + '\n')
                                             
                         except FileNotFoundError:
                             
@@ -403,12 +400,15 @@ class DeviceEngine(CoreEngine):
                         analysis_data = {'Method' : method_suffix, 
                                          'Sample' : curve_header, 
                                          'Runtype' : run_type,
+                                         'Batch position' : batch_position,
                                          'Start date' : start_date_string, 
                                          'Runtime' : runtime, 
                                          'Idle time' : "NA",
                                          'Number of Trials' : times_started, 
                                          'Curve' : curves_list[-1], 
                                          'Log' : log_data}
+                        
+                        
 
                         #add every encountered analysis to device history
                         self._history.update({analysis_name : analysis_data})    
@@ -470,13 +470,13 @@ class DeviceEngine(CoreEngine):
 
 
 
-    def get_features(self, data, features_list, smoothed):
+    def get_features(self, data, features_list, weighted):
         """
-        #Settings are decided in DeviceProcSettings and passed as data(dict) and features_list(list(str)) and smoothed(bool).
+        #Settings are decided in DeviceProcSettings and passed as data(dict) and features_list(list(str)) and weighted(bool).
         #additional features that complement information from given set of features are runtime and runtype/class label.
         
         """
-        smoothed = smoothed if isinstance(smoothed, bool) else False
+        weighted = weighted if isinstance(weighted, bool) else False
 
         #runtime of each sample indicates possible faults with the run
         runtime = {}
@@ -484,24 +484,45 @@ class DeviceEngine(CoreEngine):
         #runtype describes whether run was a flush(blank), a sample run or the first run of the day.
         runtype = {}
 
+        #batch position and component features.
+        bpos = {}
+        comp_features = {}
+
         #update each Device Pressure Analysis with its features in addition to creating the combined dataframe
         curve = data['Curve']
         #'pct_change' transformation is first used on pressure curves to emphasise focus on changes in the curve over time.
         #features extracted from 'pct_change' curves hepl better model curve behaviour.
         curve_features = curve.iloc[:, 1].agg(features_list)
                 
-        if smoothed == True:    
-            smoothed_curve_features = (curve.iloc[:, 1].agg('pct_change')*100).agg(features_list)
-            smoothed_curve_features.index = [f"{i}_percent_change" for i in smoothed_curve_features.index]
-            curve_features = smoothed_curve_features
+        if weighted == True:    
+            weighted_curve_features = (curve.iloc[:, 1].agg('pct_change')*100).agg(features_list)
+            weighted_curve_features.index = [f"{i}_percent_change" for i in weighted_curve_features.index]
+            curve_features = weighted_curve_features
                  
         runtime.update({data['Sample'] : data['Runtime']})
         runtype.update({data['Sample'] : data['Runtype']})
+        bpos.update({data['Sample'] : data['Batch position']})
 
-        run_features = pd.DataFrame([runtime, runtype], 
+        logs = data['Log']
+        
+        component_number = 0
+        comp_ids = []
+        #get component data(detector, ppump, sampler...)
+        for line in logs:
+            if line[0] == 'G':
+                component_id = line.split(' ')[0]
+                if component_id not in comp_ids:
+                    component_number = component_number + 1
+                    comp_ids.append(component_id)
+        for index in range(component_number):
+            comp_features.update({f'Component {index+1}' : comp_ids[index]}) 
+
+        #comp_features.update({data['Sample'] : data['Comp 1']})
+
+        run_features = pd.DataFrame([runtime, runtype, bpos], 
                                     columns=runtype.keys())
                 
-        run_features.index = ['Runtime', 'Runtype']
+        run_features.index = ['Runtime', 'Runtype', 'BatPos']
 
         curve_features = pd.concat([curve_features, run_features], axis = 0)
 
@@ -571,40 +592,38 @@ class DeviceEngine(CoreEngine):
     def scale_data(self, data, type, replace):
         """
         Scale data according to user input. Default values take over if no input.
-        should fix call to prepare_data()
+
         """ 
         prepared_data = self.prepare_data(data)
-        scaled_df = pd.DataFrame()
+        
 
         for data in prepared_data:
-            features_df = data.data['Features'].T
-            features = features_df.columns
-
-            for feature in features:
-
-                if type == 'minmax':
+            features_df = data.data['Features']
+            samples = features_df.columns
+            features = features_df.index
+            
+            if type == 'minmax':
                     mm = scaler.MinMaxScaler()
-                    scaled_data = mm.fit_transform(features_df[feature])
+                    scaled_data = mm.fit_transform(features_df)
 
-                elif type == 'std':
+            elif type == 'std':
                         std = scaler.StandardScaler()
-                        scaled_data = std.fit_transform(features_df[feature])
+                        scaled_data = std.fit_transform(features_df)
 
-                elif type == 'robust':
+            elif type == 'robust':
                         rob = scaler.RobustScaler()
-                        scaled_data = rob.fit_transform(features_df[feature])
+                        scaled_data = rob.fit_transform(features_df)
 
-                elif type == 'maxabs':
+            elif type == 'maxabs':
                         mabs = scaler.MaxAbsScaler()
-                        scaled_data = mabs.fit_transform(features_df[feature])
+                        scaled_data = mabs.fit_transform(features_df)
 
-                elif type == 'norm':
+            elif type == 'norm':
                         norm = scaler.Normalizer()
-                        scaled_data = norm.fit_transform(features_df[feature])
-
-                scaled_data = pd.Series(scaled_data, name = feature)
-                scaled_df = pd.concat([scaled_df, scaled_data])
-
+                        scaled_data = norm.fit_transform(features_df)
+             
+            scaled_df = pd.DataFrame(scaled_data, columns= samples, index= features)
+            ###FIX THIS
             if replace == False:
                     data.data.update({f"Features scaled" : scaled_df})
             else:
@@ -761,7 +780,7 @@ class DeviceEngine(CoreEngine):
         
         plot_data = anas_to_plot[0]
         df = curves[0]
-        new_method =  methods[0]
+        this_method =  methods[0]
         these_samples = [samples[0]]
 
         #list of newly created analysis objects to be plotted
@@ -772,7 +791,7 @@ class DeviceEngine(CoreEngine):
 
             next_method = methods[i]
 
-            if next_method == new_method:
+            if next_method == this_method:
                 df = pd.concat([df, next_curve], axis = 0)
 
                 features[0] = pd.concat([features[0], features[i]], axis = 0)
@@ -789,12 +808,11 @@ class DeviceEngine(CoreEngine):
                                            axis = 1)
                 
                 these_samples.append(samples[i])
-
+            #FIX THIS
             else:
                 plot_data.data['Curve'] = df
-
                 plot_data.data['Features'] = features[0]
-
+                
                 trends[0].columns = these_samples
                 seasonals[0].columns = these_samples
                 residuals[0].columns = these_samples
@@ -807,15 +825,23 @@ class DeviceEngine(CoreEngine):
                 noise_freqs[0].columns = these_samples
                 plot_data.data['Raw curve frequencies'] = raw_freqs[0]
                 plot_data.data['Curve seasonal frequencies'] = seasonal_freqs[0]
-                plot_data.data['Curve noise frequencies'] = noise_freqs[0]                
+                plot_data.data['Curve noise frequencies'] = noise_freqs[0]     
+               
+                features[0] = features[i]
+                trends[0] = trends[i]
+                seasonals[0] = seasonals[i]
+                residuals[0] = residuals[i]
+                raw_freqs[0] = raw_freqs[i]
+                seasonal_freqs[0] = seasonal_freqs[i]
+                noise_freqs[0] = noise_freqs[i]           
 
                 objects_list.append(DeviceAnalysis(name = plot_data.name, data = plot_data.data))
 
                 plot_data = anas_to_plot[i]
                 df = next_curve
-                these_samples = []
+                these_samples = [samples[i]]
 
-            new_method = next_method
+            this_method = next_method
         
         #loop ends before adding last item(when mismatched). Add this item to list of objects
         plot_data.data['Curve'] = df
@@ -841,7 +867,7 @@ class DeviceEngine(CoreEngine):
 
 
 
-    def plot_analyses(self, analyses=None):
+    def plot_analyses(self, analyses=None, interactive=True):
         """
         Plots each analysis dataframe by calling plot() function of respective DeviceAnalysis objects
 
@@ -852,12 +878,12 @@ class DeviceEngine(CoreEngine):
         objects_list = self.prepare_data(anas_to_plot)    
 
         for ana in objects_list:
-            ana.plot()
+            ana.plot(interactive=interactive)
             del ana
     
     
 
-    def plot_results(self, results=None, features='', type=None, scaled=True):
+    def plot_results(self, results=None, features='', type=None, scaled=True, interactive=True):
         """
         Plot the computed (and added) results of feature extraction, seasonal decomposition, fourier transform.
     
@@ -869,15 +895,15 @@ class DeviceEngine(CoreEngine):
         for ana in objects_list:        
 
             if features == 'base': 
-                ana.plot(features = True, type = type, scaled = scaled) 
+                ana.plot(features = True, type = type, scaled = scaled, interactive=interactive) 
                             
             elif features == 'decompose':
-                ana.plot(decomp = True, type = type) 
+                ana.plot(decomp = True, type = type, interactive=interactive) 
 
             elif features == 'transform':
-                ana.plot(transform = True, type = type)
+                ana.plot(transform = True, type = type, interactive=interactive)
 
             else:
-                ana.plot()
+                ana.plot(interactive=interactive)
 
             del ana
