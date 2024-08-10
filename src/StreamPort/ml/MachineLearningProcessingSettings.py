@@ -16,6 +16,7 @@ class MakeModel(ProcessingSettings):
 # Algorithm specific class
 class MakeModelPCASKL(MakeModel):
     def __init__(self, n_components = 2, center_data = True):
+        super().__init__()
         self.algorithm = "PCA"
         self.parameters = {
             "n_components": n_components,
@@ -23,7 +24,6 @@ class MakeModelPCASKL(MakeModel):
         }
         self.version = "1.4.2"
         self.software = "sklearn"
-        super().__init__()
 
     def run(self, engine):
         data = engine.get_data()
@@ -41,7 +41,8 @@ class MakeModelPCASKL(MakeModel):
         return {"pca_model": (pca_results, pca)}
 
 class MakeModelDBSCANSKL(MakeModel): # try to aply a different model to evaluate the different between the analyses
-    def __init__(self,eps=0.5, min_samples=5):
+    def __init__(self, eps = 0.5, min_samples = 5):
+        super().__init__()
         self.algorithm = "DBSCAN"
         self.parameters = {
             "eps": eps,
@@ -49,12 +50,12 @@ class MakeModelDBSCANSKL(MakeModel): # try to aply a different model to evaluate
         }
         self.version = "1.4.2"
         self.software = "sklearn"
-        super().__init__()
 
     def run(self, engine):
         data = engine.get_data()
-    
-        dbscan = DBSCAN(eps=self.parameters.get("eps", 0.5), min_samples=self.parameters.get("min_samples", 5))
+        eps = self.parameters.get("eps", 0.5)
+        min_samples = self.parameters.get("min_samples", 5)
+        dbscan = DBSCAN(eps = eps, min_samples = min_samples)
         dbscan_results = dbscan.fit(data)
         labels = dbscan_results.labels_
 
