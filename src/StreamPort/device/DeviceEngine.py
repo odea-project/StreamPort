@@ -21,6 +21,7 @@ import numpy as np
 #module to enable time decomposition
 from statsmodels.tsa.seasonal import seasonal_decompose
 from sklearn import preprocessing as scaler
+from sklearn import decomposition as analyser
 
 """
 GLOBAL VARIABLES
@@ -61,6 +62,7 @@ class DeviceEngine(CoreEngine):
 
         _method_ids (list(str)): List of all unique analyses identified by method and date of experiment.
 
+        _components(str/list(str)): List of all components involved in runs on this device.
 
     Methods: (specified are methods only belonging to child class or modified to fit child class specifications. For superclass methods, see CoreEngine)
 
@@ -102,9 +104,10 @@ class DeviceEngine(CoreEngine):
     #list of unique Method IDs 
     _method_ids = []
 
-    
+    #list of unique components
+    _components = []
 
-    def __init__(self, headers=None, settings=None, analyses=None, history=None, source =None, method_ids=None):
+    def __init__(self, headers=None, settings=None, analyses=None, history=None, source =None, method_ids=None, components=None):
         
         #initialize superclass attributes for assignment to child class.
         super().__init__(headers, settings, analyses, history)
@@ -112,6 +115,7 @@ class DeviceEngine(CoreEngine):
         #unique variable for each device. Stores full path to the source of data to be imported and processed. 
         self._source = r'{}'.format(source) if not isinstance(source, type(None)) else r'{}'.format(os.getcwd())
         self._method_ids = [] if isinstance(method_ids, type(None)) else method_ids
+        self._components = [] if isinstance(components, type(None)) else components
 
 
 
@@ -257,13 +261,24 @@ class DeviceEngine(CoreEngine):
                         times_started = 0
                         log_data = []
                         with open(run_file, encoding = character_encoding) as f:                                  
+                            component_number = 0
+                            comp_ids = []
                             for line in f:
                                 log_data.append(line)
+                     
+                                #get component data(detector, ppump, sampler...)
+                                if line[0] == 'G':
+                                    component_id = line.split(' ')[0]
+                                    if component_id not in self._components:
+                                        self._components.append(component_id)
+                                    if component_id not in comp_ids:
+                                        component_number = component_number + 1
+                                        comp_ids.append(component_id)
 
                                 if "blank" in line:
                                     blank_identifier = 1
 
-                                if "Method started" in line:
+                                if "Run" in line:
                                     
                                     times_started = times_started + 1
                                     start_date_string = datetime_pattern.search(line).group()
@@ -271,7 +286,7 @@ class DeviceEngine(CoreEngine):
                                     if not isinstance(start_date, datetime):
                                         start_date = start_date.strftime('%m/%d/%Y %H:%M:%S')
 
-                                elif "Method completed" in line:
+                                elif "Postrun" in line:
                                     
                                     end_date_string = datetime_pattern.search(line).group()
                                     end_date = datetime.strptime(end_date_string, format)
@@ -386,7 +401,7 @@ class DeviceEngine(CoreEngine):
                         if curve_header:
                             #if pressure curve exists for current analysis, mention in analysis key
                             #experiment date and method ID as identifier for analysis name. Name is name from Analyses object             
-                            analysis_name = f"Device Pressure Analysis - {method_suffix} | Start time: {start_date_string}"
+                            analysis_name = f"Device Pressure Analysis - {method_suffix}| Start time: {start_date_string}"
                             analysis_type = 'pressure'
 
                         else:
@@ -408,7 +423,8 @@ class DeviceEngine(CoreEngine):
                                          'Curve' : curves_list[-1], 
                                          'Log' : log_data}
                         
-                        
+                        for index in range(component_number):
+                                analysis_data.update({f'Component {index+1}' : comp_ids[index]}) 
 
                         #add every encountered analysis to device history
                         self._history.update({analysis_name : analysis_data})    
@@ -481,7 +497,7 @@ class DeviceEngine(CoreEngine):
         #runtime of each sample indicates possible faults with the run
         runtime = {}
 
-        #runtype describes whether run was a flush(blank), a sample run or the first run of the day.
+        #runtype describes whether run was a blank or a sample run
         runtype = {}
 
         #batch position and component features.
@@ -507,7 +523,7 @@ class DeviceEngine(CoreEngine):
         
         component_number = 0
         comp_ids = []
-        #get component data(detector, ppump, sampler...)
+        #get component data(detector, pump, sampler...)
         for line in logs:
             if line[0] == 'G':
                 component_id = line.split(' ')[0]
@@ -517,7 +533,6 @@ class DeviceEngine(CoreEngine):
         for index in range(component_number):
             comp_features.update({f'Component {index+1}' : comp_ids[index]}) 
 
-        #comp_features.update({data['Sample'] : data['Comp 1']})
 
         run_features = pd.DataFrame([runtime, runtype, bpos], 
                                     columns=runtype.keys())
@@ -587,50 +602,82 @@ class DeviceEngine(CoreEngine):
         #return transformed data. 
         return data
 
+    
+
+    def add_features(self, resolution = 10):
+        """
+        Add features engineered from seasonal decomposition and fourier transform to features-matrix to improve classification
+
+        """
+        def bin_frequencies(self, resolution = resolution):
+
+            analyses = self.get_analyses()
+
+            for ana in analyses:
+                data = ana.data
+                seasonal_freqs = data['Curve seasonal frequencies']
+                min_seasonal = min(seasonal_freqs)
+                max_seasonal = max(seasonal_freqs)
+
+                num_datapoints = len(seasonal_freqs)
+                num_bins = num_datapoints/resolution
+
+                noise_freqs = data['Curve noise frequencies']
+                min_noise = min(noise_freqs)
+                max_noise = max(noise_freqs)
+            return
+        
+        return
+    
 
 
-    def scale_data(self, data, type, replace):
+    def scale_features(self, data, type='minmax', replace=False):
         """
         Scale data according to user input. Default values take over if no input.
+        Returns list of changed data dicts.
 
         """ 
         prepared_data = self.prepare_data(data)
         
+        results = {}
 
-        for data in prepared_data:
-            features_df = data.data['Features']
+        for ana in prepared_data:
+            
+
+            features_df = ana.data['Features']
             samples = features_df.columns
             features = features_df.index
             
             if type == 'minmax':
                     mm = scaler.MinMaxScaler()
-                    scaled_data = mm.fit_transform(features_df)
+                    scaled_data = mm.fit_transform(features_df.T)
 
             elif type == 'std':
                         std = scaler.StandardScaler()
-                        scaled_data = std.fit_transform(features_df)
+                        scaled_data = std.fit_transform(features_df.T)
 
             elif type == 'robust':
                         rob = scaler.RobustScaler()
-                        scaled_data = rob.fit_transform(features_df)
+                        scaled_data = rob.fit_transform(features_df.T)
 
             elif type == 'maxabs':
                         mabs = scaler.MaxAbsScaler()
-                        scaled_data = mabs.fit_transform(features_df)
+                        scaled_data = mabs.fit_transform(features_df.T)
 
             elif type == 'norm':
                         norm = scaler.Normalizer()
-                        scaled_data = norm.fit_transform(features_df)
+                        scaled_data = norm.fit_transform(features_df.T)
              
-            scaled_df = pd.DataFrame(scaled_data, columns= samples, index= features)
-            ###FIX THIS
+            scaled_df = pd.DataFrame(scaled_data.T, columns= samples, index= features)
+            
             if replace == False:
-                    data.data.update({f"Features scaled" : scaled_df})
+                    ana.data.update({'Features scaled' : scaled_df})
             else:
-                    data.data.update({'Features' : scaled_df})
+                    ana.data.update({'Features' : scaled_df})
 
+            results.update({f"{ana.name}_scaled" : ana.data})
         #return transformed data. 
-        return prepared_data
+        return results
 
 
 
@@ -653,9 +700,9 @@ class DeviceEngine(CoreEngine):
 
         if isinstance(results, str):
             result_dict = {}
-            result_pattern = re.compile('^.+' + results + '.+$')
+            
             for key in self._results:
-                if re.match(result_pattern, key):
+                if results in key:
                     result_dict.update({key : self._results[key]}) 
             
         elif isinstance(results, int) and results < len(self._results):
@@ -666,13 +713,12 @@ class DeviceEngine(CoreEngine):
             results_out = {}
             for result in results:
                 if isinstance(result, str):
-                    result_pattern = re.compile('^.+' + result + '.+$')
                     for key in self._results:
-                        if re.match(result_pattern, key):
-                            results_out.update({key : self._results[key]}) 
+                        if result in key:
+                            results_out.update({key : self._results[key]})
                 elif isinstance(result, int) and result < len(self._results):
-                    key_list = self._results.keys()
-                    results_out.update({key_list[results] : self._results[key_list[results]]})
+                    key_list = list(self._results.keys())
+                    results_out.update({key_list[result] : self._results[key_list[result]]})
             result_dict = results_out
 
         elif results == None:
@@ -778,91 +824,98 @@ class DeviceEngine(CoreEngine):
             noise_freqs.append(method['Curve noise frequencies'])
             methods.append(method['Method'])
         
-        plot_data = anas_to_plot[0]
         df = curves[0]
         this_method =  methods[0]
         these_samples = [samples[0]]
 
+        new_data = {}
+
         #list of newly created analysis objects to be plotted
         objects_list = []
-        
-        for i in range(1, num_analyses):            
-            next_curve = curves[i]
 
-            next_method = methods[i]
+        if num_analyses <= 1:
+            objects_list = anas_to_plot
+        else:
+            for i in range(1, num_analyses):            
+                next_curve = curves[i]
 
-            if next_method == this_method:
-                df = pd.concat([df, next_curve], axis = 0)
+                next_method = methods[i]
 
-                features[0] = pd.concat([features[0], features[i]], axis = 0)
+                if next_method == this_method:
+                    df = pd.merge(df, next_curve, on='Time')
 
-                trends[0] = pd.concat([trends[0], trends[i]], axis = 1)
-                seasonals[0] = pd.concat([seasonals[0], seasonals[i]], axis = 1)
-                residuals[0] = pd.concat([residuals[0], residuals[i]], axis = 1)
+                    features[0] = pd.concat([features[0], features[i]], axis = 1)
 
-                raw_freqs[0] = pd.concat( [ raw_freqs[0], raw_freqs[i] ], 
-                                               axis = 1)
-                seasonal_freqs[0] = pd.concat( [ seasonal_freqs[0], seasonal_freqs[i] ], 
-                                               axis = 1)
-                noise_freqs[0] = pd.concat([noise_freqs[0], noise_freqs[i]], 
-                                           axis = 1)
+                    trends[0] = pd.concat([trends[0], trends[i]], axis = 1)
+                    seasonals[0] = pd.concat([seasonals[0], seasonals[i]], axis = 1)
+                    residuals[0] = pd.concat([residuals[0], residuals[i]], axis = 1)
+
+                    raw_freqs[0] = pd.concat( [ raw_freqs[0], raw_freqs[i] ], 
+                                                axis = 1)
+                    seasonal_freqs[0] = pd.concat( [ seasonal_freqs[0], seasonal_freqs[i] ], 
+                                                axis = 1)
+                    noise_freqs[0] = pd.concat([noise_freqs[0], noise_freqs[i]], 
+                                            axis = 1)
+                    
+                    these_samples.append(samples[i])
+                #FIX THIS
+                else:
+                    new_data.update({'Sample' : df.columns})
+                    new_data.update({'Method' : this_method})
+                    new_data.update({'Curve' : df})
+                    new_data.update({'Features' : features[0]}) 
+                    
+                    trends[0].columns = these_samples
+                    seasonals[0].columns = these_samples
+                    residuals[0].columns = these_samples
+                    new_data.update({'Trend' : trends[0]}) 
+                    new_data.update({'Seasonal' : seasonals[0]})
+                    new_data.update({'Residual' : residuals[0]})
+
+                    raw_freqs[0].columns = these_samples
+                    seasonal_freqs[0].columns = these_samples
+                    noise_freqs[0].columns = these_samples
+                    new_data.update({'Raw curve frequencies' : raw_freqs[0]})  
+                    new_data.update({'Curve seasonal frequencies' : seasonal_freqs[0]}) 
+                    new_data.update({'Curve noise frequencies' : noise_freqs[0]})     
                 
-                these_samples.append(samples[i])
-            #FIX THIS
-            else:
-                plot_data.data['Curve'] = df
-                plot_data.data['Features'] = features[0]
-                
-                trends[0].columns = these_samples
-                seasonals[0].columns = these_samples
-                residuals[0].columns = these_samples
-                plot_data.data['Trend'] = trends[0]
-                plot_data.data['Seasonal'] = seasonals[0]
-                plot_data.data['Residual'] = residuals[0]
+                    features[0] = features[i]
+                    trends[0] = trends[i]
+                    seasonals[0] = seasonals[i]
+                    residuals[0] = residuals[i]
+                    raw_freqs[0] = raw_freqs[i]
+                    seasonal_freqs[0] = seasonal_freqs[i]
+                    noise_freqs[0] = noise_freqs[i]           
 
-                raw_freqs[0].columns = these_samples
-                seasonal_freqs[0].columns = these_samples
-                noise_freqs[0].columns = these_samples
-                plot_data.data['Raw curve frequencies'] = raw_freqs[0]
-                plot_data.data['Curve seasonal frequencies'] = seasonal_freqs[0]
-                plot_data.data['Curve noise frequencies'] = noise_freqs[0]     
-               
-                features[0] = features[i]
-                trends[0] = trends[i]
-                seasonals[0] = seasonals[i]
-                residuals[0] = residuals[i]
-                raw_freqs[0] = raw_freqs[i]
-                seasonal_freqs[0] = seasonal_freqs[i]
-                noise_freqs[0] = noise_freqs[i]           
+                    objects_list.append(DeviceAnalysis(name = this_method, data = new_data))
 
-                objects_list.append(DeviceAnalysis(name = plot_data.name, data = plot_data.data))
+                    
+                    df = next_curve
+                    these_samples = [samples[i]]
 
-                plot_data = anas_to_plot[i]
-                df = next_curve
-                these_samples = [samples[i]]
+                this_method = next_method
 
-            this_method = next_method
-        
-        #loop ends before adding last item(when mismatched). Add this item to list of objects
-        plot_data.data['Curve'] = df
-        plot_data.data['Features'] = features[0]
-       
-        trends[0].name = samples[-1]
-        seasonals[0].name = samples[-1]
-        residuals[0].name = samples[-1]
-        plot_data.data['Trend'] = trends[0]
-        plot_data.data['Seasonal'] = seasonals[0]
-        plot_data.data['Residual'] = residuals[0]
+            """
+            #loop ends before adding last item(when mismatched). Add this item to list of objects
+            new_data.update({'Curve' : df})
+            new_data.update({'Sample' : df.columns})
+            new_data.update({'Method' : this_method})
+            new_data.update({'Features' : features[0]})        
+            trends[0].name = samples[-1]
+            seasonals[0].name = samples[-1]
+            residuals[0].name = samples[-1]
+            new_data.update({'Trend' : trends[0]}) 
+            new_data.update({'Seasonal' : seasonals[0]})
+            new_data.update({'Residual' : residuals[0]})
 
-        raw_freqs[0].name = samples[-1]
-        seasonal_freqs[0].name = samples[-1]
-        noise_freqs[0].name = samples[-1]
-        plot_data.data['Raw curve frequencies'] = raw_freqs[0]
-        plot_data.data['Curve seasonal frequencies'] = seasonal_freqs[0]
-        plot_data.data['Curve noise frequencies'] = noise_freqs[0] 
-                
-        objects_list.append(DeviceAnalysis(name = plot_data.name, data = plot_data.data))
-        
+            raw_freqs[0].name = samples[-1]
+            seasonal_freqs[0].name = samples[-1]
+            noise_freqs[0].name = samples[-1]
+            new_data.update({'Raw curve frequencies' : raw_freqs[0]})  
+            new_data.update({'Curve seasonal frequencies' : seasonal_freqs[0]}) 
+            new_data.update({'Curve noise frequencies' : noise_freqs[0]})  
+            objects_list.append(DeviceAnalysis(name = this_method, data = new_data))
+            """
         return objects_list
 
 
@@ -892,6 +945,18 @@ class DeviceEngine(CoreEngine):
 
         objects_list = self.prepare_data(result_dict)
 
+        #incase scaled in activated
+        scaled_result_keys = []
+        for key in list(result_dict):
+            if 'scale' in key:
+                scaled_result_keys.append(key)
+
+        if scaled == True:
+            objects_list = []
+            result_dict = self.get_results(scaled_result_keys)
+            for scaled_key in list(result_dict):
+                objects_list.append(DeviceAnalysis(name=scaled_key, data = result_dict[scaled_key]))
+    
         for ana in objects_list:        
 
             if features == 'base': 
@@ -907,3 +972,29 @@ class DeviceEngine(CoreEngine):
                 ana.plot(interactive=interactive)
 
             del ana
+
+
+
+    def make_pca(self, results):
+
+        analysed_dict = {}
+        for key in list(results):
+            data = results[key]
+            scaled_features = data['Features'].T
+            for name in list(data):
+                if 'scaled' in name:
+                    scaled_features = data[name].T
+
+            pca = analyser.PCA()
+            pca.fit_transform(scaled_features)
+            print('Components:\n')
+            print(pca.components_)
+            print('Explained variance ratio:\n')
+            print(pca.explained_variance_ratio_)
+            analysed_dict.update({key:pca})
+
+        for key in list(analysed_dict):
+            print(analysed_dict[key])
+            
+        return analysed_dict
+        

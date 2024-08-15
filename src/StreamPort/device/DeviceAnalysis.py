@@ -63,7 +63,7 @@ class DeviceAnalysis(Analysis):
         if not isinstance(self.blank, str):
             pass
 
-        for i in self.data:
+        for i in list(self.data):
             dict_list = self.data[i]     
             if isinstance(dict_list, dict) or isinstance(dict_list, list):
                 pass
@@ -105,7 +105,9 @@ class DeviceAnalysis(Analysis):
             features: input to toggle whether feature plot should be made.
             decomp: input to toggle seasonal components of curves.
             transform: input to toggle fourier transform of raw - and corresponding seasonal - curves.
-            interactive: Set interactive or not. 
+            interactive: Set interactive or not. Defaults to True.
+            type: Set 'box' plots or regular 'scatter' plots.
+            scaled: Plot scaled version of data. Defaults to True
         ***Note***features, decomp and transform may only be plotted one at a time. 
         """
         #Initialize traces and buttons
@@ -121,7 +123,7 @@ class DeviceAnalysis(Analysis):
         samples = samples.columns
         num_labels = len(samples)
 
-        #distinct set of colors selected for each of the samples
+        #distinct set of high-contrast colors selected for each of the samples
         colors_list = [f'hsv({i*360/num_labels}, 100%, 100%)' for i in range(num_labels)]
         #randomly insert black and gray to improve contrast
         colors_list.insert(random.randint(0, num_labels-1), 'black')

@@ -1,5 +1,5 @@
 from src.StreamPort.core.ProcessingSettings import ProcessingSettings
-
+from src.StreamPort.device import DeviceAnalysis
 
 # Processing method specific class
 class ExtractFeatures(ProcessingSettings):
@@ -103,12 +103,12 @@ class FourierTransform(ExtractFeatures):
 
 class Scaler(ProcessingSettings):
   """
-  Scale data based on user input. Defaults to Normalizer
+  Scale data based on user input. Defaults to MinMaxScaler
 
   """
   def __init__(self, parameters= None, replace= None):
     super().__init__() 
-    self.parameters = 'norm' if isinstance(parameters, type(None)) else parameters
+    self.parameters = 'minmax' if isinstance(parameters, type(None)) else parameters
     self.replace = replace if not isinstance(replace, type(None)) else False
     self.algorithm = "scaling"
 
@@ -121,8 +121,31 @@ class Scaler(ProcessingSettings):
       for analysis in analyses:
         results.update({analysis.name: analysis.data})
     
-    scaled_data = engine.scale_data(results, self.parameters, self.replace)
-    for data in scaled_data:
-      results.update({data.name : data.data})
+    scaled_data = engine.scale_features(results, self.parameters, self.replace)
+    
+    return scaled_data
+  
 
-    return results
+
+class PCA(ProcessingSettings):
+  """
+  Perform PCA on scaled data
+
+  """
+  def __init__(self):
+    super().__init__() 
+    self.algorithm = "Classification"
+
+  def run(self, engine):
+    if engine._results.__len__() > 0:
+      results = engine._results
+    else:
+      results = {}
+      analyses = engine.get_results()
+      for analysis in list(analyses):
+        if 'scaled' in analysis:
+          results.update({analysis : analyses[analysis]})
+    
+    classified_data = engine.make_pca(results)
+    
+    return classified_data
