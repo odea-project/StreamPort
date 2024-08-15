@@ -333,28 +333,58 @@ class MachineLearningEngine(CoreEngine):
             print("No classes found")
             return None
         
-        data=self.get_data()
-        pca = PCA(n_components=2)  
-        dbscan_data = pca.fit_transform(data) 
-        
-        dbscan_comp1 = dbscan_data[:, 0]
-        dbscan_comp2 = dbscan_data[:, 1]
+        # Plot the results
+        plt.figure(figsize=(10, 8))
 
-        unique_labels = np.unique(dbscan_results)
-        colors = plt.cm.Spectral(np.linspace(0, 1, len(unique_labels)))
+        # Unique labels
+        fitted_model = dbscan_results[0]
+        labels = fitted_model.labels_
 
-        for label, color in zip(unique_labels, colors):
-            if label == -1:
-                
-                color = "black"
+        # print labes to console
+        print("Estimated number of clusters: %d" % len(set(labels)))
 
-            class_member_mask = (dbscan_results == label)
-            xy = dbscan_data[class_member_mask]
-            plt.scatter(xy[:, 0], xy[:, 1], color=color, edgecolor='k', label=f'Cluster {label}')
+        unique_labels = set(labels)
+        colors = [plt.cm.Spectral(each) for each in np.linspace(0, 1, len(unique_labels))]
 
-        plt.scatter(dbscan_comp1, dbscan_comp2, alpha=0.2)
-        plt.xlabel('comp1')
-        plt.ylabel('comp2')
-        plt.title('DBSCAN Clustering')
-        plt.colorbar(label='Cluster Label')
+        data = self.get_data()
+
+        for k, col in zip(unique_labels, colors):
+            if k == -1:
+                # Black used for noise.
+                col = [0, 0, 0, 1]
+
+            class_member_mask = (labels == k)
+
+            xy = data[class_member_mask]
+            plt.plot(xy[:, 0], xy[:, 1], 'o', markerfacecolor=tuple(col), markeredgecolor='k', markersize=6)
+
+            for i in range(len(xy)):
+                plt.annotate(classes[class_member_mask][i], (xy[i, 0], xy[i, 1]))
+
+        plt.title('DBSCAN Clustering Results')
+        plt.xlabel('Feature 1')
+        plt.ylabel('Feature 2')
         plt.show()
+        
+        
+        # dbscan_comp1 = dbscan_data[:, 0]
+        # dbscan_comp2 = dbscan_data[:, 1]
+
+        # unique_labels = np.unique(dbscan_results)
+        # colors = plt.cm.Spectral(np.linspace(0, 1, len(unique_labels)))
+
+        # for label, color in zip(unique_labels, colors):
+        #     if label == -1:
+                
+        #         color = "black"
+
+        #     class_member_mask = (dbscan_results == label)
+        #     xy = dbscan_data[class_member_mask]
+        #     plt.scatter(xy[:, 0], xy[:, 1], color=color, edgecolor='k', label=f'Cluster {label}')
+
+        # plt.scatter(dbscan_comp1, dbscan_comp2, alpha=0.2)
+        # plt.xlabel('comp1')
+        # plt.ylabel('comp2')
+        # plt.title('DBSCAN Clustering')
+        # plt.colorbar(label='Cluster Label')
+        # plt.show()
