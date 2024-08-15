@@ -15,16 +15,21 @@ import re
 #chardet is used to extract the encoding of a given file to be handled instead of specifying it explicitly. Adds to program robustness
 import chardet
 
+#import modules to handle data
 import pandas as pd
 import numpy as np
 
 #module to enable time decomposition
 from statsmodels.tsa.seasonal import seasonal_decompose
+
+#import ML packages
 from sklearn import preprocessing as scaler
 from sklearn import decomposition as analyser
+from sklearn.ensemble import IsolationForest as iso
 
 """
-GLOBAL VARIABLES
+GLOBAL VARIABLES:
+To be used by every DeviceEngine object to handle data. Data across devices and methods will use the same global variables
 """
 
 
@@ -791,7 +796,7 @@ class DeviceEngine(CoreEngine):
 
 
 
-    def prepare_data(self, data_list):
+    def prepare_data(self, data_list, group_by = 'method'):
         """
         Group and organize data appropriately into unique set of runs/experiments using method ids and dates.
         Args:
@@ -804,7 +809,11 @@ class DeviceEngine(CoreEngine):
             anas_to_plot = data_list 
 
         elif isinstance(data_list, dict):
-            anas_to_plot = [DeviceAnalysis(name = res, data = data_list[res]) for res in list(data_list)]
+            anas_to_plot = []
+            for res in list(data_list):
+                if 'scaled' not in res:
+                    new_obj = DeviceAnalysis(name = res, data = data_list[res])
+                    anas_to_plot.append(new_obj)
         
         num_analyses = len(anas_to_plot)
         
@@ -813,8 +822,24 @@ class DeviceEngine(CoreEngine):
 
         for ana in anas_to_plot:
             method = ana.data
+            method_name = method['Method']
+            if group_by == 'method':
+                new_method_name = method['Method'].split(' ')[0]
+                pattern = r'\d{6}'
+                # Substitute the 6-digit numbers with an empty string
+                result = re.sub(pattern, '', new_method_name)
+                # Remove any leading or trailing underscores
+                for charindex in range(len(result)):
+                    if charindex == (0 or 1 or -2 or -1) and result[charindex] == '_':
+                        result = result.replace(result[charindex], '', 1)
+
+                new_method_name = result
+                samples.append(f"{method_name}_{method['Sample']}")
+                methods.append(new_method_name)
+            else:
+                samples.append(method['Sample'])
+                methods.append(method_name)
             curves.append(method['Curve'])
-            samples.append(method['Sample'])
             features.append(method['Features'])
             trends.append(method['Trend'])
             seasonals.append(method['Seasonal'])
@@ -822,7 +847,7 @@ class DeviceEngine(CoreEngine):
             raw_freqs.append(method['Raw curve frequencies'])
             seasonal_freqs.append(method['Curve seasonal frequencies'])
             noise_freqs.append(method['Curve noise frequencies'])
-            methods.append(method['Method'])
+            
         
         df = curves[0]
         this_method =  methods[0]
@@ -841,8 +866,11 @@ class DeviceEngine(CoreEngine):
 
                 next_method = methods[i]
 
-                if next_method == this_method:
+                if next_method in this_method or this_method in next_method:
+                    these_samples.append(samples[i])
+                    current_columns = list(df.columns[1:])
                     df = pd.merge(df, next_curve, on='Time')
+                    df.rename(columns={old:new for old,new in zip(current_columns, these_samples)}, inplace=True)                 
 
                     features[0] = pd.concat([features[0], features[i]], axis = 1)
 
@@ -857,12 +885,16 @@ class DeviceEngine(CoreEngine):
                     noise_freqs[0] = pd.concat([noise_freqs[0], noise_freqs[i]], 
                                             axis = 1)
                     
-                    these_samples.append(samples[i])
                 #FIX THIS
                 else:
-                    new_data.update({'Sample' : df.columns})
+                    new_data.update({'Sample' : these_samples})
                     new_data.update({'Method' : this_method})
+                    
+                    current_columns = list(df.columns[1:])
+                    df.rename(columns={old:new for old,new in zip(current_columns, these_samples)}, inplace=True)
                     new_data.update({'Curve' : df})
+
+                    features[0].columns = these_samples
                     new_data.update({'Features' : features[0]}) 
                     
                     trends[0].columns = these_samples
@@ -894,33 +926,38 @@ class DeviceEngine(CoreEngine):
                     these_samples = [samples[i]]
 
                 this_method = next_method
-
-            """
+  
             #loop ends before adding last item(when mismatched). Add this item to list of objects
-            new_data.update({'Curve' : df})
-            new_data.update({'Sample' : df.columns})
+            new_data.update({'Sample' : these_samples})
             new_data.update({'Method' : this_method})
-            new_data.update({'Features' : features[0]})        
-            trends[0].name = samples[-1]
-            seasonals[0].name = samples[-1]
-            residuals[0].name = samples[-1]
+            
+            current_columns = list(df.columns[1:])
+            df.rename(columns={old:new for old,new in zip(current_columns, these_samples)}, inplace=True)
+            new_data.update({'Curve' : df})
+
+            features[0].columns = these_samples
+            new_data.update({'Features' : features[0]})
+            
+            trends[0].columns = these_samples
+            seasonals[0].columns = these_samples
+            residuals[0].columns = these_samples
             new_data.update({'Trend' : trends[0]}) 
             new_data.update({'Seasonal' : seasonals[0]})
             new_data.update({'Residual' : residuals[0]})
 
-            raw_freqs[0].name = samples[-1]
-            seasonal_freqs[0].name = samples[-1]
-            noise_freqs[0].name = samples[-1]
+            raw_freqs[0].columns = these_samples
+            seasonal_freqs[0].columns = these_samples
+            noise_freqs[0].columns = these_samples
             new_data.update({'Raw curve frequencies' : raw_freqs[0]})  
             new_data.update({'Curve seasonal frequencies' : seasonal_freqs[0]}) 
             new_data.update({'Curve noise frequencies' : noise_freqs[0]})  
             objects_list.append(DeviceAnalysis(name = this_method, data = new_data))
-            """
+            
         return objects_list
 
 
 
-    def plot_analyses(self, analyses=None, interactive=True):
+    def plot_analyses(self, analyses=None, interactive=True, group_by = 'method'):
         """
         Plots each analysis dataframe by calling plot() function of respective DeviceAnalysis objects
 
@@ -928,7 +965,7 @@ class DeviceEngine(CoreEngine):
         #retrieve list of analysis objects based on user input 
         anas_to_plot = self.get_analyses(analyses)
 
-        objects_list = self.prepare_data(anas_to_plot)    
+        objects_list = self.prepare_data(anas_to_plot, group_by=group_by)    
 
         for ana in objects_list:
             ana.plot(interactive=interactive)
@@ -936,16 +973,16 @@ class DeviceEngine(CoreEngine):
     
     
 
-    def plot_results(self, results=None, features='', type=None, scaled=True, interactive=True):
+    def plot_results(self, results=None, features='', type=None, scaled=True, interactive=True, transpose=False, group_by = 'method'):
         """
         Plot the computed (and added) results of feature extraction, seasonal decomposition, fourier transform.
     
         """
         result_dict = self.get_results(results)
 
-        objects_list = self.prepare_data(result_dict)
+        objects_list = self.prepare_data(result_dict, group_by=group_by)
 
-        #incase scaled in activated
+        #incase scaled is activated
         scaled_result_keys = []
         for key in list(result_dict):
             if 'scale' in key:
@@ -960,7 +997,7 @@ class DeviceEngine(CoreEngine):
         for ana in objects_list:        
 
             if features == 'base': 
-                ana.plot(features = True, type = type, scaled = scaled, interactive=interactive) 
+                ana.plot(features = True, type = type, scaled = scaled, interactive=interactive, transpose=transpose) 
                             
             elif features == 'decompose':
                 ana.plot(decomp = True, type = type, interactive=interactive) 

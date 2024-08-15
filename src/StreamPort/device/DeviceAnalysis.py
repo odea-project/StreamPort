@@ -98,7 +98,7 @@ class DeviceAnalysis(Analysis):
       
         
 
-    def plot(self, interactive = True, features = False, decomp = False, transform = False, type = None, scaled = True):
+    def plot(self, interactive = True, features = False, decomp = False, transform = False, type = None, scaled = True, transpose=False):
         """
         Plots analyses data based on user input. Plots pressure curves by default.
         Args:
@@ -108,65 +108,91 @@ class DeviceAnalysis(Analysis):
             interactive: Set interactive or not. Defaults to True.
             type: Set 'box' plots or regular 'scatter' plots.
             scaled: Plot scaled version of data. Defaults to True
+            transpose: Plot transposed dataframe. Applies only to features matrix/dataframe.
         ***Note***features, decomp and transform may only be plotted one at a time. 
         """
-        #Initialize traces and buttons
+        #Initialize traces and buttons. num_figs and feature_flag will be dynamically adapted to desired plot type
         curves = {}          
         num_figs = 1
         feature_flag = 0
         data = self.data    
         
+        #set samples and plot structure preliminarily. Absence of arguments prints pressure curves.
         time_axis = data['Curve']['Time']
         identifier = data['Method'] 
- 
         samples = data['Curve'].drop(['Time'], axis=1)
         samples = samples.columns
+
+        #check and set given arguments. Strictness here increases program robustness.
+        if features == True:
+            decomp = False
+            transform = False
+            time_axis = data['Features'].index
+            features_df = data['Features']
+            feature_flag = 1
+            if scaled == True:
+                title_suffix = 'features(scaled)'
+                if 'Features scaled' in list(data):
+                    features_df = data['Features scaled']
+            else:
+                title_suffix = 'features'
+
+            if transpose == True:
+                samples = data['Features'].index
+                features_df = features_df.T
+                time_axis = data['Features'].columns
+                    
+        elif decomp == True :
+            transform = False
+            features = False
+            transpose = False
+            scaled = False
+            num_figs = 3
+            title_suffix = 'components'
+            feature_flag = 2
+
+        elif transform == True:
+            features = False
+            decomp = False                   
+            transpose = False
+            scaled = False
+            num_figs =  3
+            title_suffix = 'frequencies'
+            feature_flag = 3
+
+        else:
+            title_suffix = 'Curve(s)'
+            
         num_labels = len(samples)
 
-        #distinct set of high-contrast colors selected for each of the samples
+        #distinct set of high-contrast colors selected for each label
         colors_list = [f'hsv({i*360/num_labels}, 100%, 100%)' for i in range(num_labels)]
         #randomly insert black and gray to improve contrast
         colors_list.insert(random.randint(0, num_labels-1), 'black')
         colors_list.insert(random.randint(0, num_labels-1), 'gray')
 
+        #populate dictionary with values to be plotted along with argument-related adaptations
         for sample in samples:
             if features == True:
-                    decomp = False
-                    transform = False
-                    curves.update({sample : (data['Features'][sample])})
-                    if scaled == True and 'Features scaled' in list(data):
-                        curves.update({sample : (data['Features scaled'][sample])}) 
-                        title_suffix = 'features(scaled)'
-                    else:
-                        title_suffix = 'features'
-                    feature_flag = 1
-                    time_axis = data['Features'].index
+                    feature_dict={sample : (features_df[sample])}
+                    curves.update(feature_dict)
                     
             elif decomp == True :
-                    transform = False
-                    features = False
-                    num_figs = 3
-                    curves.update({sample : (data['Trend'][sample], 
-                                                        data['Seasonal'][sample], 
-                                                        data['Residual'][sample])}) 
-                    title_suffix = 'components'
+                    curves.update(
+                                  {sample : (data['Trend'][sample], 
+                                            data['Seasonal'][sample], 
+                                            data['Residual'][sample])}
+                                 ) 
 
-            elif transform == True:
-                    features = False
-                    decomp = False                   
+            elif transform == True:               
                     curves.update({sample : (data['Raw curve frequencies'][sample], 
                                             data['Curve seasonal frequencies'][sample], 
-                                            data['Curve noise frequencies'][sample])})
-                    num_figs =  3
-                    title_suffix = 'frequencies'
+                                            data['Curve noise frequencies'][sample])}
+                                 )
 
             else:
                     curves.update({sample : data['Curve'][sample]}) 
-                    title_suffix = 'Curve(s)'
-        
-        plot_type = 0
-        if type == 'box':
-             plot_type = 1     
+
         # Create subplots with the specified number of rows
         fig = make_subplots(rows=num_figs, cols=1, shared_xaxes=True)
         for index, sample_name in enumerate(list(curves)):
@@ -179,14 +205,20 @@ class DeviceAnalysis(Analysis):
             
                 if feature_flag == 1:
                     xtext = "Features"
-                elif num_figs == 3 and 'frequencies' in curve:
-                    ytext = ["Amplitude(Raw)", "Amplitude(Seasonal)", "Amplitude(Residual)"]
-                    xtext = "Frequencies"
-                elif num_figs == 3 and not 'frequencies' in curve:
+                    if scaled == True:
+                         xtext = "Features(scaled)"
+                         ytext = "Values(scaled)"
+                    if transpose == True:
+                         xtext = "Samples"
+                         ytext = "Features"
+                elif feature_flag == 3:
+                    ytext = ["Frequencies(Raw)", "Frequencies(Snl)", "Frequencies(Rsd)"]
+                elif feature_flag == 2:
                     ytext = ["Trend", "Seasonal", "Residual"]
                     xtext = "Time (min)"
 
-                if plot_type != 0:        
+
+                if type == 'box':        
                     # Create a scatter trace for each column        
                     fig.add_trace(go.Box(x=time_axis, y=curve, visible=True, name=sample_name, marker=dict(color=colors_list[index], opacity=0.4), legendgroup=f'group{index}'), row=i + 1, col=1) 
 
