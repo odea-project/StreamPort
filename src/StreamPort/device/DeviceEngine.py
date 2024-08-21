@@ -1177,7 +1177,7 @@ class DeviceEngine(CoreEngine):
         colors = np.where(threshold, 'red', 'black')                                    
 
         # Assign different sizes to outliers and inliers
-        sizes = np.where(threshold, 50, 30)
+        sizes = np.where(threshold, 30, 20)
 
         test_set = test_data.index
 
@@ -1204,14 +1204,14 @@ class DeviceEngine(CoreEngine):
         fig = go.Figure()
 
         fig.add_trace(go.Scatter(
-            x=[sam for sam in test_set],
+            x=[sam[-30:-15] for sam in test_set],
             y=prediction,
             mode='markers',
             marker=dict(
                 color=colors,
                 size=sizes
             ),
-            text=[sam[-20:-9] for sam in test_set],
+            text=[sam for sam in test_set],
             name='Anomalous curves'
         ))
 
@@ -1221,7 +1221,7 @@ class DeviceEngine(CoreEngine):
             xaxis_title="Samples",
             yaxis_title="Anomaly scores",
             yaxis=dict(
-                dtick=0.05  # Set the y-axis resolution to 0.05
+                dtick=0.005  # Set the y-axis resolution to 0.05
             )
         )
 
