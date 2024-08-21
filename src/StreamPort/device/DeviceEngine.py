@@ -631,30 +631,55 @@ class DeviceEngine(CoreEngine):
 
     
 
-    def add_features(self, resolution = 10):
+    def bin_frequencies(self, resolution=20, ana=None):
+        
+
+        def mean(values):
+            if len(values) != 0:
+                return sum(values)/len(values)
+            else:
+                print('data is invalid')
+
+
+        data = ana.data
+        seasonal_freqs = data['Curve seasonal frequencies']
+        num_datapoints = len(seasonal_freqs)
+        num_bins = int(num_datapoints / resolution)
+        seasonal_bins = np.linspace(0, num_datapoints, num=num_bins)
+        
+        #keys for bin dict
+        feature_names = []
+        bins_list = []
+        for int(i), int(j) in zip(seasonal_bins[:-1], seasonal_bins[1:]):
+            feature_names.append(f"fseason_{i}-{j}")
+            new_dict = {data['Sample'] : mean(seasonal_freqs[i:j])}
+            bins_list.append(new_dict)
+
+
+        noise_freqs = data['Curve noise frequencies']
+        noise_bins = np.linspace(0, len(noise_freqs), num=num_bins)
+        #keys for bin dict
+        for i, j in zip(noise_bins[:-1], noise_bins[1:]):
+            feature_names.append(f"fnoise_{i}-{j}")
+            new_dict = {{data['Sample'] : mean(noise_freqs[i:j])}}
+            bins_list.append(new_dict)
+        
+
+        return pd.DataFrame(bins_list, index=feature_names)
+
+
+
+    def add_extracted_features(self, resolution = 20, ana=None):
         """
         Add features engineered from seasonal decomposition and fourier transform to features-matrix to improve classification
 
         """
-        def bin_frequencies(self, resolution = resolution):
-
-            analyses = self.get_analyses()
-
-            for ana in analyses:
-                data = ana.data
-                seasonal_freqs = data['Curve seasonal frequencies']
-                min_seasonal = min(seasonal_freqs)
-                max_seasonal = max(seasonal_freqs)
-
-                num_datapoints = len(seasonal_freqs)
-                num_bins = num_datapoints/resolution
-
-                noise_freqs = data['Curve noise frequencies']
-                min_noise = min(noise_freqs)
-                max_noise = max(noise_freqs)
-            return
-        
-        return
+        data = ana.data
+        features_df = data['Features']
+        new_features_df = self.bin_frequencies(resolution, ana)
+        features_df = pd.concat([features_df, new_features_df], axis=0)
+        ana.data.update({'Features' : features_df})
+        return features_df
     
 
 
@@ -886,7 +911,22 @@ class DeviceEngine(CoreEngine):
                     unscaled_flag = 1
                     anas_to_plot.append(DeviceAnalysis(name= key, data= data_list[key]))
 
-            if unscaled_flag != 1:
+            if unscaled_flag != 1: 
+                if group_by == 'method':
+                    new_dict = {}
+                    curve_dfs = []
+                    feature_dfs = []
+                    for ana in scaled_anas:
+                        feature_dfs.append(ana.data['Features'])
+                        curve_dfs.append(ana.data['Curve'])
+                    newfeat_df = pd.concat(feature_dfs, axis=1)
+                    newcurv_df = pd.concat(curve_dfs, axis=1)
+                    new_dict = ana.data
+                    new_dict.update({'Features' : newfeat_df, 
+                                     'Sample' : newfeat_df.columns,
+                                     'Curve' : newcurv_df})
+                    scaled_anas = [DeviceAnalysis(name=ana.data['Method'], data=new_dict)]
+                
                 return scaled_anas
 
         else:
@@ -968,7 +1008,7 @@ class DeviceEngine(CoreEngine):
                     noise_freqs[0] = pd.concat([noise_freqs[0], noise_freqs[i]], 
                                             axis = 1)
                     
-                #FIX THIS. These_samples is the problem
+                #when next encountered method doesnt match, save the currently read data under current method
                 else:
                     print('now saving current group...')
                     print('No. of samples: ' + str(len(these_samples)))
@@ -1034,33 +1074,6 @@ class DeviceEngine(CoreEngine):
 
                 this_method = next_method
 
-            """
-            #loop ends before adding last item(when mismatched). Add this item to list of objects
-            new_data.update({'Sample' : these_samples})
-            new_data.update({'Method' : this_method})
-            
-            current_columns = list(df.columns[1:])
-            df.rename(columns={old:new for old,new in zip(current_columns, these_samples)}, inplace=True)
-            new_data.update({'Curve' : df})
-
-            features[0].columns = these_samples
-            new_data.update({'Features' : features[0]})
-            
-            trends[0].columns = these_samples
-            seasonals[0].columns = these_samples
-            residuals[0].columns = these_samples
-            new_data.update({'Trend' : trends[0]}) 
-            new_data.update({'Seasonal' : seasonals[0]})
-            new_data.update({'Residual' : residuals[0]})
-
-            raw_freqs[0].columns = these_samples
-            seasonal_freqs[0].columns = these_samples
-            noise_freqs[0].columns = these_samples
-            new_data.update({'Raw curve frequencies' : raw_freqs[0]})  
-            new_data.update({'Curve seasonal frequencies' : seasonal_freqs[0]}) 
-            new_data.update({'Curve noise frequencies' : noise_freqs[0]})  
-            objects_list.append(DeviceAnalysis(name = method_names[i-1], data = new_data))
-            """
         return objects_list
 
 
@@ -1138,12 +1151,12 @@ class DeviceEngine(CoreEngine):
 
 
     def classify(self, results):
-        from matplotlib import pyplot as plt
+        #new features must be added before scaling
         import plotly.graph_objects as go
 
         #retrieve scaled features data of desired result for classification
         result_dict = self.get_results(results, scaled=True)
-        result_analyses = self.get_analyses(results)
+        
         feature_dfs = []
         for key in list(result_dict):
             feature_dfs.append(result_dict[key]['Features'])
@@ -1169,10 +1182,6 @@ class DeviceEngine(CoreEngine):
         threshold = prediction < mean_std
         print(threshold)
 
-        #set outlier detection threshold for predict
-        #threshold = prediction == -1
-        #print(threshold)
-
         # Assign different colors to normal data and anomalies
         colors = np.where(threshold, 'red', 'black')                                    
 
@@ -1180,24 +1189,6 @@ class DeviceEngine(CoreEngine):
         sizes = np.where(threshold, 30, 20)
 
         test_set = test_data.index
-
-        #matplotlib plt plot
-        fig, ax = plt.subplots()
-        ax.scatter([sam[-30:-15] for sam in test_set],
-                    prediction, 
-                    c = colors,
-                    s = sizes,                             
-                    label = [sam for sam in test_set])
-                    
-
-        # Create legend
-        ax.set_title(results + " - Anomalous curves - Test Set")
-        ax.set_xlabel("Samples")
-        ax.set_ylabel("Anomaly scores")
-        leg = ax.legend(scatterpoints = 1)
-
-        plt.show()
-
 
         #plotly go plot
         # Create the scatter plot
