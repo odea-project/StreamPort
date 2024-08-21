@@ -431,6 +431,7 @@ class DeviceEngine(CoreEngine):
                                          'Runtime' : runtime,
                                          'Runtime delta' :  runtime_delta,
                                          'Runtime percent error' : runtime_percent_error,
+                                         'Idle time' : 'NA',
                                          'Number of Trials' : times_started, 
                                          'Curve' : curves_list[-1], 
                                          'Log' : log_data}
@@ -1151,12 +1152,19 @@ class DeviceEngine(CoreEngine):
         classifier = iso(contamination=0.3, random_state=42)
         classifier.fit(train_data)
 
-        prediction = classifier.predict(test_data)
+        prediction = classifier.decision_function(test_data)
         print(prediction)
 
+        #find std for anomaly scores and use as threshold for decision function
+        mean_std = prediction.mean()
+
         #set outlier detection threshold
-        threshold = prediction == -1
+        threshold = prediction < mean_std
         print(threshold)
+
+        #set outlier detection threshold for predict
+        #threshold = prediction == -1
+        #print(threshold)
 
         # Assign different colors to normal data and anomalies
         colors = np.where(threshold, 'red', 'black')                                    
@@ -1167,18 +1175,18 @@ class DeviceEngine(CoreEngine):
         test_set = test_data.index
 
         fig, ax = plt.subplots()
-        outliers = {f"curves_{i}": ax.scatter([f for f in test_data.columns],
-                                        test_data.iloc[i , :], 
+        outliers = {f"curves_{i}": ax.scatter([f for f in test_set],
+                                        test_data.iloc[: , i], 
                                         c = colors[i],
                                         s = sizes[i],                             
-                                        label = test_set[i])
-                                    for i in range(len(test_set))}
+                                        label = test_data.columns[i])
+                                    for i in range(len(test_data.columns))}
 
         # Create legend
         ax.set_title(results + " - Anomalous curves - Test Set")
         ax.set_xlabel("Features")
         ax.set_ylabel("Pressure(bar)")
-        leg = ax.legend(scatterpoints = 1)
+        #leg = ax.legend(scatterpoints = 1)
 
         plt.show()
 
