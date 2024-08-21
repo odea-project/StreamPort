@@ -1,7 +1,6 @@
 from ..core.CoreEngine import Analysis
 
 import random
-import pandas as pd
 import plotly.graph_objects as go
 import plotly.io as pio
 from plotly.subplots import make_subplots

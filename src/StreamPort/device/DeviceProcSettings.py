@@ -106,10 +106,9 @@ class Scaler(ProcessingSettings):
   Scale data based on user input. Defaults to MinMaxScaler
 
   """
-  def __init__(self, parameters= None, replace= None):
+  def __init__(self, parameters= None):
     super().__init__() 
     self.parameters = 'minmax' if isinstance(parameters, type(None)) else parameters
-    self.replace = replace if not isinstance(replace, type(None)) else False
     self.algorithm = "scaling"
 
   def run(self, engine):
@@ -121,7 +120,7 @@ class Scaler(ProcessingSettings):
       for analysis in analyses:
         results.update({analysis.name: analysis.data})
     
-    scaled_data = engine.scale_features(results, self.parameters, self.replace)
+    scaled_data = engine.scale_features(results, self.parameters)
     
     return scaled_data
   

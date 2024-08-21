@@ -23,15 +23,18 @@ import numpy as np
 from statsmodels.tsa.seasonal import seasonal_decompose
 
 #import ML packages
+#to scale data
 from sklearn import preprocessing as scaler
-from sklearn import decomposition as analyser
+#to run isolation forest and assign classes on its basis
 from sklearn.ensemble import IsolationForest as iso
+#to split data into training and testing sets
+from sklearn.model_selection import train_test_split as splitter
+
 
 """
 GLOBAL VARIABLES:
 To be used by every DeviceEngine object to handle data. Data across devices and methods will use the same global variables
 """
-
 
 #format (str): Defines the manner in which Datetime objects/strings are to be parsed and/or formatted.
 format = '%H:%M:%S %m/%d/%y'
@@ -649,7 +652,7 @@ class DeviceEngine(CoreEngine):
     
 
 
-    def scale_features(self, data, type='minmax', replace=False):
+    def scale_features(self, data, type='minmax'):
         """
         Scale data according to user input. Default values take over if no input.
         Returns list of changed data dicts.
@@ -688,10 +691,7 @@ class DeviceEngine(CoreEngine):
              
             scaled_df = pd.DataFrame(scaled_data.T, columns= samples, index= features)
             
-            if replace == False:
-                    ana.data.update({'Features scaled' : scaled_df})
-            else:
-                    ana.data.update({'Features' : scaled_df})
+            ana.data.update({'Features' : scaled_df})
 
             results.update({f"{ana.name}_scaled" : ana.data})
         #return transformed data. 
@@ -1129,3 +1129,57 @@ class DeviceEngine(CoreEngine):
             
         return analysed_dict
         
+
+
+    def classify(self, results):
+        from matplotlib import pyplot as plt
+
+        #retrieve scaled features data of desired result for classification
+        result_dict = self.get_results(results, scaled=True)
+        result_analyses = self.get_analyses(results)
+        feature_dfs = []
+        for key in list(result_dict):
+            feature_dfs.append(result_dict[key]['Features'])
+
+        new_df = pd.concat(feature_dfs, axis=1)
+        #transpose to enable ML
+        new_df = new_df.T
+
+        #split data into training and testing sets
+        train_data, test_data = splitter(new_df, test_size=0.5, random_state= 42)
+
+        classifier = iso(contamination=0.3, random_state=42)
+        classifier.fit(train_data)
+
+        prediction = classifier.predict(test_data)
+        print(prediction)
+
+        #set outlier detection threshold
+        threshold = prediction == -1
+        print(threshold)
+
+        # Assign different colors to normal data and anomalies
+        colors = np.where(threshold, 'red', 'black')                                    
+
+        # Assign different sizes to outliers and inliers
+        sizes = np.where(threshold, 50, 30)
+
+        test_set = test_data.index
+
+        fig, ax = plt.subplots()
+        outliers = {f"curves_{i}": ax.scatter([f for f in test_data.columns],
+                                        test_data.iloc[i , :], 
+                                        c = colors[i],
+                                        s = sizes[i],                             
+                                        label = test_set[i])
+                                    for i in range(len(test_set))}
+
+        # Create legend
+        ax.set_title(results + " - Anomalous curves - Test Set")
+        ax.set_xlabel("Features")
+        ax.set_ylabel("Pressure(bar)")
+        leg = ax.legend(scatterpoints = 1)
+
+        plt.show()
+
+        return print(prediction)   
