@@ -481,6 +481,9 @@ class DeviceEngine(CoreEngine):
                 for analysis in self._analyses:
                     if analyses in analysis.name:
                         ana_list.append(analysis)
+            
+            elif isinstance(analyses, DeviceAnalysis):
+                ana_list.append(analyses)
                     
             elif isinstance(analyses, list):
                 analyses_out = []
@@ -491,6 +494,8 @@ class DeviceEngine(CoreEngine):
                         for a in self._analyses:
                             if analysis in a.name:
                                 analyses_out.append(a)
+                    elif isinstance(analysis, DeviceAnalysis):
+                        analyses_out.append(analysis)
                 ana_list = analyses_out
             
             else:
@@ -1134,6 +1139,7 @@ class DeviceEngine(CoreEngine):
 
     def classify(self, results):
         from matplotlib import pyplot as plt
+        import plotly.graph_objects as go
 
         #retrieve scaled features data of desired result for classification
         result_dict = self.get_results(results, scaled=True)
@@ -1145,11 +1151,12 @@ class DeviceEngine(CoreEngine):
         new_df = pd.concat(feature_dfs, axis=1)
         #transpose to enable ML
         new_df = new_df.T
+        print(new_df)
 
         #split data into training and testing sets
         train_data, test_data = splitter(new_df, test_size=0.5, random_state= 42)
 
-        classifier = iso(contamination=0.3, random_state=42)
+        classifier = iso(contamination=0.25, random_state=42)
         classifier.fit(train_data)
 
         prediction = classifier.decision_function(test_data)
@@ -1174,20 +1181,52 @@ class DeviceEngine(CoreEngine):
 
         test_set = test_data.index
 
+        #matplotlib plt plot
         fig, ax = plt.subplots()
-        outliers = {f"curves_{i}": ax.scatter([f for f in test_set],
-                                        test_data.iloc[: , i], 
-                                        c = colors[i],
-                                        s = sizes[i],                             
-                                        label = test_data.columns[i])
-                                    for i in range(len(test_data.columns))}
+        ax.scatter([sam[-30:-15] for sam in test_set],
+                    prediction, 
+                    c = colors,
+                    s = sizes,                             
+                    label = [sam for sam in test_set])
+                    
 
         # Create legend
         ax.set_title(results + " - Anomalous curves - Test Set")
-        ax.set_xlabel("Features")
-        ax.set_ylabel("Pressure(bar)")
-        #leg = ax.legend(scatterpoints = 1)
+        ax.set_xlabel("Samples")
+        ax.set_ylabel("Anomaly scores")
+        leg = ax.legend(scatterpoints = 1)
 
         plt.show()
+
+
+        #plotly go plot
+        # Create the scatter plot
+        fig = go.Figure()
+
+        fig.add_trace(go.Scatter(
+            x=[sam for sam in test_set],
+            y=prediction,
+            mode='markers',
+            marker=dict(
+                color=colors,
+                size=sizes
+            ),
+            text=[sam[-20:-9] for sam in test_set],
+            name='Anomalous curves'
+        ))
+
+        # Update layout
+        fig.update_layout(
+            title="Anomalous curves - Test Set",
+            xaxis_title="Samples",
+            yaxis_title="Anomaly scores",
+            yaxis=dict(
+                dtick=0.05  # Set the y-axis resolution to 0.05
+            )
+        )
+
+        # Show the plot
+        fig.show()
+
 
         return print(prediction)   
