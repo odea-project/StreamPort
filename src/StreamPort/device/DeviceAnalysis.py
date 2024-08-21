@@ -84,7 +84,7 @@ class DeviceAnalysis(Analysis):
                                         f"{key} : (size {len(str(self.data[key]))})"
                                             if isinstance(self.data[key], int) 
                                             else 
-                                        f"{key} : (size {len(self.data[key])})" 
+                                        f"{key} : (size {len(str(self.data[key]))})" 
                                             for key in self.data 
                                     ]
                                 )
@@ -130,7 +130,7 @@ class DeviceAnalysis(Analysis):
             time_axis = data['Features'].index
             features_df = data['Features']
             feature_flag = 1
-            if scaled == True:
+            if scaled == True and 'Device Pressure Analysis' not in self.name or '_scaled' in self.name:
                 title_suffix = 'features(scaled)'
                 if 'Features scaled' in list(data):
                     features_df = data['Features scaled']

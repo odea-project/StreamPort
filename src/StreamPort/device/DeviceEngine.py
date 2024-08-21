@@ -69,6 +69,8 @@ class DeviceEngine(CoreEngine):
 
         _components(str/list(str)): List of all components involved in runs on this device.
 
+        _data_keyList(list(str)): List of analysis data keys in order of appearance.
+
     Methods: (specified are methods only belonging to child class or modified to fit child class specifications. For superclass methods, see CoreEngine)
 
         print(self):
@@ -112,6 +114,9 @@ class DeviceEngine(CoreEngine):
     #list of unique components
     _components = []
 
+    #list of analysis data_keys
+    _data_keyList = []
+
     def __init__(self, headers=None, settings=None, analyses=None, history=None, source =None, method_ids=None, components=None):
         
         #initialize superclass attributes for assignment to child class.
@@ -121,7 +126,7 @@ class DeviceEngine(CoreEngine):
         self._source = r'{}'.format(source) if not isinstance(source, type(None)) else r'{}'.format(os.getcwd())
         self._method_ids = [] if isinstance(method_ids, type(None)) else method_ids
         self._components = [] if isinstance(components, type(None)) else components
-
+        self._data_keyList = [] 
 
 
     def print(self):
@@ -216,9 +221,6 @@ class DeviceEngine(CoreEngine):
                     #individual curves within current method to be later merged into a dataframe against common time feature
                     curves_list = []    
 
-                    #curve headers/names
-                    curves = []    
-
                     #assess number of runs in current directory to set appropriate headers in pressure curve DataFrame
                     num_runs = len(runs_list)
 
@@ -304,8 +306,6 @@ class DeviceEngine(CoreEngine):
                                     runtime = datetime.strptime(runtime, '%H:%M:%S')
                                     runtime = runtime.second + runtime.minute * 60 + runtime.hour * 3600
 
-                                    print("Runtime this run(seconds) : " + str(runtime))
-
                             print("Times started(in event of fault) : " + str(times_started))
 
                         f.close()
@@ -329,23 +329,21 @@ class DeviceEngine(CoreEngine):
                                 run_type = 0 
 
                                 #add blank run headers to list of blanks
-                                curve_header = "Sample - " + (str(pressure_suffix).zfill(suffix_digits) + run_suffix)    
+                                curve_header = "Sample - " + (str(pressure_suffix).zfill(suffix_digits) + run_suffix)     
 
                             else:
-
-                                #sample runs indicated with sample name
-                                run_suffix = filename[-1]
 
                                 #assign class label 1 to samples 
                                 run_type = 1
 
                                 #add sample run headers to samples list, keep trailing pressure suffix for future analysis
-                                curve_header = "Sample - " + run_suffix  
+                                #sample runs indicated with sample name
+                                curve_header = "Sample - " + filename[-1]  
+                            
+                            curve_header = curve_header + '/' + start_date_string
 
                             #run-number from filename is used as batch position ('.D' = 1, '002.D' = 2, '003.D' = 3...)    
                             batch_position = pressure_suffix
-
-                            curves.append([curve_header, start_date_string])
 
                             #set current run header based on file number and run type     
                             cols = ["Time", curve_header]
@@ -382,11 +380,17 @@ class DeviceEngine(CoreEngine):
                             #add pressure curve to list of curves for current method  
                             curves_list.append(pressure_file)
                             
-                            print(curve_header + ' : \n' + 'start date : ' + start_date_string)
+                            print(curve_header +  start_date_string)
                             print('end date : ' + end_date_string)
                             print('runtime : ' + str(runtime) + '\n')
                             print('runtime observed from curve : ' + str(curve_runtime) + '\n')
-                                            
+
+                            #find deviation between true and observed runtimes 
+                            runtime_delta = runtime - curve_runtime
+
+                            #find percent deviation between true and observed runtimes
+                            runtime_percent_error = (abs(runtime_delta) / curve_runtime) * 100
+
                         except FileNotFoundError:
                             
                             """
@@ -421,12 +425,13 @@ class DeviceEngine(CoreEngine):
                                          'Sample' : curve_header, 
                                          'Runtype' : run_type,
                                          'Batch position' : batch_position,
-                                         'Start date' : start_date_string, 
-                                         'Runtime' : runtime, 
-                                         'Idle time' : "NA",
+                                         'Runtime' : runtime,
+                                         'Runtime delta' :  runtime_delta,
+                                         'Runtime percent error' : runtime_percent_error,
                                          'Number of Trials' : times_started, 
                                          'Curve' : curves_list[-1], 
                                          'Log' : log_data}
+                        
                         
                         for index in range(component_number):
                                 analysis_data.update({f'Component {index+1}' : comp_ids[index]}) 
@@ -439,6 +444,9 @@ class DeviceEngine(CoreEngine):
 
                         #list of analyses populated with individual analysis objects
                         analyses_list.append(new_object)
+
+                if self._data_keyList == []: 
+                    self._data_keyList = list(analysis_data.keys())
 
                 if not method_suffix:
                     continue
@@ -501,6 +509,8 @@ class DeviceEngine(CoreEngine):
 
         #runtime of each sample indicates possible faults with the run
         runtime = {}
+        runtime_delta = {}
+        runtime_percent_error = {}
 
         #runtype describes whether run was a blank or a sample run
         runtype = {}
@@ -511,16 +521,19 @@ class DeviceEngine(CoreEngine):
 
         #update each Device Pressure Analysis with its features in addition to creating the combined dataframe
         curve = data['Curve']
-        #'pct_change' transformation is first used on pressure curves to emphasise focus on changes in the curve over time.
+        
         #features extracted from 'pct_change' curves hepl better model curve behaviour.
         curve_features = curve.iloc[:, 1].agg(features_list)
-                
+
+        #'pct_change' transformation is first used on pressure curves to emphasise focus on changes in the curve over time.        
         if weighted == True:    
             weighted_curve_features = (curve.iloc[:, 1].agg('pct_change')*100).agg(features_list)
             weighted_curve_features.index = [f"{i}_percent_change" for i in weighted_curve_features.index]
             curve_features = weighted_curve_features
                  
         runtime.update({data['Sample'] : data['Runtime']})
+        runtime_delta.update({data['Sample'] : data['Runtime delta']})
+        runtime_percent_error.update({data['Sample'] : data['Runtime percent error']})
         runtype.update({data['Sample'] : data['Runtype']})
         bpos.update({data['Sample'] : data['Batch position']})
 
@@ -539,10 +552,10 @@ class DeviceEngine(CoreEngine):
             comp_features.update({f'Component {index+1}' : comp_ids[index]}) 
 
 
-        run_features = pd.DataFrame([runtime, runtype, bpos], 
+        run_features = pd.DataFrame([runtime, runtime_delta, runtime_percent_error, runtype, bpos], 
                                     columns=runtype.keys())
                 
-        run_features.index = ['Runtime', 'Runtype', 'BatPos']
+        run_features.index = ['Runtime(Rt)', 'RtDelta', 'RtPctError', 'Runtype', 'BatPos']
 
         curve_features = pd.concat([curve_features, run_features], axis = 0)
 
@@ -686,12 +699,13 @@ class DeviceEngine(CoreEngine):
 
 
 
-    def get_results(self, results=None):
+    def get_results(self, results=None, scaled=False):
         """
         Retrieves the results from CoreEngine.
 
         Args:
         results (str or list): The key(s) of the result(s) to retrieve. Absence of an argument returns all known results for the current device.
+        scaled (bool): filter output dict by choosing whether to return scaled features or not.
         Mods : int type input returns the results entry that lies on a list-like index within the dictionary. 
             e.g: input 4 returns the 5th entry of the results dict.
 
@@ -704,9 +718,8 @@ class DeviceEngine(CoreEngine):
         result_dict = self._results
 
         if isinstance(results, str):
-            result_dict = {}
-            
-            for key in self._results:
+            result_dict = {}            
+            for key in list(self._results):
                 if results in key:
                     result_dict.update({key : self._results[key]}) 
             
@@ -718,7 +731,7 @@ class DeviceEngine(CoreEngine):
             results_out = {}
             for result in results:
                 if isinstance(result, str):
-                    for key in self._results:
+                    for key in list(self._results):
                         if result in key:
                             results_out.update({key : self._results[key]})
                 elif isinstance(result, int) and result < len(self._results):
@@ -728,6 +741,25 @@ class DeviceEngine(CoreEngine):
 
         elif results == None:
             print('Invalid Input! Returning all existing results!')
+        
+        scale_flag = 0
+        found_results = list(result_dict.keys())
+        for res in found_results:
+            if '_scaled' in res or 'Device Pressure Analysis' not in res:
+                scale_flag = 1 
+                break 
+                    
+        found_dict = {}
+        for resname in found_results:
+            if scaled == True and scale_flag == 1:
+                if '_scaled' in resname or 'Device Pressure Analysis' not in resname:
+                    found_dict.update({resname : result_dict[resname]}) 
+
+        if len(found_dict) == 0:
+            print('No scaled results available!!')
+
+        else:
+            result_dict = found_dict
 
         return result_dict
     
@@ -795,6 +827,34 @@ class DeviceEngine(CoreEngine):
                 self._results = {}
 
 
+        
+    def trim_method_name(self, method_name):
+
+        # Base case: If the string doesn't start or end with an underscore, return it as long as it has been trimmed.
+        if (method_name[0] != '_' and method_name[-1] != '_') and len(method_name) <= 10:
+            print('Given method name is already trimmed or empty!')
+            return method_name
+        
+        # Recursive cases:
+        elif method_name[0] == '_':
+            # Trim leading underscore
+            return self.trim_method_name(method_name[1:])  
+        
+        elif method_name[-1] == '_':
+            # Trim trailing underscore
+            return self.trim_method_name(method_name[:-1])  
+        
+        else:
+            #whole method names have no trailing or leading '_' but have length > 10 and always have a six-digit date extension
+            #get part of string containing method name without date
+            new_method_name = method_name.split(' ')[0]
+            #pattern to find date extension to trim
+            pattern = r'\d{6}'
+            # Substitute the 6-digit numbers with an empty string
+            result = re.sub(pattern, '', new_method_name)   
+            return self.trim_method_name(result)
+    
+
 
     def prepare_data(self, data_list, group_by = 'method'):
         """
@@ -808,47 +868,51 @@ class DeviceEngine(CoreEngine):
         if isinstance(data_list, list):
             anas_to_plot = data_list 
 
-        elif isinstance(data_list, dict):
+        elif isinstance(data_list, dict) and data_list != {}:
+            unscaled_flag = 0
+            scaled_anas = []
             anas_to_plot = []
-            for res in list(data_list):
-                if 'scaled' not in res:
-                    new_obj = DeviceAnalysis(name = res, data = data_list[res])
-                    anas_to_plot.append(new_obj)
-        
+            for key in list(data_list):
+                if '_scaled' in key or 'Device Pressure Analysis' not in key :
+                    print(key + 'is already prepared!!')
+                    scaled_anas.append(DeviceAnalysis(name= key, data= data_list[key]))
+                else:
+                    unscaled_flag = 1
+                    anas_to_plot.append(DeviceAnalysis(name= key, data= data_list[key]))
+
+            if unscaled_flag != 1:
+                return scaled_anas
+
+        else:
+            print('invalid input data / no scaled data available')
+            return
+
         num_analyses = len(anas_to_plot)
         
         #create list of distinct analyses data dicts present in found analyses. 
-        curves, samples, features, trends, seasonals, residuals, raw_freqs, seasonal_freqs, noise_freqs, methods = [], [], [], [], [], [], [], [], [], []
+        methods, samples, curves, features, trends, seasonals, residuals, raw_freqs, seasonal_freqs, noise_freqs = [], [], [], [], [], [], [], [], [], []
 
+        method_names = []
         for ana in anas_to_plot:
-            method = ana.data
-            method_name = method['Method']
+            method_data = ana.data   
+            method_name = method_data['Method']
+            method_names.append(method_name)
+            curves.append(method_data['Curve'])
+            features.append(method_data['Features'])
+            trends.append(method_data['Trend'])
+            seasonals.append(method_data['Seasonal'])
+            residuals.append(method_data['Residual'])
+            raw_freqs.append(method_data['Raw curve frequencies'])
+            seasonal_freqs.append(method_data['Curve seasonal frequencies'])
+            noise_freqs.append(method_data['Curve noise frequencies'])
+            samples.append(f"{method_name}_{method_data['Sample']}")
             if group_by == 'method':
-                new_method_name = method['Method'].split(' ')[0]
-                pattern = r'\d{6}'
-                # Substitute the 6-digit numbers with an empty string
-                result = re.sub(pattern, '', new_method_name)
-                # Remove any leading or trailing underscores
-                for charindex in range(len(result)):
-                    if charindex == (0 or 1 or -2 or -1) and result[charindex] == '_':
-                        result = result.replace(result[charindex], '', 1)
-
-                new_method_name = result
-                samples.append(f"{method_name}_{method['Sample']}")
+                new_method_name = self.trim_method_name(method_name=method_name)
                 methods.append(new_method_name)
-            else:
-                samples.append(method['Sample'])
+            else:    
+                #method name contains experiment date
                 methods.append(method_name)
-            curves.append(method['Curve'])
-            features.append(method['Features'])
-            trends.append(method['Trend'])
-            seasonals.append(method['Seasonal'])
-            residuals.append(method['Residual'])
-            raw_freqs.append(method['Raw curve frequencies'])
-            seasonal_freqs.append(method['Curve seasonal frequencies'])
-            noise_freqs.append(method['Curve noise frequencies'])
             
-        
         df = curves[0]
         this_method =  methods[0]
         these_samples = [samples[0]]
@@ -861,22 +925,35 @@ class DeviceEngine(CoreEngine):
         if num_analyses <= 1:
             objects_list = anas_to_plot
         else:
-            for i in range(1, num_analyses):            
-                next_curve = curves[i]
+            for i in range(1, num_analyses + 1):            
+                if i >= num_analyses:
+                    pass
+                else:
+                    next_curve = curves[i]
+                    next_method = methods[i]
 
-                next_method = methods[i]
-
-                if next_method in this_method or this_method in next_method:
+                if next_method == this_method and i != num_analyses:
                     these_samples.append(samples[i])
                     current_columns = list(df.columns[1:])
                     df = pd.merge(df, next_curve, on='Time')
-                    df.rename(columns={old:new for old,new in zip(current_columns, these_samples)}, inplace=True)                 
-
+                    df.rename(columns={old:new for old,new in zip(current_columns, these_samples)}, inplace=True) 
+                    print('pressure dataframe')
+                    print(df.shape)                
+                    
                     features[0] = pd.concat([features[0], features[i]], axis = 1)
+                    print('features')
+                    print(features[0].shape)
+                    features[0].columns = these_samples
 
                     trends[0] = pd.concat([trends[0], trends[i]], axis = 1)
+                    print('trends')
+                    print(trends[0].shape)
                     seasonals[0] = pd.concat([seasonals[0], seasonals[i]], axis = 1)
+                    print('seasonals')
+                    print(seasonals[0].shape)
                     residuals[0] = pd.concat([residuals[0], residuals[i]], axis = 1)
+                    print('residuals')
+                    print(residuals[0].shape)
 
                     raw_freqs[0] = pd.concat( [ raw_freqs[0], raw_freqs[i] ], 
                                                 axis = 1)
@@ -885,8 +962,10 @@ class DeviceEngine(CoreEngine):
                     noise_freqs[0] = pd.concat([noise_freqs[0], noise_freqs[i]], 
                                             axis = 1)
                     
-                #FIX THIS
+                #FIX THIS. These_samples is the problem
                 else:
+                    print('now saving current group...')
+                    print('No. of samples: ' + str(len(these_samples)))
                     new_data.update({'Sample' : these_samples})
                     new_data.update({'Method' : this_method})
                     
@@ -894,7 +973,7 @@ class DeviceEngine(CoreEngine):
                     df.rename(columns={old:new for old,new in zip(current_columns, these_samples)}, inplace=True)
                     new_data.update({'Curve' : df})
 
-                    features[0].columns = these_samples
+                    #features[0].columns = these_samples
                     new_data.update({'Features' : features[0]}) 
                     
                     trends[0].columns = these_samples
@@ -910,23 +989,46 @@ class DeviceEngine(CoreEngine):
                     new_data.update({'Raw curve frequencies' : raw_freqs[0]})  
                     new_data.update({'Curve seasonal frequencies' : seasonal_freqs[0]}) 
                     new_data.update({'Curve noise frequencies' : noise_freqs[0]})     
-                
-                    features[0] = features[i]
-                    trends[0] = trends[i]
-                    seasonals[0] = seasonals[i]
-                    residuals[0] = residuals[i]
-                    raw_freqs[0] = raw_freqs[i]
-                    seasonal_freqs[0] = seasonal_freqs[i]
-                    noise_freqs[0] = noise_freqs[i]           
 
-                    objects_list.append(DeviceAnalysis(name = this_method, data = new_data))
+                    if i >= num_analyses:
+                        
 
-                    
-                    df = next_curve
-                    these_samples = [samples[i]]
+                        features[0] = features[i-1]
+                        trends[0] = trends[i-1]
+                        seasonals[0] = seasonals[i-1]
+                        residuals[0] = residuals[i-1]
+                        raw_freqs[0] = raw_freqs[i-1]
+                        seasonal_freqs[0] = seasonal_freqs[i-1]
+                        noise_freqs[0] = noise_freqs[i-1]           
+
+                        objects_list.append(DeviceAnalysis(name = method_names[i-1-1], data = new_data))
+
+                        
+                        df = next_curve
+                        these_samples = [samples[i-1]]
+
+                    else:
+
+                        
+                        features[0] = features[i]
+                        trends[0] = trends[i]
+                        seasonals[0] = seasonals[i]
+                        residuals[0] = residuals[i]
+                        raw_freqs[0] = raw_freqs[i]
+                        seasonal_freqs[0] = seasonal_freqs[i]
+                        noise_freqs[0] = noise_freqs[i]           
+
+                        objects_list.append(DeviceAnalysis(name = method_names[i-1], data = new_data))
+
+                        
+                        df = next_curve
+                        these_samples = [samples[i]]
+                        
+
 
                 this_method = next_method
-  
+
+            """
             #loop ends before adding last item(when mismatched). Add this item to list of objects
             new_data.update({'Sample' : these_samples})
             new_data.update({'Method' : this_method})
@@ -951,8 +1053,8 @@ class DeviceEngine(CoreEngine):
             new_data.update({'Raw curve frequencies' : raw_freqs[0]})  
             new_data.update({'Curve seasonal frequencies' : seasonal_freqs[0]}) 
             new_data.update({'Curve noise frequencies' : noise_freqs[0]})  
-            objects_list.append(DeviceAnalysis(name = this_method, data = new_data))
-            
+            objects_list.append(DeviceAnalysis(name = method_names[i-1], data = new_data))
+            """
         return objects_list
 
 
@@ -980,20 +1082,12 @@ class DeviceEngine(CoreEngine):
         """
         result_dict = self.get_results(results)
 
-        objects_list = self.prepare_data(result_dict, group_by=group_by)
-
         #incase scaled is activated
-        scaled_result_keys = []
-        for key in list(result_dict):
-            if 'scale' in key:
-                scaled_result_keys.append(key)
-
-        if scaled == True:
-            objects_list = []
-            result_dict = self.get_results(scaled_result_keys)
-            for scaled_key in list(result_dict):
-                objects_list.append(DeviceAnalysis(name=scaled_key, data = result_dict[scaled_key]))
-    
+        if features == 'base' and scaled == True:
+            result_dict = self.get_results(results, scaled=scaled)
+       
+        objects_list = self.prepare_data(result_dict, group_by=group_by)
+        
         for ana in objects_list:        
 
             if features == 'base': 
