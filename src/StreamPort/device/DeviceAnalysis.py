@@ -22,7 +22,7 @@ class DeviceAnalysis(Analysis):
 
         ***Note*** : _analysis_type must have same size as data. Will influence future functionality of class methods.
 
-        _class_label (str): 'fmt'(First Measurement), 'norm'(Normal), 'dvt'(Deviant) assigned to analyses after feature inspection.
+        _class (str): 'fmt'(First Measurement), 'norm'(Normal), 'dvt'(Deviant) assigned to analyses after feature inspection.
                             This assists in future classification when using supervised learning algorithms.
 
     Methods: (specified are methods only belonging to child class. For superclass methods, see Analysis)
@@ -49,9 +49,9 @@ class DeviceAnalysis(Analysis):
         self._analysis_type = str(analysis_type) if not isinstance(analysis_type, type(None)) else "Unknown"
 
         if self.data != {} and '001-blank' in self.data['Sample']:
-            self._class_label = 'fmt'
+            self._class = 'fmt'
         else: 
-            self._class_label = str(class_label) if not isinstance(class_label, type(None)) else "Undefined"
+            self._class = str(class_label) if not isinstance(class_label, type(None)) else "Undefined"
 
 
 

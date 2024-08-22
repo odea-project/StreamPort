@@ -322,6 +322,8 @@ class DeviceEngine(CoreEngine):
                             if not pressure_suffix.isdecimal():                 
                                 pressure_suffix = 1
                                 suffix_digits = 3
+                                first_run_of_batch = start_date
+                        fixthis
                         
                             #if blank run encountered on reading current run's .LOG file, name run column with '-blank' as identifier
                             if blank_identifier == 1:
@@ -574,6 +576,117 @@ class DeviceEngine(CoreEngine):
     
 
 
+    def bin_frequencies(self, data, resolution=30):
+        """
+        Bin frequency data extracted by performing fourier transform on deconposed curves.
+        Aggregate(mean) of the values in these bins will be additional features to identify most active frequencies within these discrete bins. 
+        Bins represent windows of size <resolution> on the time axis of the curve.
+
+        """        
+        def mean(values):
+            if len(values) != 0:
+                return sum(values)/len(values)
+            else:
+                print('data is invalid')
+
+        
+        #keys for bin dict
+        feature_names = []
+        bins_list = []
+
+
+        seasonal_freqs = data['Curve seasonal frequencies']
+        num_datapoints = len(seasonal_freqs)
+        num_bins = int(num_datapoints / resolution)
+        seasonal_bins = np.linspace(0, num_datapoints, num=num_bins)
+        print(seasonal_bins)
+        for i, j in zip(seasonal_bins[:-1], seasonal_bins[1:]):
+            feature_names.append(f"fseason_{int(i)}-{int(j)}")
+            new_dict = {data['Sample'] : mean(seasonal_freqs[int(i):int(j)])}
+            bins_list.append(new_dict)
+
+
+        noise_freqs = data['Curve noise frequencies']
+        num_datapoints = len(noise_freqs)
+        num_bins = int(num_datapoints / resolution)
+        noise_bins = np.linspace(0, num_datapoints, num=num_bins)
+        print(noise_bins)
+        for i, j in zip(noise_bins[:-1], noise_bins[1:]):
+            feature_names.append(f"fnoise_{int(i)}-{int(j)}")
+            new_dict = {data['Sample'] : mean(noise_freqs[int(i):int(j)])}
+            bins_list.append(new_dict)
+        
+
+        return pd.DataFrame(bins_list, index=feature_names)
+
+
+
+    def add_extracted_features(self, data, resolution=30):
+        """
+        Add features engineered from seasonal decomposition and fourier transform to features-matrix to improve classification
+
+        """
+        features_df = data['Features']
+        new_features_df = self.bin_frequencies(resolution, data)
+        features_df = pd.concat([features_df, new_features_df], axis=0)
+        data.update({'Features' : features_df})
+        return data
+    
+
+
+    def scale_features(self, results, type='minmax'):
+        """
+        Scale data according to user input. Default values take over if no input.
+        Returns list of changed data dicts. Add final extracted features to data before scaling.
+
+        """ 
+        for ana_name in list(results):
+            this_analysis_data = results[ana_name]
+            updated_data = self.add_extracted_features(this_analysis_data)
+            results.update({ana_name : updated_data})
+
+        #once features are completely engineered and added, data is scaled for final ML
+        prepared_data = self.group_analyses(results)
+        
+        results = {}
+
+        for ana in prepared_data:
+            
+
+            features_df = ana.data['Features']
+            samples = features_df.columns
+            features = features_df.index
+            
+            if type == 'minmax':
+                    mm = scaler.MinMaxScaler()
+                    scaled_data = mm.fit_transform(features_df.T)
+
+            elif type == 'std':
+                        std = scaler.StandardScaler()
+                        scaled_data = std.fit_transform(features_df.T)
+
+            elif type == 'robust':
+                        rob = scaler.RobustScaler()
+                        scaled_data = rob.fit_transform(features_df.T)
+
+            elif type == 'maxabs':
+                        mabs = scaler.MaxAbsScaler()
+                        scaled_data = mabs.fit_transform(features_df.T)
+
+            elif type == 'norm':
+                        norm = scaler.Normalizer()
+                        scaled_data = norm.fit_transform(features_df.T)
+             
+            scaled_df = pd.DataFrame(scaled_data.T, columns= samples, index= features)
+            
+            ana.data.update({'Features' : scaled_df})
+
+            results.update({f"{ana.name}_scaled" : ana.data})
+        #return transformed data. 
+        return results
+
+
+
     def get_seasonal_components(self, data, period):
         """
         Break each sample's time-series curve down into its components : Trend, Seasonal, and Residual(Noise)
@@ -628,105 +741,6 @@ class DeviceEngine(CoreEngine):
         data.update({'Curve noise frequencies' : transformed_residual})
         #return transformed data. 
         return data
-
-    
-
-    def bin_frequencies(self, resolution=20, ana=None):
-        
-
-        def mean(values):
-            if len(values) != 0:
-                return sum(values)/len(values)
-            else:
-                print('data is invalid')
-
-
-        data = ana.data
-        seasonal_freqs = data['Curve seasonal frequencies']
-        num_datapoints = len(seasonal_freqs)
-        num_bins = int(num_datapoints / resolution)
-        seasonal_bins = np.linspace(0, num_datapoints, num=num_bins)
-        
-        #keys for bin dict
-        feature_names = []
-        bins_list = []
-        for int(i), int(j) in zip(seasonal_bins[:-1], seasonal_bins[1:]):
-            feature_names.append(f"fseason_{i}-{j}")
-            new_dict = {data['Sample'] : mean(seasonal_freqs[i:j])}
-            bins_list.append(new_dict)
-
-
-        noise_freqs = data['Curve noise frequencies']
-        noise_bins = np.linspace(0, len(noise_freqs), num=num_bins)
-        #keys for bin dict
-        for i, j in zip(noise_bins[:-1], noise_bins[1:]):
-            feature_names.append(f"fnoise_{i}-{j}")
-            new_dict = {{data['Sample'] : mean(noise_freqs[i:j])}}
-            bins_list.append(new_dict)
-        
-
-        return pd.DataFrame(bins_list, index=feature_names)
-
-
-
-    def add_extracted_features(self, resolution = 20, ana=None):
-        """
-        Add features engineered from seasonal decomposition and fourier transform to features-matrix to improve classification
-
-        """
-        data = ana.data
-        features_df = data['Features']
-        new_features_df = self.bin_frequencies(resolution, ana)
-        features_df = pd.concat([features_df, new_features_df], axis=0)
-        ana.data.update({'Features' : features_df})
-        return features_df
-    
-
-
-    def scale_features(self, data, type='minmax'):
-        """
-        Scale data according to user input. Default values take over if no input.
-        Returns list of changed data dicts.
-
-        """ 
-        prepared_data = self.prepare_data(data)
-        
-        results = {}
-
-        for ana in prepared_data:
-            
-
-            features_df = ana.data['Features']
-            samples = features_df.columns
-            features = features_df.index
-            
-            if type == 'minmax':
-                    mm = scaler.MinMaxScaler()
-                    scaled_data = mm.fit_transform(features_df.T)
-
-            elif type == 'std':
-                        std = scaler.StandardScaler()
-                        scaled_data = std.fit_transform(features_df.T)
-
-            elif type == 'robust':
-                        rob = scaler.RobustScaler()
-                        scaled_data = rob.fit_transform(features_df.T)
-
-            elif type == 'maxabs':
-                        mabs = scaler.MaxAbsScaler()
-                        scaled_data = mabs.fit_transform(features_df.T)
-
-            elif type == 'norm':
-                        norm = scaler.Normalizer()
-                        scaled_data = norm.fit_transform(features_df.T)
-             
-            scaled_df = pd.DataFrame(scaled_data.T, columns= samples, index= features)
-            
-            ana.data.update({'Features' : scaled_df})
-
-            results.update({f"{ana.name}_scaled" : ana.data})
-        #return transformed data. 
-        return results
 
 
 
@@ -887,7 +901,7 @@ class DeviceEngine(CoreEngine):
     
 
 
-    def prepare_data(self, data_list, group_by = 'method'):
+    def group_analyses(self, data_list, group_by = 'method'):
         """
         Group and organize data appropriately into unique set of runs/experiments using method ids and dates.
         Args:
@@ -1086,7 +1100,7 @@ class DeviceEngine(CoreEngine):
         #retrieve list of analysis objects based on user input 
         anas_to_plot = self.get_analyses(analyses)
 
-        objects_list = self.prepare_data(anas_to_plot, group_by=group_by)    
+        objects_list = self.group_analyses(anas_to_plot, group_by=group_by)    
 
         for ana in objects_list:
             ana.plot(interactive=interactive)
@@ -1105,7 +1119,7 @@ class DeviceEngine(CoreEngine):
         if features == 'base' and scaled == True:
             result_dict = self.get_results(results, scaled=scaled)
        
-        objects_list = self.prepare_data(result_dict, group_by=group_by)
+        objects_list = self.group_analyses(result_dict, group_by=group_by)
         
         for ana in objects_list:        
 
@@ -1123,31 +1137,6 @@ class DeviceEngine(CoreEngine):
 
             del ana
 
-
-
-    def make_pca(self, results):
-
-        analysed_dict = {}
-        for key in list(results):
-            data = results[key]
-            scaled_features = data['Features'].T
-            for name in list(data):
-                if 'scaled' in name:
-                    scaled_features = data[name].T
-
-            pca = analyser.PCA()
-            pca.fit_transform(scaled_features)
-            print('Components:\n')
-            print(pca.components_)
-            print('Explained variance ratio:\n')
-            print(pca.explained_variance_ratio_)
-            analysed_dict.update({key:pca})
-
-        for key in list(analysed_dict):
-            print(analysed_dict[key])
-            
-        return analysed_dict
-        
 
 
     def classify(self, results):
@@ -1169,7 +1158,7 @@ class DeviceEngine(CoreEngine):
         #split data into training and testing sets
         train_data, test_data = splitter(new_df, test_size=0.5, random_state= 42)
 
-        classifier = iso(contamination=0.25, random_state=42)
+        classifier = iso(contamination=0.35, random_state=42)
         classifier.fit(train_data)
 
         prediction = classifier.decision_function(test_data)
