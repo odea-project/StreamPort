@@ -68,11 +68,10 @@ class DeviceEngine(CoreEngine):
                     Source variable must be a string or raw string or exclude escape characters by using '\\' instad of '\'.
                     User-assigned to each DeviceEngine instance at runtime as an argument.
 
-        _method_ids (list(str)): List of all unique analyses identified by method and date of experiment.
+        _method_ids (dict(tup(datetime))): Dict of all unique analyses (identified by method and date of experiment)
+                                            and associated value-pair of (start date, end date) for the respective batch.
 
         _components(str/list(str)): List of all components involved in runs on this device.
-
-        _data_keyList(list(str)): List of analysis data keys in order of appearance.
 
     Methods: (specified are methods only belonging to child class or modified to fit child class specifications. For superclass methods, see CoreEngine)
 
@@ -112,10 +111,10 @@ class DeviceEngine(CoreEngine):
     _source = r''
 
     #list of unique Method IDs 
-    _method_ids = []
+    _method_ids = {}
 
     #list of unique components
-    _components = []
+    _components = {}
 
     #list of analysis data_keys
     _data_keyList = []
@@ -127,8 +126,8 @@ class DeviceEngine(CoreEngine):
 
         #unique variable for each device. Stores full path to the source of data to be imported and processed. 
         self._source = r'{}'.format(source) if not isinstance(source, type(None)) else r'{}'.format(os.getcwd())
-        self._method_ids = [] if isinstance(method_ids, type(None)) else method_ids
-        self._components = [] if isinstance(components, type(None)) else components
+        self._method_ids = {} if isinstance(method_ids, type(None)) else method_ids
+        self._components = {} if isinstance(components, type(None)) else components
         self._data_keyList = [] 
 
 
@@ -171,6 +170,8 @@ class DeviceEngine(CoreEngine):
         #initialize stack to iterate over all superfolders
         dir_stack = [self._source]
 
+        #default last end date for first recorded batch. Expects file containing experiment batches to be sorted in ascending order of start dates
+        last_known_end_date = datetime(1,1,1,0,0,0,0)
         while dir_stack:
 
             #start with the latest folder encountered
@@ -215,7 +216,7 @@ class DeviceEngine(CoreEngine):
                     continue
         
                 else:
-                        
+
                     #type of files to read withing each .D folder
                     runtype = r'RUN.LOG'  
                     #acq_type = r'acq.txt' not needed until further updates
@@ -277,10 +278,16 @@ class DeviceEngine(CoreEngine):
                                 log_data.append(line)
                      
                                 #get component data(detector, ppump, sampler...)
+                                component_name = 'Detector'
                                 if line[0] == 'G':
                                     component_id = line.split(' ')[0]
-                                    if component_id not in self._components:
-                                        self._components.append(component_id)
+                                    if 'Detector' in line:
+                                        component_name = 'Detector'
+                                    #elif
+                            #check log data
+                                    components = list(self._components.keys())
+                                    if component_id not in components:
+                                        self._components.update({component_name : component_id})
                                     if component_id not in comp_ids:
                                         component_number = component_number + 1
                                         comp_ids.append(component_id)
@@ -319,11 +326,28 @@ class DeviceEngine(CoreEngine):
                         try:
                             
                             #to account for .D folder without numbering, like 'Irino_kali.D', etc.
+                            #Batch idle time for first analysis duplicated for every analysis of that (untrimmed) method
+                            #first batch has 'NA' idle time
+                            idle_time = 0
                             if not pressure_suffix.isdecimal():                 
                                 pressure_suffix = 1
                                 suffix_digits = 3
+                                class_label = 'fmt'
+                                #start date of first run 001 is marked. 
+                                # This also indicates that the current batch is complete and the last recorded end_date is the end date of the final run of the batch. 
                                 first_run_of_batch = start_date
-                        fixthis
+                                last_run_of_batch = current_run_of_batch
+
+                                if last_known_end_date != datetime(1,1,1,0,0,0,0):
+                                    idle_time = first_run_of_batch - last_known_end_date
+                                    # Get the total number of seconds from the absolute value of the timedelta
+                                    idle_time = abs(idle_time).total_seconds()
+                                
+                            else:
+                                #cycle through end dates of all previous analyses. Last end date saved in variable will be the last run recorded before 001.
+                                # Confirm correct time stamp, 'postrun' or 'method completed'       
+                                current_run_of_batch = end_date
+                                class_label = None
                         
                             #if blank run encountered on reading current run's .LOG file, name run column with '-blank' as identifier
                             if blank_identifier == 1:
@@ -345,7 +369,8 @@ class DeviceEngine(CoreEngine):
                                 #sample runs indicated with sample name
                                 curve_header = "Sample - " + filename[-1]  
                             
-                            curve_header = curve_header + '/' + start_date_string
+                            #sample name/header holds its start date and time
+                            curve_header = curve_header + '|' + start_date_string
 
                             #run-number from filename is used as batch position ('.D' = 1, '002.D' = 2, '003.D' = 3...)    
                             batch_position = pressure_suffix
@@ -385,10 +410,11 @@ class DeviceEngine(CoreEngine):
                             #add pressure curve to list of curves for current method  
                             curves_list.append(pressure_file)
                             
-                            print(curve_header +  start_date_string)
+                            print(curve_header)
                             print('end date : ' + end_date_string)
-                            print('runtime : ' + str(runtime) + '\n')
-                            print('runtime observed from curve : ' + str(curve_runtime) + '\n')
+                            print('runtime : ' + str(runtime))
+                            print('runtime observed from curve : ' + str(curve_runtime))
+                            print('batch idle time : ' + str(idle_time))
 
                             #find deviation between true and observed runtimes 
                             runtime_delta = runtime - curve_runtime
@@ -428,39 +454,42 @@ class DeviceEngine(CoreEngine):
                         #the larger dict holding these individual dicts is the data of a single DeviceAnalysis object.
                         analysis_data = {'Method' : method_suffix, 
                                          'Sample' : curve_header, 
+                                         'Curve' : curves_list[-1], 
                                          'Runtype' : run_type,
                                          'Batch position' : batch_position,
                                          'Runtime' : runtime,
                                          'Runtime delta' :  runtime_delta,
                                          'Runtime percent error' : runtime_percent_error,
-                                         'Idle time' : 'NA',
+                                         'Idle time' : idle_time,
                                          'Number of Trials' : times_started, 
-                                         'Curve' : curves_list[-1], 
                                          'Log' : log_data}
                         
                         
                         for index in range(component_number):
                                 analysis_data.update({f'Component {index+1}' : comp_ids[index]}) 
 
+                        data_keyList = list(analysis_data.keys())
+
                         #add every encountered analysis to device history
                         self._history.update({analysis_name : analysis_data})    
 
                         #create new DeviceAnalysis object.
-                        new_object = DeviceAnalysis(name = analysis_name, data = analysis_data, analysis_type = analysis_type)
+                        new_object = DeviceAnalysis(name = analysis_name, data = analysis_data, analysis_type = analysis_type, class_label=class_label, key_list=data_keyList)
 
                         #list of analyses populated with individual analysis objects
                         analyses_list.append(new_object)
 
-                if self._data_keyList == []: 
-                    self._data_keyList = list(analysis_data.keys())
 
                 if not method_suffix:
                     continue
-
-                if method_suffix not in self._method_ids:
-
+                
+                method_ids = list(self._method_ids.keys())
+                if method_suffix not in method_ids:
+                    if method_ids != []:
+                        last_known_end_date = self._method_ids[method_ids[-1]][-1]
+                        
                     #add current method ID to list of known/encountered method types, no duplicates
-                    self._method_ids.append(method_suffix)
+                    self._method_ids.update({method_suffix : (first_run_of_batch, last_run_of_batch)})
 
         return analyses_list
 
@@ -522,6 +551,7 @@ class DeviceEngine(CoreEngine):
         runtime = {}
         runtime_delta = {}
         runtime_percent_error = {}
+        idle_time = {}
 
         #runtype describes whether run was a blank or a sample run
         runtype = {}
@@ -532,7 +562,8 @@ class DeviceEngine(CoreEngine):
 
         #update each Device Pressure Analysis with its features in addition to creating the combined dataframe
         curve = data['Curve']
-        
+        sample = data['Sample']
+
         #features extracted from 'pct_change' curves hepl better model curve behaviour.
         curve_features = curve.iloc[:, 1].agg(features_list)
 
@@ -542,11 +573,12 @@ class DeviceEngine(CoreEngine):
             weighted_curve_features.index = [f"{i}_percent_change" for i in weighted_curve_features.index]
             curve_features = weighted_curve_features
                  
-        runtime.update({data['Sample'] : data['Runtime']})
-        runtime_delta.update({data['Sample'] : data['Runtime delta']})
-        runtime_percent_error.update({data['Sample'] : data['Runtime percent error']})
-        runtype.update({data['Sample'] : data['Runtype']})
-        bpos.update({data['Sample'] : data['Batch position']})
+        runtime.update({sample : data['Runtime']})
+        runtime_delta.update({sample : data['Runtime delta']})
+        runtime_percent_error.update({sample : data['Runtime percent error']})
+        runtype.update({sample : data['Runtype']})
+        bpos.update({sample : data['Batch position']})
+        idle_time.update({sample : data['Idle time']})
 
         logs = data['Log']
         
@@ -563,10 +595,10 @@ class DeviceEngine(CoreEngine):
             comp_features.update({f'Component {index+1}' : comp_ids[index]}) 
 
 
-        run_features = pd.DataFrame([runtime, runtime_delta, runtime_percent_error, runtype, bpos], 
+        run_features = pd.DataFrame([runtime, runtime_delta, runtime_percent_error, runtype, bpos, idle_time], 
                                     columns=runtype.keys())
                 
-        run_features.index = ['Runtime(Rt)', 'RtDelta', 'RtPctError', 'Runtype', 'BatPos']
+        run_features.index = ['Runtime(Rt)', 'RtDelta', 'RtPctError', 'Runtype', 'BatPos', 'IdleTime']
 
         curve_features = pd.concat([curve_features, run_features], axis = 0)
 
@@ -576,7 +608,7 @@ class DeviceEngine(CoreEngine):
     
 
 
-    def bin_frequencies(self, data, resolution=30):
+    def bin_frequencies(self, data, resolution):
         """
         Bin frequency data extracted by performing fourier transform on deconposed curves.
         Aggregate(mean) of the values in these bins will be additional features to identify most active frequencies within these discrete bins. 
@@ -599,6 +631,12 @@ class DeviceEngine(CoreEngine):
         num_datapoints = len(seasonal_freqs)
         num_bins = int(num_datapoints / resolution)
         seasonal_bins = np.linspace(0, num_datapoints, num=num_bins)
+        mean_seasonal = seasonal_freqs.agg(['mean']) 
+        std_seasonal = seasonal_freqs.agg(['std'])
+        bins_list.append({data['Sample'] : std_seasonal})
+        bins_list.append({data['Sample'] : mean_seasonal})
+        feature_names.append('std_seasonal')
+        feature_names.append('mean_seasonal')
         print(seasonal_bins)
         for i, j in zip(seasonal_bins[:-1], seasonal_bins[1:]):
             feature_names.append(f"fseason_{int(i)}-{int(j)}")
@@ -610,6 +648,12 @@ class DeviceEngine(CoreEngine):
         num_datapoints = len(noise_freqs)
         num_bins = int(num_datapoints / resolution)
         noise_bins = np.linspace(0, num_datapoints, num=num_bins)
+        mean_noise = noise_freqs.agg(['mean']) 
+        std_noise = noise_freqs.agg(['std'])
+        bins_list.append({data['Sample'] : std_noise})
+        bins_list.append({data['Sample'] : mean_noise})
+        feature_names.append('std_noise')
+        feature_names.append('mean_noise')
         print(noise_bins)
         for i, j in zip(noise_bins[:-1], noise_bins[1:]):
             feature_names.append(f"fnoise_{int(i)}-{int(j)}")
@@ -627,7 +671,7 @@ class DeviceEngine(CoreEngine):
 
         """
         features_df = data['Features']
-        new_features_df = self.bin_frequencies(resolution, data)
+        new_features_df = self.bin_frequencies(data, resolution)
         features_df = pd.concat([features_df, new_features_df], axis=0)
         data.update({'Features' : features_df})
         return data
@@ -645,14 +689,14 @@ class DeviceEngine(CoreEngine):
             updated_data = self.add_extracted_features(this_analysis_data)
             results.update({ana_name : updated_data})
 
-        #once features are completely engineered and added, data is scaled for final ML
+                
         prepared_data = self.group_analyses(results)
         
         results = {}
 
+        #once features are completely engineered and added, data is scaled for final ML
         for ana in prepared_data:
             
-
             features_df = ana.data['Features']
             samples = features_df.columns
             features = features_df.index
@@ -1139,7 +1183,7 @@ class DeviceEngine(CoreEngine):
 
 
 
-    def classify(self, results):
+    def classify(self, results, random_state):
         #new features must be added before scaling
         import plotly.graph_objects as go
 
@@ -1147,12 +1191,23 @@ class DeviceEngine(CoreEngine):
         result_dict = self.get_results(results, scaled=True)
         
         feature_dfs = []
+        curve_dfs = []
         for key in list(result_dict):
             feature_dfs.append(result_dict[key]['Features'])
-
+            curve_dfs.append(result_dict[key]['Curve'])
+            print(result_dict[key]['Curve'])
         new_df = pd.concat(feature_dfs, axis=1)
+
+        new_curve_df = curve_dfs[0]
+        for i in range(1, len(curve_dfs)):
+            new_curve_df = pd.merge(new_curve_df, curve_dfs[i], on='Time')
+        # Concatenate DataFrames along columns
+        #new_curve_df = pd.concat(curve_dfs, axis=1)
+        print('curves')
+        print(new_curve_df)
         #transpose to enable ML
         new_df = new_df.T
+        print('features')
         print(new_df)
 
         #split data into training and testing sets
@@ -1182,31 +1237,33 @@ class DeviceEngine(CoreEngine):
         #plotly go plot
         # Create the scatter plot
         fig = go.Figure()
-
-        fig.add_trace(go.Scatter(
-            x=[sam[-30:-15] for sam in test_set],
-            y=prediction,
-            mode='markers',
-            marker=dict(
-                color=colors,
-                size=sizes
-            ),
-            text=[sam for sam in test_set],
-            name='Anomalous curves'
-        ))
+        time_axis = new_curve_df['Time']
+        for i in range(len(test_set)):
+            fig.add_trace(go.Scatter(
+                x=time_axis,
+                y=new_curve_df[test_set[i]],
+                visible=True,
+                mode='lines',
+                marker=dict(
+                    color=colors[i],
+                    size=sizes
+                ),
+                text=test_set[i],
+                name=test_set[i]
+            ))
 
         # Update layout
         fig.update_layout(
             title="Anomalous curves - Test Set",
-            xaxis_title="Samples",
-            yaxis_title="Anomaly scores",
-            yaxis=dict(
-                dtick=0.005  # Set the y-axis resolution to 0.05
-            )
+            xaxis_title="Time",
+            yaxis_title="Pressure",
+            #yaxis=dict(
+            #    dtick=0.005  # Set the y-axis resolution to 0.05
+            #)
         )
 
         # Show the plot
         fig.show()
 
 
-        return print(prediction)   
+        return prediction  

@@ -16,7 +16,7 @@ class DeviceAnalysis(Analysis):
         replicate (str): The name of the replicate.
         blank (str): The name of the blank.
         data (dict/list): The data of the analysis, which is a dict or list of one dimension numpy arrays or dicts or lists.
-
+    
     Instance Attributes:
         _analysis_type (str/list(str), optional): Marker(s) to specify the type of data the current Analysis is related to (pressure, temperature, ..)
 
@@ -25,33 +25,23 @@ class DeviceAnalysis(Analysis):
         _class (str): 'fmt'(First Measurement), 'norm'(Normal), 'dvt'(Deviant) assigned to analyses after feature inspection.
                             This assists in future classification when using supervised learning algorithms.
 
+        _key_list (list(str)): list of analysis data keys in order of appearance.
+                            
     Methods: (specified are methods only belonging to child class. For superclass methods, see Analysis)
 
-        validate (self, _analysis_type) Validates the analysis object while allowing for flexibility in handling varying datatypes for each DeviceAnalysis instance.
+        validate (self, _analysis_type) : Validates the analysis object while allowing for flexibility in handling varying datatypes for each DeviceAnalysis instance.
 
         plot (self, analyses(DataFrame/list(DataFrame))) : Plots the selected (pressure) curves.
 
+        set_class_label (self, class_label(str)) : Sets class label of analysis object using assigned label from unsupervised learning.
             
     """
 
-
-
-    ###
-    ###ADD PROVISION TO ENABLE USER-ASSIGNED CLASS LABELS AFTER FEATURE PLOT INSPECTION. MAYBE BY CLICKING.
-    ###HOVER FEATURE ON PLOTS TO BRING UP CORRESPONDING LOG PAGE(S). 
-    ###
-
-
-
-    def __init__(self, name=None, replicate=None, blank=None, data=None, analysis_type=None, class_label=None):
+    def __init__(self, name=None, replicate=None, blank=None, data=None, analysis_type=None, class_label=None, key_list=None):
         
         super().__init__(name, replicate, blank, data)
         self._analysis_type = str(analysis_type) if not isinstance(analysis_type, type(None)) else "Unknown"
-
-        if self.data != {} and '001-blank' in self.data['Sample']:
-            self._class = 'fmt'
-        else: 
-            self._class = str(class_label) if not isinstance(class_label, type(None)) else "Undefined"
+        self._key_list = key_list if not isinstance(key_list, type(None)) else list(self.data.keys())
 
 
 
@@ -95,8 +85,8 @@ class DeviceAnalysis(Analysis):
     def print(self):
         print(self)
       
-        
 
+    
     def plot(self, interactive = True, features = False, decomp = False, transform = False, type = None, scaled = True, transpose=False):
         """
         Plots analyses data based on user input. Plots pressure curves by default.
@@ -241,7 +231,23 @@ class DeviceAnalysis(Analysis):
         
         else:
             pio.show(fig, renderer='png')   
-        
+
+
+
+    def set_class_label(self, class_label=None):
+        """
+        Self_assign class labels input from DeviceEngine's classify() function.
+
+        """
+
+        if not isinstance(class_label, type(None)):
+            self._class = str(class_label)
+
+        else:
+            if self.data != {} and '001-blank' in self.data['Sample']:
+                self._class = 'fmt'             
+            else:
+                self._class = "Undefined"
 
             
 
