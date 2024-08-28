@@ -1213,7 +1213,7 @@ class DeviceEngine(CoreEngine):
         print(new_df)
 
         #split data into training and testing sets
-        train_data, test_data = splitter(new_df, test_size=0.7, random_state= random_state)
+        train_data, test_data = splitter(new_df, test_size=0.5, random_state= random_state)
 
         classifier = iso(contamination=0.35, random_state=random_state)
         classifier.fit(train_data)
@@ -1234,6 +1234,44 @@ class DeviceEngine(CoreEngine):
 
         test_set = test_data.index
 
+        for element in test_set:
+            element = element[-28 : -1]
+        """
+        First show prediction w.r.t threshold values
+        """
+         # Create the scatter plot
+        fig = go.Figure()
+
+        
+        fig.add_trace(go.Scatter(
+            x=test_set,
+            y=prediction,
+            mode='markers',
+            marker=dict(
+                color=[colors[i] for i in range(len(test_set))],
+                size=sizes
+                ),
+            text=[sam for sam in test_set],
+            name=[sam.split('|')[-1] for sam in test_set]
+                ))
+
+        # Update layout
+        fig.update_layout(
+            title="Anomalous curves(Red) - Test Set",
+            xaxis_title="Samples",
+            yaxis_title="Anomaly scores",
+            yaxis=dict(
+                dtick=0.1  # Set the y-axis resolution to 0.005
+            )
+        )
+
+        # Show the plot
+        fig.show()
+
+
+        """
+        Then show anomalous curves
+        """
         # Create the scatter plot
         fig = go.Figure()
         time_axis = new_curve_df['Time']
@@ -1250,7 +1288,7 @@ class DeviceEngine(CoreEngine):
                     size=sizes
                 ),
                 text=test_set[i],
-                name=test_set[i]
+                name=test_set[i].split('|')[-1]
             ))
             #get run start date from sample name and use it to find the appropriate analysis/analyses
             curve_timestamp = test_set[i].split('|')[-1]

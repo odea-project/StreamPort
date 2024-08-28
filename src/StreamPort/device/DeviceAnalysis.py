@@ -133,6 +133,8 @@ class DeviceAnalysis(Analysis):
                 samples = data['Features'].index
                 features_df = features_df.T
                 time_axis = data['Features'].columns
+                for element in time_axis:
+                    element = element[int(len(element)/2) + 5 : ]
                     
         elif decomp == True :
             transform = False
@@ -212,11 +214,11 @@ class DeviceAnalysis(Analysis):
 
                 if type == 'box':        
                     # Create a scatter trace for each column        
-                    fig.add_trace(go.Box(x=time_axis, y=curve, visible=True, name=sample_name, marker=dict(color=colors_list[index], opacity=0.4), legendgroup=f'group{index}'), row=i + 1, col=1) 
+                    fig.add_trace(go.Box(x=time_axis, y=curve, visible=True, name=sample_name[int(len(sample_name)/2) + 5 : ], marker=dict(color=colors_list[index], opacity=0.4), hovertext=sample_name, legendgroup=f'group{index}'), row=i + 1, col=1) 
 
                 else:
-                    fig.add_trace(go.Scatter(x=time_axis, y=curve, visible=True, name=sample_name, mode='lines',
-                                    marker=dict(size=5, color=colors_list[index], line=dict(width=0)), legendgroup=f'group{index}'), row=i + 1, col=1)
+                    fig.add_trace(go.Scatter(x=time_axis, y=curve, visible=True, name=sample_name[int(len(sample_name)/2) + 5 : ], mode='lines',
+                                    marker=dict(size=5, color=colors_list[index], line=dict(width=0)), text=sample_name, legendgroup=f'group{index}'), row=i + 1, col=1)
 
                 
                 fig.update_yaxes(title_text= ytext[i], row=i + 1, col=1)
