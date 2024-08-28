@@ -22,7 +22,7 @@ class DeviceAnalysis(Analysis):
 
         ***Note*** : _analysis_type must have same size as data. Will influence future functionality of class methods.
 
-        _class (str): 'fmt'(First Measurement), 'norm'(Normal), 'dvt'(Deviant) assigned to analyses after feature inspection.
+        _class (str): 'First Measurement', 'Normal', 'Deviant' assigned to analyses after feature inspection.
                             This assists in future classification when using supervised learning algorithms.
 
         _key_list (list(str)): list of analysis data keys in order of appearance.
@@ -42,7 +42,7 @@ class DeviceAnalysis(Analysis):
         super().__init__(name, replicate, blank, data)
         self._analysis_type = str(analysis_type) if not isinstance(analysis_type, type(None)) else "Unknown"
         self._key_list = key_list if not isinstance(key_list, type(None)) else list(self.data.keys())
-
+        self._class = self.set_class_label(class_label)
 
 
     def validate(self):
@@ -78,11 +78,14 @@ class DeviceAnalysis(Analysis):
                                     ]
                                 )
         
-        return f"\nAnalysis\n  name: {self.name}\n  replicate: {self.replicate}\n  blank: {self.blank}\n  data:\n{data_str}\n"
+        return f"\nAnalysis\n  name: {self.name}\n  replicate: {self.replicate}\n  blank: {self.blank}\n  class: {self._class}\n  data:\n{data_str}\n"
 
 
 
     def print(self):
+        """
+        Prints the current object.
+        """
         print(self)
       
 
@@ -240,16 +243,18 @@ class DeviceAnalysis(Analysis):
 
         """
 
-        if not isinstance(class_label, type(None)):
+        if not isinstance(class_label, type(None)) and not '001-blank' in self.data['Sample']:
             self._class = str(class_label)
+
+        elif isinstance(class_label, list) and isinstance(class_label[0], str):
+            self._class = class_label[0]
 
         else:
             if self.data != {} and '001-blank' in self.data['Sample']:
-                self._class = 'fmt'             
+                self._class = 'First measurement'             
             else:
                 self._class = "Undefined"
-
-            
+        
 
 
 

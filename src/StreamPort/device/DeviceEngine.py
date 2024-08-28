@@ -332,7 +332,7 @@ class DeviceEngine(CoreEngine):
                             if not pressure_suffix.isdecimal():                 
                                 pressure_suffix = 1
                                 suffix_digits = 3
-                                class_label = 'fmt'
+                                class_label = 'First measurement'
                                 #start date of first run 001 is marked. 
                                 # This also indicates that the current batch is complete and the last recorded end_date is the end date of the final run of the batch. 
                                 first_run_of_batch = start_date
@@ -354,7 +354,7 @@ class DeviceEngine(CoreEngine):
                                     
                                 run_suffix = '-blank'
 
-                                #assign class label 0 to blanks                               
+                                #assign runtype 0 to blanks                               
                                 run_type = 0 
 
                                 #add blank run headers to list of blanks
@@ -362,7 +362,7 @@ class DeviceEngine(CoreEngine):
 
                             else:
 
-                                #assign class label 1 to samples 
+                                #assign runtype 1 to samples 
                                 run_type = 1
 
                                 #add sample run headers to samples list, keep trailing pressure suffix for future analysis
@@ -1183,9 +1183,11 @@ class DeviceEngine(CoreEngine):
 
 
 
-    def classify(self, results, random_state):
+    def classify(self, results, random_state=None):
         #new features must be added before scaling
         import plotly.graph_objects as go
+
+        random_state = 42 if isinstance(random_state, type(None)) else random_state
 
         #retrieve scaled features data of desired result for classification
         result_dict = self.get_results(results, scaled=True)
@@ -1211,20 +1213,18 @@ class DeviceEngine(CoreEngine):
         print(new_df)
 
         #split data into training and testing sets
-        train_data, test_data = splitter(new_df, test_size=0.5, random_state= 42)
+        train_data, test_data = splitter(new_df, test_size=0.7, random_state= random_state)
 
-        classifier = iso(contamination=0.35, random_state=42)
+        classifier = iso(contamination=0.35, random_state=random_state)
         classifier.fit(train_data)
 
         prediction = classifier.decision_function(test_data)
-        print(prediction)
 
         #find std for anomaly scores and use as threshold for decision function
         mean_std = prediction.mean()
 
         #set outlier detection threshold
         threshold = prediction < mean_std
-        print(threshold)
 
         # Assign different colors to normal data and anomalies
         colors = np.where(threshold, 'red', 'black')                                    
@@ -1234,10 +1234,11 @@ class DeviceEngine(CoreEngine):
 
         test_set = test_data.index
 
-        #plotly go plot
         # Create the scatter plot
         fig = go.Figure()
         time_axis = new_curve_df['Time']
+
+        # loop over all samples in the test set
         for i in range(len(test_set)):
             fig.add_trace(go.Scatter(
                 x=time_axis,
@@ -1251,10 +1252,19 @@ class DeviceEngine(CoreEngine):
                 text=test_set[i],
                 name=test_set[i]
             ))
+            #get run start date from sample name and use it to find the appropriate analysis/analyses
+            curve_timestamp = test_set[i].split('|')[-1]
+            analysis = self.get_analyses(curve_timestamp)
+
+            #if current run found to be an anomaly, its respective analysis object's class is set to indicate it.
+            if colors[i] == 'red':    
+                analysis[0].set_class_label('Deviant')
+            else:
+                analysis[0].set_class_label('Normal')
 
         # Update layout
         fig.update_layout(
-            title="Anomalous curves - Test Set",
+            title="Anomalous curves(Red) - Test Set",
             xaxis_title="Time",
             yaxis_title="Pressure",
             #yaxis=dict(
@@ -1265,5 +1275,6 @@ class DeviceEngine(CoreEngine):
         # Show the plot
         fig.show()
 
-
         return prediction  
+
+        
