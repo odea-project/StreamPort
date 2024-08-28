@@ -1234,26 +1234,25 @@ class DeviceEngine(CoreEngine):
 
         test_set = test_data.index
 
-        for element in test_set:
-            element = element[-28 : -1]
         """
         First show prediction w.r.t threshold values
         """
          # Create the scatter plot
         fig = go.Figure()
 
-        
-        fig.add_trace(go.Scatter(
-            x=test_set,
-            y=prediction,
-            mode='markers',
-            marker=dict(
-                color=[colors[i] for i in range(len(test_set))],
-                size=sizes
-                ),
-            text=[sam for sam in test_set],
-            name=[sam.split('|')[-1] for sam in test_set]
-                ))
+        for i in range(len(test_set)):
+            fig.add_trace(go.Scatter(
+                x=[test_set[i]],
+                y=[prediction[i]],
+                mode='markers',
+                marker=dict(
+                    color=colors[i],
+                    size=sizes[i]
+                    ),
+                text=test_set[i],
+                name=test_set[i].split('|')[-1]
+                )
+            )
 
         # Update layout
         fig.update_layout(

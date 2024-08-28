@@ -120,9 +120,10 @@ class DeviceAnalysis(Analysis):
         if features == True:
             decomp = False
             transform = False
-            time_axis = data['Features'].index
             features_df = data['Features']
+            time_axis = features_df.index
             feature_flag = 1
+
             if scaled == True and 'Device Pressure Analysis' not in self.name or '_scaled' in self.name:
                 title_suffix = 'features(scaled)'
                 
@@ -130,12 +131,11 @@ class DeviceAnalysis(Analysis):
                 title_suffix = 'features'
 
             if transpose == True:
-                samples = data['Features'].index
+                samples = features_df.index
+                time_axis = features_df.columns
+                time_axis = [element.split('|')[-1] for element in time_axis]
                 features_df = features_df.T
-                time_axis = data['Features'].columns
-                for element in time_axis:
-                    element = element[int(len(element)/2) + 5 : ]
-                    
+
         elif decomp == True :
             transform = False
             features = False
@@ -172,8 +172,7 @@ class DeviceAnalysis(Analysis):
                     curves.update(feature_dict)
                     
             elif decomp == True :
-                    curves.update(
-                                  {sample : (data['Trend'][sample], 
+                    curves.update({sample : (data['Trend'][sample], 
                                             data['Seasonal'][sample], 
                                             data['Residual'][sample])}
                                  ) 
@@ -205,8 +204,10 @@ class DeviceAnalysis(Analysis):
                     if transpose == True:
                          xtext = "Samples"
                          ytext = "Features"
+
                 elif feature_flag == 3:
                     ytext = ["Frequencies(Raw)", "Frequencies(Snl)", "Frequencies(Rsd)"]
+
                 elif feature_flag == 2:
                     ytext = ["Trend", "Seasonal", "Residual"]
                     xtext = "Time (min)"
@@ -214,17 +215,16 @@ class DeviceAnalysis(Analysis):
 
                 if type == 'box':        
                     # Create a scatter trace for each column        
-                    fig.add_trace(go.Box(x=time_axis, y=curve, visible=True, name=sample_name[int(len(sample_name)/2) + 5 : ], marker=dict(color=colors_list[index], opacity=0.4), hovertext=sample_name, legendgroup=f'group{index}'), row=i + 1, col=1) 
+                    fig.add_trace(go.Box(x=time_axis, y=curve, visible=True, name=sample_name.split('|')[-1], marker=dict(color=colors_list[index], opacity=0.4), hovertext=sample_name, legendgroup=f'group{index}'), row=i + 1, col=1) 
 
                 else:
-                    fig.add_trace(go.Scatter(x=time_axis, y=curve, visible=True, name=sample_name[int(len(sample_name)/2) + 5 : ], mode='lines',
+                    fig.add_trace(go.Scatter(x=time_axis, y=curve, visible=True, name=sample_name.split('|')[-1], mode='lines',
                                     marker=dict(size=5, color=colors_list[index], line=dict(width=0)), text=sample_name, legendgroup=f'group{index}'), row=i + 1, col=1)
-
                 
                 fig.update_yaxes(title_text= ytext[i], row=i + 1, col=1)
                 fig.update_xaxes(title_text=xtext, row=i + 1, col=1)
                 
-                
+
         # Update the overall layout
         fig.update_layout(
                         title="Pressure/Time " + title_suffix + " - " + identifier,
@@ -245,7 +245,6 @@ class DeviceAnalysis(Analysis):
         Self_assign class labels input from DeviceEngine's classify() function.
 
         """
-
         if not isinstance(class_label, type(None)) and not '001-blank' in self.data['Sample']:
             self._class = str(class_label)
 
@@ -259,5 +258,25 @@ class DeviceAnalysis(Analysis):
                 self._class = "Undefined"
         
 
+"""
+***********COMING SOON************
+"""
+
+class DevicePressureAnalysis(DeviceAnalysis):
+
+    def __init__(self, name=None, replicate=None, blank=None, data=None, analysis_type=None, class_label=None, key_list=None):
+        super().__init__(name, replicate, blank, data, analysis_type, class_label, key_list)
 
 
+
+class DeviceActuals(DeviceAnalysis):
+
+    def __init__(self, name=None, replicate=None, blank=None, data=None, analysis_type=None, class_label=None, key_list=None):
+        super().__init__(name, replicate, blank, data, analysis_type, class_label, key_list)
+
+
+
+class DeviceMetadata(DeviceAnalysis):
+
+    def __init__(self, name=None, replicate=None, blank=None, data=None, analysis_type=None, class_label=None, key_list=None):
+        super().__init__(name, replicate, blank, data, analysis_type, class_label, key_list)
