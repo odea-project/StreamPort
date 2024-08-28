@@ -16,6 +16,7 @@ class DeviceAnalysis(Analysis):
         replicate (str): The name of the replicate.
         blank (str): The name of the blank.
         data (dict/list): The data of the analysis, which is a dict or list of one dimension numpy arrays or dicts or lists.
+        ****Set data as a list of Analysis child objects like pressure analysis, actuals
     
     Instance Attributes:
         _analysis_type (str/list(str), optional): Marker(s) to specify the type of data the current Analysis is related to (pressure, temperature, ..)
@@ -25,7 +26,7 @@ class DeviceAnalysis(Analysis):
         _class (str): 'First Measurement', 'Normal', 'Deviant' assigned to analyses after feature inspection.
                             This assists in future classification when using supervised learning algorithms.
 
-        _key_list (list(str)): list of analysis data keys in order of appearance.
+        _key_list (list(str)): list of analysis data keys in order of appearance. Maybe different for other data types.
                             
     Methods: (specified are methods only belonging to child class. For superclass methods, see Analysis)
 
