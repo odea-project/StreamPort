@@ -32,10 +32,10 @@ class MakeModelPCASKL(MakeModel):
             # mean center the data before PCA
             mean = np.mean(data, axis=0)
             data = data - mean
-        else:
-            # Perform PCA directly on uncentered data
-            pca = PCA(n_components=self.parameters.get("n_components", None))
-            pca_results = pca.fit_transform(data)
+        
+        # Perform PCA directly on uncentered data
+        pca = PCA(n_components=self.parameters.get("n_components", None))
+        pca_results = pca.fit_transform(data)
             
         # the pca_results should be a general model object to be algorithm dependent structure
         return {"pca_model": (pca_results, pca)}
