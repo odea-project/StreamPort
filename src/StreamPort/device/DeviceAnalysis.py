@@ -19,7 +19,7 @@ class DeviceAnalysis(Analysis):
         ****Set data as a list of Analysis child objects like pressure analysis, actuals
     
     Instance Attributes:
-        _analysis_type (str/list(str), optional): Marker(s) to specify the type of data the current Analysis is related to (pressure, temperature, ..)
+        _analysis_type (str/list(str), optional): Marker(s) to specify the type of data the current Analysis is related to (pressure, temperature, actuals,..)
 
         ***Note*** : _analysis_type must have same size as data. Will influence future functionality of class methods.
 
@@ -264,19 +264,21 @@ class DeviceAnalysis(Analysis):
 
 class DevicePressureAnalysis(DeviceAnalysis):
 
-    def __init__(self, name=None, replicate=None, blank=None, data=None, analysis_type=None, class_label=None, key_list=None):
+    def __init__(self, name=None, replicate=None, blank=None, data=None, analysis_type='pressure', class_label=None, key_list=None):
         super().__init__(name, replicate, blank, data, analysis_type, class_label, key_list)
+        self._analysis_type = analysis_type if not isinstance(analysis_type, type(None)) else 'pressure'
+        self._key_list = key_list if not isinstance(key_list, type(None)) else list(self.data.keys())
 
 
 
 class DeviceActuals(DeviceAnalysis):
 
-    def __init__(self, name=None, replicate=None, blank=None, data=None, analysis_type=None, class_label=None, key_list=None):
+    def __init__(self, name=None, replicate=None, blank=None, data=None, analysis_type='actuals', class_label=None, key_list=None):
         super().__init__(name, replicate, blank, data, analysis_type, class_label, key_list)
 
 
 
 class DeviceMetadata(DeviceAnalysis):
 
-    def __init__(self, name=None, replicate=None, blank=None, data=None, analysis_type=None, class_label=None, key_list=None):
+    def __init__(self, name=None, replicate=None, blank=None, data=None, analysis_type='metadata', class_label=None, key_list=None):
         super().__init__(name, replicate, blank, data, analysis_type, class_label, key_list)

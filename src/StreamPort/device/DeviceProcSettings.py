@@ -125,26 +125,3 @@ class Scaler(ProcessingSettings):
     return scaled_data
   
 
-
-class PCA(ProcessingSettings):
-  """
-  Perform PCA on scaled data
-
-  """
-  def __init__(self):
-    super().__init__() 
-    self.algorithm = "Classification"
-
-  def run(self, engine):
-    if engine._results.__len__() > 0:
-      results = engine._results
-    else:
-      results = {}
-      analyses = engine.get_results()
-      for analysis in list(analyses):
-        if 'scaled' in analysis:
-          results.update({analysis : analyses[analysis]})
-    
-    classified_data = engine.make_pca(results)
-    
-    return classified_data

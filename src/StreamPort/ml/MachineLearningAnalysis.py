@@ -64,4 +64,20 @@ class MachineLearningAnalysis(Analysis):
             print("Issue/s found with analysis", self.name)
         return valid
             
-    
+    def set_class_label(self, class_label=None):
+        """
+        Self_assign class labels input from DeviceEngine's classify() function.
+
+        """
+        if not isinstance(class_label, type(None)) and not '001-blank' in self.name:
+            self.classes = str(class_label)
+
+        elif isinstance(class_label, list) and isinstance(class_label[0], str):
+            self.classes = class_label[0]
+
+        else:
+            if self.data != {} and '001-blank' in self.name:
+                self.classes = 'First measurement'             
+            else:
+                self.classes = "Undefined"
+        

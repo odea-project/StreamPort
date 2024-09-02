@@ -13,6 +13,38 @@ class MakeModel(ProcessingSettings):
     def run(self):
         pass
 
+
+
+class MakeModelIsoForest(MakeModel):
+    """
+    Perform outlier analysis on scaled data using Isolation forest. 
+    This function calls the classify() function of its host MLEngine and retrieves data from the linked DeviceEngine object made to conform to MLEngine data structure.
+
+    """
+    def __init__(self, device, random_state=None):
+        super().__init__()
+        self.algorithm = "Isolation forest"
+        self.parameters = {
+          "random_state": random_state
+        }
+        self.version = "1.4.2"
+        self.software = "sklearn"
+        self._device = device
+
+    def run(self, engine):
+        (feature_analyses, methods) = engine.get_device_data(device=self._device)
+        for ana, method in zip(feature_analyses, methods):
+            engine.add_analyses(ana[0])
+            features_df = engine.get_data()
+            print('Anomaly detection - ' + method)
+            prediction_scores = engine.make_iso_forest(features_df, ana[1], random_state=self.parameters['random_state'])
+            print(prediction_scores)
+            engine.remove_analyses()
+        return 
+
+
+
+
 # Algorithm specific class
 class MakeModelPCASKL(MakeModel):
     def __init__(self, n_components = 2, center_data = True):

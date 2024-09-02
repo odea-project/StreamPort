@@ -1,10 +1,15 @@
 from ..core.CoreEngine import CoreEngine
 from ..ml.MachineLearningAnalysis import MachineLearningAnalysis
+from ..device.DeviceAnalysis import DeviceAnalysis
 import pandas as pd
 import numpy as np
 import os
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
+#to run isolation forest and assign classes on its basis
+from sklearn.ensemble import IsolationForest as iso
+#to split data into training and testing sets
+from sklearn.model_selection import train_test_split as splitter
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -47,6 +52,48 @@ class MachineLearningEngine(CoreEngine):
 
         super().__init__(headers, settings, analyses, results)
         self._classes=[]
+
+    def get_analyses(self, analyses=None):
+        """
+        Identical superclass method is modified here to return only a list, 
+        and also to return any value with matching subwords rather than the exact key.
+
+        """
+        ana_list = self._analyses
+
+        if analyses != None:
+            ana_list = []
+            if isinstance(analyses, int) and analyses < len(self._analyses):
+                ana_list.append(self._analyses[analyses])
+            
+            elif isinstance(analyses, str):
+                for analysis in self._analyses:
+                    if analyses in analysis.name:
+                        ana_list.append(analysis)
+            
+            elif isinstance(analyses, DeviceAnalysis):
+                ana_list.append(analyses)
+                    
+            elif isinstance(analyses, list):
+                analyses_out = []
+                for analysis in analyses:
+                    if isinstance(analysis, int) and analysis < len(self._analyses):
+                        analyses_out.append(self._analyses[analysis])
+                    elif isinstance(analysis, str):
+                        for a in self._analyses:
+                            if analysis in a.name:
+                                analyses_out.append(a)
+                    elif isinstance(analysis, DeviceAnalysis):
+                        analyses_out.append(analysis)
+                ana_list = analyses_out
+            
+            else:
+                print("Analysis not found!")
+
+        else:
+            print("Provided data is not sufficient or does not exist! Existing analyses will be returned.")
+            
+        return ana_list        
 
     def add_analyses_from_csv(self, path=None):
         """
@@ -155,6 +202,22 @@ class MachineLearningEngine(CoreEngine):
         
         return df_matrix
     
+    def get_device_data(self, device):
+        """
+        Retrieves data from linked DeviceEngine object for classification. 
+        DeviceEngine object returns a list of scaled and prepared MLAnalysis objects compatible with MLEngine specifications. 
+
+        """
+        features_analyses =[]
+        methods = []
+        for method in list(device._method_ids):
+            if device.trim_method_name(method) not in methods:
+                methods.append(device.trim_method_name(method))
+        for resname in methods:
+            features_analysis = device.classify(results=resname)
+            features_analyses.append(features_analysis)
+        return (features_analyses, methods)
+
     def add_classes(self, classes):
         """
         Adds classes (a array of string) to each analysis and use it for classification of the PCA results
@@ -230,6 +293,149 @@ class MachineLearningEngine(CoreEngine):
         else:
             print("No settings object found")
     
+    def make_iso_forest(self, data, curve_data, random_state=None):
+            """
+            3-way function that uses ML engines that each run host DeviceEngine methods to classify data from a particular method.
+            ML object with an iteration of this function exists for each method in DeviceEngine.  
+            
+            """
+            random_state = random_state
+            data.fillna(0, inplace=True)
+            #split data into training and testing sets
+            train_data, test_data = splitter(data, test_size=0.5, random_state= random_state)
+
+            #contamination:
+            #Description: This parameter specifies the proportion of outliers in the dataset.
+            #Default: 'auto', which estimates the contamination based on the data.
+
+            #bootstrap:
+            #Description: If set to True, individual trees are fit on random subsets of the training data sampled with replacement.
+            #Default: False.
+            #Impact: Bootstrapping can help improve the robustness of the model by introducing more variability in the training data1.
+
+            classifier = iso(contamination= 0.25, bootstrap= True, random_state=random_state)
+            classifier.fit(train_data)
+
+            prediction = classifier.decision_function(test_data)
+
+            #find std for anomaly scores and use as threshold for decision function
+            mean_std = prediction.mean()
+
+            #set outlier detection threshold
+            threshold = prediction < mean_std
+
+            # Assign different colors to normal data and anomalies
+            colors = np.where(threshold, 'red', 'black')                                    
+
+            # Assign different sizes to outliers and inliers
+            sizes = np.where(threshold, 30, 20)
+
+            test_set = test_data.index
+            train_set = train_data.index
+
+            def plot_anomalies(dataset, colors=None):
+                test_or_train = 0
+                if dataset == "train":
+                    colors = ['black' for i in range(len(train_set))]
+                    title = 'Training set'
+                    test_or_train = 1
+                    dataset = train_set
+                else:
+                    title = "Anomalous curves(Red) - test set"
+                    dataset = test_set
+                    colors=colors
+                """
+                First show prediction w.r.t threshold values
+                """
+                if test_or_train != 1:
+                    # Create the scatter plot
+                    fig = go.Figure()
+
+                    for i in range(len(dataset)):
+                        fig.add_trace(go.Scatter(
+                            x=[dataset[i].split('|')[-1]],
+                            y=[prediction[i]],
+                            mode='markers',
+                            marker=dict(
+                                color=colors[i],
+                                size=sizes[i]
+                                ),
+                            text=dataset[i],
+                            name=dataset[i].split('|')[-1]
+                            )
+                        )
+
+                    # Update layout
+                    fig.update_layout(
+                        title=title,
+                        xaxis_title="Samples",
+                        yaxis_title="Anomaly scores",
+                        yaxis=dict(
+                            dtick=0.1  # Set the y-axis resolution to 0.005
+                        )
+                    )
+
+                    # Show the plot
+                    fig.show()
+
+
+                """
+                Then show anomalous curves
+                """
+                # Create the scatter plot
+                fig = go.Figure()
+                time_axis = curve_data['Time']
+
+                # loop over all samples in the test set
+                for i in range(len(dataset)):
+                    fig.add_trace(go.Scatter(
+                        x=time_axis,
+                        y=curve_data[dataset[i]],
+                        visible=True,
+                        mode='lines',
+                        marker=dict(
+                            color=colors[i],
+                            size=sizes
+                        ),
+                        text=dataset[i],
+                        name=dataset[i].split('|')[-1]
+                    ))
+                    #get run start date from sample name and use it to find the appropriate analysis/analyses
+                    curve_timestamp = dataset[i].split('|')[-1]
+                    analysis = self.get_analyses(curve_timestamp)
+                    #there can only be one analysis with a unique timestamp
+                    analysis = analysis[0]
+                    #if current run found to be an anomaly, its respective analysis object's class is set to indicate it.
+                    if colors[i] == 'red' and analysis.classes != 'Deviant':    
+                        analysis.set_class_label('Deviant')
+                    else:
+                        analysis.set_class_label('Normal')
+                
+                # Update layout
+                fig.update_layout(
+                    title=title,
+                    xaxis_title="Time",
+                    yaxis_title="Pressure",
+                    #yaxis=dict(
+                    #    dtick=0.005  # Set the y-axis resolution to 0.05
+                    #)
+                )
+
+                # Show the plot
+                fig.show()
+
+            print('Training set')            
+            plot_anomalies('train')
+            print('Test set')
+            plot_anomalies('test', colors=colors)
+
+            print('Classes')
+            for ana in self._analyses:
+                print(f"{ana.name} : {ana.classes}")
+
+            return prediction  
+
+
     def plot_data(self):
         """
         Method for general plot of data from the analysis using Plotly.
