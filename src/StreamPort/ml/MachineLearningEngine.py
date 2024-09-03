@@ -205,7 +205,7 @@ class MachineLearningEngine(CoreEngine):
     def get_device_data(self, device):
         """
         Retrieves data from linked DeviceEngine object for classification. 
-        DeviceEngine object returns a list of scaled and prepared MLAnalysis objects compatible with MLEngine specifications. 
+        DeviceEngine object returns a list of MLEngine objects with scaled and prepared MLAnalysis objects compatible with MLEngine specifications. 
 
         """
         features_analyses =[]
@@ -214,7 +214,7 @@ class MachineLearningEngine(CoreEngine):
             if device.trim_method_name(method) not in methods:
                 methods.append(device.trim_method_name(method))
         for resname in methods:
-            features_analysis = device.classify(results=resname)
+            features_analysis = device.get_feature_matrix(results=resname)
             features_analyses.append(features_analysis)
         return (features_analyses, methods)
 
@@ -313,7 +313,7 @@ class MachineLearningEngine(CoreEngine):
             #Default: False.
             #Impact: Bootstrapping can help improve the robustness of the model by introducing more variability in the training data1.
 
-            classifier = iso(contamination= 0.25, bootstrap= True, random_state=random_state)
+            classifier = iso(contamination= 0.25, bootstrap= False, random_state=random_state)
             classifier.fit(train_data)
 
             prediction = classifier.decision_function(test_data)
@@ -410,7 +410,9 @@ class MachineLearningEngine(CoreEngine):
                         analysis.set_class_label('Deviant')
                     else:
                         analysis.set_class_label('Normal')
-                
+                    
+                    self.add_classes(analysis.classes)
+
                 # Update layout
                 fig.update_layout(
                     title=title,

@@ -18,7 +18,7 @@ class MakeModel(ProcessingSettings):
 class MakeModelIsoForest(MakeModel):
     """
     Perform outlier analysis on scaled data using Isolation forest. 
-    This function calls the classify() function of its host MLEngine and retrieves data from the linked DeviceEngine object made to conform to MLEngine data structure.
+    This function calls the get_feature_matrix() function of its host MLEngine and retrieves data from the linked DeviceEngine object made to conform to MLEngine data structure.
 
     """
     def __init__(self, device, random_state=None):
@@ -30,17 +30,31 @@ class MakeModelIsoForest(MakeModel):
         self.version = "1.4.2"
         self.software = "sklearn"
         self._device = device
+        self._linked_objects = []
 
     def run(self, engine):
+        #mods to pass MLEngine objects for each method_grouped set of results
+        #each feature_analysis in feature_analyses is a tuple of MLEngine object and curve_df
         (feature_analyses, methods) = engine.get_device_data(device=self._device)
-        for ana, method in zip(feature_analyses, methods):
-            engine.add_analyses(ana[0])
-            features_df = engine.get_data()
+        for obj, method in zip(feature_analyses, methods):
+            features_df = obj[0].get_data()
+            print('This engine: \n')
+            obj[0].print()
             print('Anomaly detection - ' + method)
-            prediction_scores = engine.make_iso_forest(features_df, ana[1], random_state=self.parameters['random_state'])
+            #total_num_samples = len(list(ana[1].columns))
+            #if total_num_samples > 7:
+            #    iterlimit = int(total_num_samples/2)
+            #else:
+            #    iterlimit = total_num_samples 
+            #for i in range(iterlimit):
+            #    if 'Undefined' in engine._classes:
+            prediction_scores = obj[0].make_iso_forest(features_df, obj[1], random_state=self.parameters['random_state'])
             print(prediction_scores)
-            engine.remove_analyses()
-        return 
+            self._linked_objects.append(obj[0])
+
+            #engine._classes = []
+            #engine.remove_analyses()
+        return self._linked_objects
 
 
 
@@ -59,6 +73,10 @@ class MakeModelPCASKL(MakeModel):
 
     def run(self, engine):
         data = engine.get_data()
+        """
+        MOD to handle NA values in data
+        """
+        data.fillna(0, inplace=True)
 
         if (self.parameters.get("center_data", None)):
             # mean center the data before PCA

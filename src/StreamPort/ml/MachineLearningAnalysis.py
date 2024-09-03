@@ -32,7 +32,7 @@ class MachineLearningAnalysis(Analysis):
         """
 
         super().__init__(name, replicate, blank, data)
-        self.classes = str(classes) if classes else None 
+        self.classes = str(classes) if classes else self.set_class_label() 
     
     def validate(self):
         """
@@ -66,7 +66,7 @@ class MachineLearningAnalysis(Analysis):
             
     def set_class_label(self, class_label=None):
         """
-        Self_assign class labels input from DeviceEngine's classify() function.
+        Self_assign class labels input from DeviceEngine's get_feature_matrix() and MLEngine's make_iso_forest() functions.
 
         """
         if not isinstance(class_label, type(None)) and not '001-blank' in self.name:

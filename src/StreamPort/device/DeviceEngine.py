@@ -1,6 +1,7 @@
 from ..core.CoreEngine import CoreEngine
 from ..device.DeviceAnalysis import DeviceAnalysis
 from ..ml.MachineLearningAnalysis import MachineLearningAnalysis
+from ..ml.MachineLearningEngine import MachineLearningEngine
 
 #CHECK WHETHER PACKAGES HAVE SUFFICIENT SUPPORT
 
@@ -1189,22 +1190,17 @@ class DeviceEngine(CoreEngine):
             del ana
 
 
-
-    def classify(self, results=None, random_state=None):
+  
+    def get_feature_matrix(self, results=None, random_state=None):
         """
         3-way function that uses ML engines that each run host DeviceEngine methods to classify data from a particular method.
         ML object with an iteration of this function exists for each method in DeviceEngine.  
         
         """
-        #new features must be added before scaling
-        import plotly.graph_objects as go
-
-        random_state = random_state
-
         #retrieve scaled features data of desired result for classification
         result_dict = self.get_results(results=results, scaled=True)
         result_keys = list(result_dict.keys())
-
+        
         print(result_keys)
         feature_dfs = [result_dict[result_keys[0]]['Features']]
         new_df = feature_dfs[0]
@@ -1224,7 +1220,7 @@ class DeviceEngine(CoreEngine):
 
         #transpose to enable ML
         new_df = new_df.T
-
+        
         #migrate prepared and scaled features matrix as MachineLearningAnalysis data to MachineLearningEngine
         ml_objects = []
         x_values = list(new_df.columns)
@@ -1234,6 +1230,13 @@ class DeviceEngine(CoreEngine):
             data = {'x' : x_values, 
                     'y' : new_df.iloc[i]}
             ml_objects.append(MachineLearningAnalysis(name=name, data=data))
+
+        #create MLEngine objects for each method-grouped set of results like 'Pac' or 'Doc'
+   
+        ml_engine = MachineLearningEngine(headers = {'name': f'ML{results}', 'author': 'Sandeep H.'}, analyses = ml_objects)
+        return (ml_engine, new_curve_df)
+        
+
 
         return (ml_objects, new_curve_df)
         #split data into training and testing sets
