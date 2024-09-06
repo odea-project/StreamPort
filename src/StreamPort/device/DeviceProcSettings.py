@@ -119,8 +119,15 @@ class Scaler(ProcessingSettings):
       analyses = engine.get_analyses([i for i in range(0,len(engine._analyses))])
       for analysis in analyses:
         results.update({analysis.name: analysis.data})
-    
-    scaled_data = engine.scale_features(results, self.parameters)
+
+    for ana_name in list(results):
+      this_analysis_data = results[ana_name]
+      updated_data = engine.add_extracted_features(this_analysis_data)
+      results.update({ana_name : updated_data})
+
+    prepared_data = engine.group_analyses(results)
+
+    scaled_data = engine.scale_features(prepared_data, self.parameters)
     
     return scaled_data
   
