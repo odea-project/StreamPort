@@ -680,13 +680,13 @@ class DeviceEngine(CoreEngine):
 
 
 
-    def add_extracted_features(self, data, resolution=30):
+    def add_extracted_features(self, data):
         """
         Add features engineered from seasonal decomposition and fourier transform to features-matrix to improve classification
 
         """
         features_df = data['Features']
-        new_features_df = self.bin_frequencies(data, resolution)
+        new_features_df = self.bin_frequencies(data, resolution=30)
         features_df = pd.concat([features_df, new_features_df], axis=0)
         data.update({'Features' : features_df})
         return data

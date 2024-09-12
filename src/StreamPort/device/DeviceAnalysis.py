@@ -4,7 +4,7 @@ import random
 import plotly.graph_objects as go
 import plotly.io as pio
 from plotly.subplots import make_subplots
-#plotly needs to be added to requirements.txt
+#plotly needs to be added to requirements.txt 
 
 class DeviceAnalysis(Analysis):
 
@@ -238,7 +238,12 @@ class DeviceAnalysis(Analysis):
         else:
             pio.show(fig, renderer='png')   
 
+        #if making a fullscreen plot
+        #fig.write_html('plot.html')
 
+        fig = None
+
+        
 
     def set_class_label(self, class_label=None):
         """
@@ -282,3 +287,6 @@ class DeviceMetadata(DeviceAnalysis):
 
     def __init__(self, name=None, replicate=None, blank=None, data=None, analysis_type='metadata', class_label=None, key_list=None):
         super().__init__(name, replicate, blank, data, analysis_type, class_label, key_list)
+
+
+
