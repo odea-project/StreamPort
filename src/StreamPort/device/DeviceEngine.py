@@ -1,7 +1,7 @@
-from ..core.CoreEngine import CoreEngine
-from ..device.DeviceAnalysis import DeviceAnalysis
-from ..ml.MachineLearningAnalysis import MachineLearningAnalysis
-from ..ml.MachineLearningEngine import MachineLearningEngine
+from src.StreamPort.core.CoreEngine import CoreEngine
+from src.StreamPort.device.DeviceAnalysis import DeviceAnalysis
+from src.StreamPort.ml.MachineLearningAnalysis import MachineLearningAnalysis
+from src.StreamPort.ml.MachineLearningEngine import MachineLearningEngine
 
 #CHECK WHETHER PACKAGES HAVE SUFFICIENT SUPPORT
 

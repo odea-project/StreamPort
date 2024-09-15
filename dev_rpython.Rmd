@@ -1,0 +1,33 @@
+---
+title : "StreamPort dev"
+output : html_document
+---
+
+Import reticulate to enable using python objects in R
+
+```{r setup, include=FALSE}
+library(reticulate)
+```
+
+Import python modules to be run in R environment
+
+```{python}
+from src.StreamPort.device.DeviceEngine import DeviceEngine
+from src.StreamPort.device.DeviceAnalysis import DeviceAnalysis
+dev = DeviceEngine(source = r'C:\Users\PC0118\Desktop\ExtractedSignals')
+dev.print()
+```
+
+Now we can use the functions that belong to the python object py
+
+```{r echo=FALSE}
+analyses <- py$dev$find_analyses()
+py$dev$add_analyses(analyses)
+py$dev$print()
+```
+
+Plot analyses
+
+```{r}
+py$dev$plot_analyses()
+```

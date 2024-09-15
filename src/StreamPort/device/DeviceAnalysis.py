@@ -1,4 +1,6 @@
-from ..core.CoreEngine import Analysis
+
+
+from src.StreamPort.core.CoreEngine import Analysis
 
 import random
 import plotly.graph_objects as go

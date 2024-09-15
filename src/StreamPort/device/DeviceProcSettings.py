@@ -1,5 +1,5 @@
 from src.StreamPort.core.ProcessingSettings import ProcessingSettings
-from src.StreamPort.device import DeviceAnalysis
+
 
 # Processing method specific class
 class ExtractFeatures(ProcessingSettings):
