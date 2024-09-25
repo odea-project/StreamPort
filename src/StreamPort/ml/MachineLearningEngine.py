@@ -1,6 +1,6 @@
-from ..core.CoreEngine import CoreEngine
-from ..ml.MachineLearningAnalysis import MachineLearningAnalysis
-from ..device.DeviceAnalysis import DeviceAnalysis
+from src.StreamPort.core.CoreEngine import CoreEngine
+from src.StreamPort.ml.MachineLearningAnalysis import MachineLearningAnalysis
+from src.StreamPort.device.DeviceAnalysis import DeviceAnalysis
 import pandas as pd
 import numpy as np
 import os

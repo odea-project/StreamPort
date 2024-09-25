@@ -675,7 +675,6 @@ class DeviceEngine(CoreEngine):
             new_dict = {data['Sample'] : mean(noise_freqs[int(i):int(j)])}
             bins_list.append(new_dict)
         
-
         return pd.DataFrame(bins_list, index=feature_names)
 
 
@@ -693,7 +692,7 @@ class DeviceEngine(CoreEngine):
     
 
 
-    def scale_features(self, prepared_data, type='minmax'):
+    def scale_features(self, prepared_data, type):
         """
         Scale data according to user input. Default values take over if no input.
         Returns list of changed data dicts. Add final extracted features to data before scaling.
@@ -703,12 +702,12 @@ class DeviceEngine(CoreEngine):
 
         #once features are completely engineered and added, data is scaled for final ML
         for ana in prepared_data:
-            
-            features_df = ana.data['Features']
+            #each ana is an analysis object
+            data = ana.data
+            features_df = data['Features']
             samples = list(features_df.columns)
             features = list(features_df.index)
             
-
             print(features_df)
             if type == 'minmax':
                     mm = scaler.MinMaxScaler()
@@ -732,9 +731,10 @@ class DeviceEngine(CoreEngine):
              
             scaled_df = pd.DataFrame(scaled_data.T, columns= samples, index= features)
             
-            ana.data.update({'Features' : scaled_df})
+            data.update({'Features' : scaled_df})
 
-            results.update({f"{ana.name}_scaled" : ana.data})
+            results.update({f"{ana.name}_scaled" : data})
+            
         #return transformed data. 
         return results
 
@@ -751,7 +751,7 @@ class DeviceEngine(CoreEngine):
 
         sample_name = data['Sample']
         sample_curve = data['Curve']
-        decomp = seasonal_decompose(sample_curve[sample_name], 
+        decomp = seasonal_decompose(pd.to_numeric(sample_curve[sample_name]), 
                                     model = 'additive', 
                                     period = period,  
                                     extrapolate_trend = 10)
@@ -920,7 +920,10 @@ class DeviceEngine(CoreEngine):
 
 
         
-    def trim_method_name(self, method_name):
+    def trim_method_name(self, method_name=None):
+        
+        if isinstance(method_name, type(None)):
+            return [self.trim_method_name(name) for name in self._method_ids]
 
         # Base case: If the string doesn't start or end with an underscore, return it as long as it has been trimmed.
         if (method_name[0] != '_' and method_name[-1] != '_') and len(method_name) <= 10:
@@ -946,7 +949,7 @@ class DeviceEngine(CoreEngine):
             return self.trim_method_name(result)
     
 
-
+    #MAYBE group_analyses should handle only unscaled data and leave grouping scaled data to get_feature_matrix
     def group_analyses(self, data_list, group_by = 'method'):
         """
         Group and organize data appropriately into unique set of runs/experiments using method ids and dates.
@@ -960,6 +963,7 @@ class DeviceEngine(CoreEngine):
             anas_to_plot = data_list 
 
         elif isinstance(data_list, dict) and data_list != {}:
+            #identifier for existence of scaled data. important because scaled data has already been grouped 
             unscaled_flag = 0
             scaled_anas = []
             anas_to_plot = []
@@ -968,9 +972,11 @@ class DeviceEngine(CoreEngine):
                     print(key + ' is already prepared!!')
                     scaled_anas.append(DeviceAnalysis(name= key, data= data_list[key]))
                 else:
+                    #if no scaled data has been found
                     unscaled_flag = 1
                     anas_to_plot.append(DeviceAnalysis(name= key, data= data_list[key]))
 
+            #if scaled data was encountered 
             if unscaled_flag != 1: 
                 if group_by == 'method':
                     new_dict = {}
@@ -998,34 +1004,45 @@ class DeviceEngine(CoreEngine):
         #create list of distinct analyses data dicts present in found analyses. 
         methods, samples, curves, features, trends, seasonals, residuals, raw_freqs, seasonal_freqs, noise_freqs = [], [], [], [], [], [], [], [], [], []
 
+        #these are unaltered method_names. what is this for?
         method_names = []
         for ana in anas_to_plot:
-            method_data = ana.data   
-            method_name = method_data['Method']
+            analysis_data = ana.data   
+            #get untrimmed method id from analyses
+            method_name = analysis_data['Method']
             method_names.append(method_name)
-            curves.append(method_data['Curve'])
-
-            samples.append(f"{method_name}_{method_data['Sample']}")
+            curves.append(analysis_data['Curve'])
+            #method_name is retained to tag samples with batch id
+            if len(analysis_data['Sample']) == 1:
+                samples.append(f"{method_name}_{analysis_data['Sample']}")
+            else:
+                samples.extend([f"{method_name}_{sample}" for sample in analysis_data['Sample']])
             if group_by == 'method':
                 new_method_name = self.trim_method_name(method_name=method_name)
+                #these are the end method_names that method grouping should check on and save as
                 methods.append(new_method_name)
             else:    
-                #method name contains experiment date
+                #this (untrimmed)method name still contains experiment date
                 methods.append(method_name)
+            
+            #this makes the assumption that if the input is a dictionary, it is results so includes stuff other than curves
+            #if data_list has only 2 elements it's 2 existing groups being grouped.
+            if isinstance(data_list, dict) or (isinstance(data_list, list) and len(data_list) == 2):
+                if 'Features' in list(analysis_data):
+                    features.append(analysis_data['Features'])
+                    trends.append(analysis_data['Trend'])
+                    seasonals.append(analysis_data['Seasonal'])
+                    residuals.append(analysis_data['Residual'])
+                    raw_freqs.append(analysis_data['Raw curve frequencies'])
+                    seasonal_freqs.append(analysis_data['Curve seasonal frequencies'])
+                    noise_freqs.append(analysis_data['Curve noise frequencies'])
 
-            if not isinstance(data_list, list):
-                features.append(method_data['Features'])
-                trends.append(method_data['Trend'])
-                seasonals.append(method_data['Seasonal'])
-                residuals.append(method_data['Residual'])
-                raw_freqs.append(method_data['Raw curve frequencies'])
-                seasonal_freqs.append(method_data['Curve seasonal frequencies'])
-                noise_freqs.append(method_data['Curve noise frequencies'])
-
-        df = curves[0]
-        this_method =  methods[0]
-        these_samples = [samples[0]]
-
+        try:
+            df = curves[0]
+            this_method =  methods[0]
+            these_samples = [samples[0]]
+        except IndexError:
+            print(IndexError('No analyses found!!'))
         new_data = {}
 
         #list of newly created analysis objects to be plotted
@@ -1034,6 +1051,7 @@ class DeviceEngine(CoreEngine):
         if num_analyses <= 1:
             objects_list = anas_to_plot
         else:
+            print(f'{method_names} methods were grouped as described below:')
             for i in range(1, num_analyses + 1):            
                 if i >= num_analyses:
                     pass
@@ -1042,12 +1060,15 @@ class DeviceEngine(CoreEngine):
                     next_method = methods[i]
 
                 if next_method == this_method and i != num_analyses:
-                    these_samples.append(samples[i])
+                    if len(samples[i]) == 1:
+                        these_samples.append(samples[i])
+                    else:
+                        these_samples.extend(samples[i])
                     current_columns = list(df.columns[1:])
                     df = pd.merge(df, next_curve, on='Time')
                     df.rename(columns={old:new for old,new in zip(current_columns, these_samples)}, inplace=True) 
               
-                    if not isinstance(data_list, list):
+                    if features != []:
 
                         features[0] = pd.concat([features[0], features[i]], axis = 1)
                         features[0].columns = these_samples
@@ -1077,8 +1098,7 @@ class DeviceEngine(CoreEngine):
                     df.rename(columns={old:new for old,new in zip(current_columns, these_samples)}, inplace=True)
                     new_data.update({'Curve' : df})
 
-                    if not isinstance(data_list, list):
-                        #features[0].columns = these_samples
+                    if features != []:
                         new_data.update({'Features' : features[0]}) 
                         
                         trends[0].columns = these_samples
@@ -1105,9 +1125,20 @@ class DeviceEngine(CoreEngine):
                             seasonal_freqs[0] = seasonal_freqs[i-1]
                             noise_freqs[0] = noise_freqs[i-1]           
 
-                        objects_list.append(DeviceAnalysis(name = method_names[i-1-1], data = new_data))
+                        names_list = [ana.name for ana in objects_list]
+                        if methods[i-1-1] not in names_list:
+                            #method names in methods is already trimmed or untrimmed based on group_by parameter. 
+                            objects_list.append(DeviceAnalysis(name = methods[i-1-1], data = new_data))
+                        else:
+                            #match the index of the analysis that has the same name as the current one
+                            unikey_index = names_list.index(methods[i-1-1])
+                            #group the new grouped data with older storage
+                            print(f'Merging this group with older {methods[i-1-1]} data..')
+                            grouped = self.group_analyses([objects_list[unikey_index], DeviceAnalysis(name = methods[i-1-1], data = new_data)])
+                            #replace old object with the same name
+                            del objects_list[unikey_index]
+                            objects_list.extend(grouped)
 
-                        
                         df = next_curve
                         these_samples = [samples[i-1]]
 
@@ -1122,13 +1153,22 @@ class DeviceEngine(CoreEngine):
                             seasonal_freqs[0] = seasonal_freqs[i]
                             noise_freqs[0] = noise_freqs[i]           
 
-                        objects_list.append(DeviceAnalysis(name = method_names[i-1], data = new_data))
-
+                        names_list = [ana.name for ana in objects_list]
+                        if methods[i-1-1] not in names_list:
+                            objects_list.append(DeviceAnalysis(name = methods[i-1], data = new_data))
+                        else:
+                            #match the index of the analysis that has the same name as the current one
+                            unikey_index = names_list.index(methods[i-1-1])
+                            #group the new grouped data with older storage. Returns the grouped data as a list of Analysis objects.
+                            print(f'Merging this group with older {methods[i-1-1]} data..')
+                            grouped = self.group_analyses([objects_list[unikey_index], DeviceAnalysis(name = methods[i-1-1], data = new_data)])
+                            #replace old object with the same name
+                            del objects_list[unikey_index]
+                            objects_list.extend(grouped)
                         
                         df = next_curve
                         these_samples = [samples[i]]
                         
-
                 this_method = next_method
 
         return objects_list
@@ -1182,7 +1222,7 @@ class DeviceEngine(CoreEngine):
 
 
   
-    def get_feature_matrix(self, results=None, random_state=None):
+    def get_feature_matrix(self, results=None):
         """
         3-way function that uses ML engines that each run host DeviceEngine methods to classify data from a particular method.
         ML object with an iteration of this function exists for each method in DeviceEngine.  

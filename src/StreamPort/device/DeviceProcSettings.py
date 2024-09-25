@@ -122,12 +122,17 @@ class Scaler(ProcessingSettings):
 
     for ana_name in list(results):
       this_analysis_data = results[ana_name]
+      #fix NaN values in extraction or calculation
       updated_data = engine.add_extracted_features(this_analysis_data)
+      print('after add_extracted_feats()')
+      print(updated_data)
       results.update({ana_name : updated_data})
-
+    #something goes wrong here
     prepared_data = engine.group_analyses(results)
-
-    scaled_data = engine.scale_features(prepared_data, self.parameters)
+    print('after group_analyses')
+    print(f'number of newly grouped analysis objects : {len(prepared_data)}')
+    print([ana.data for ana in prepared_data])
+    scaled_data = engine.scale_features(prepared_data, type=self.parameters)
     
     return scaled_data
   

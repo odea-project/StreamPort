@@ -273,7 +273,7 @@ class DevicePressureAnalysis(DeviceAnalysis):
 
     def __init__(self, name=None, replicate=None, blank=None, data=None, analysis_type='pressure', class_label=None, key_list=None):
         super().__init__(name, replicate, blank, data, analysis_type, class_label, key_list)
-        self._analysis_type = analysis_type if not isinstance(analysis_type, type(None)) else 'pressure'
+        self._analysis_type = analysis_type
         self._key_list = key_list if not isinstance(key_list, type(None)) else list(self.data.keys())
 
 
@@ -282,13 +282,13 @@ class DeviceActuals(DeviceAnalysis):
 
     def __init__(self, name=None, replicate=None, blank=None, data=None, analysis_type='actuals', class_label=None, key_list=None):
         super().__init__(name, replicate, blank, data, analysis_type, class_label, key_list)
-
+        self._analysis_type = analysis_type
 
 
 class DeviceMetadata(DeviceAnalysis):
 
     def __init__(self, name=None, replicate=None, blank=None, data=None, analysis_type='metadata', class_label=None, key_list=None):
         super().__init__(name, replicate, blank, data, analysis_type, class_label, key_list)
-
+        self._analysis_type = analysis_type
 
 
