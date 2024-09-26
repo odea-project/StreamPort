@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 import plotly.graph_objects as go
 import plotly.express as px
+from datetime import datetime
 
 
 class MachineLearningEngine(CoreEngine):
@@ -47,6 +48,7 @@ class MachineLearningEngine(CoreEngine):
 
         super().__init__(headers, settings, analyses, results)
         self._classes=[]
+        self._dates = []  
 
     def add_analyses_from_csv(self, path=None):
         """
@@ -258,7 +260,7 @@ class MachineLearningEngine(CoreEngine):
     def plot_pca(self):
         # make a plot method in the ML engine for the PCA results and classes
         """
-        Method to plot the PCA results and classes
+        Method to plot the PCA results and classes.
         """
         if not self._analyses:
             print("No analyses found")
@@ -388,3 +390,61 @@ class MachineLearningEngine(CoreEngine):
         # plt.title('DBSCAN Clustering')
         # plt.colorbar(label='Cluster Label')
         # plt.show()
+
+
+    def plot_umap(self):
+
+        if not self._analyses:
+            print("No analyses found")
+            return None
+
+        umap_results, umap = self.get_results("umap_model")
+        if umap_results is None:
+            print("No umap results found")
+            return None
+
+        classes = self.get_classes()
+        if classes is None:
+            print("No classes found")
+            return None
+
+        # Create a DataFrame for the UMAP results
+        umap_df = pd.DataFrame(data=umap_results, columns=['UMAP1', 'UMAP2'])
+        if len(classes) != len(umap_df):
+            classes = (classes * len(umap_df))[:len(umap_df)]
+
+        umap_df['class'] = classes
+        fig = px.scatter(
+            umap_df,
+            x='UMAP1',
+            y='UMAP2',
+            color='class',
+            title='UMAP Projection',
+            labels={'UMAP1': 'UMAP Component 1', 'UMAP2': 'UMAP Component 2'},
+            template='plotly'
+        )
+        fig.show()
+
+    def extract_dates(self):
+        """
+        Method to extract date strings from analysis names and convert them into datetime objects.
+        The date is assumed to be in the first six digits of the name (for example: M200317000A -> 2020-03-17).
+        """
+
+        if not self._analyses:
+            print("No analyses found")
+            return None
+
+        for analysis in self._analyses:
+            name = analysis.name
+            # extract the first six digits
+            date_part = name[1:7] 
+            try:
+                # convert to datetime
+                date_obj = datetime.strptime(date_part, '%y%m%d')  
+                self._dates.append(date_obj)
+            except ValueError:
+                print(f"coundnt find date from analysis name: {name}")
+                self._dates.append(None)
+
+
