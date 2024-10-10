@@ -1,5 +1,4 @@
 
-
 from src.StreamPort.core.CoreEngine import Analysis
 
 import random
@@ -252,14 +251,14 @@ class DeviceAnalysis(Analysis):
         Self_assign class labels input from DeviceEngine's classify() function.
 
         """
-        if not isinstance(class_label, type(None)) and not '001-blank' in self.data['Sample']:
+        if not isinstance(class_label, type(None)) and not '001-blank' in self.data.get('Sample', []):
             self._class = str(class_label)
 
         elif isinstance(class_label, list) and isinstance(class_label[0], str):
             self._class = class_label[0]
 
         else:
-            if self.data != {} and '001-blank' in self.data['Sample']:
+            if self.data != {} and 'Sample' in self.data and '001-blank' in self.data['Sample']:
                 self._class = 'First measurement'             
             else:
                 self._class = "Undefined"

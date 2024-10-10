@@ -34,9 +34,10 @@ class ExtractPressureFeatures(ExtractFeatures):
       analyses = engine.get_analyses([i for i in range(0,len(engine._analyses))])
       for analysis in analyses:
         results.update({analysis.name: analysis.data})
+        print('ProcSettingsDiag :\nsamples:')
+        print(analysis.data['Sample'])
 
     for key in list(results):
-      
       data = results[key]
       changed_data = engine.get_features(data, self.parameters, self._weighted)  
       results.update({key: changed_data})
@@ -68,7 +69,6 @@ class DecomposeCurves(ExtractFeatures):
 
     for key in list(results):
       data = results[key]
-      #updates analysis data and returns list of 3 combined dataframes to hold resapective components of all curves
       changed_data = engine.get_seasonal_components(data, self._period)
       results.update({key: changed_data})
     
@@ -128,10 +128,10 @@ class Scaler(ProcessingSettings):
       print(updated_data)
       results.update({ana_name : updated_data})
     #something goes wrong here
-    prepared_data = engine.group_analyses(results)
+    prepared_data = engine.group_analyses(results, 'method')
     print('after group_analyses')
     print(f'number of newly grouped analysis objects : {len(prepared_data)}')
-    print([ana.data for ana in prepared_data])
+    print([ana.name for ana in prepared_data])
     scaled_data = engine.scale_features(prepared_data, type=self.parameters)
     
     return scaled_data

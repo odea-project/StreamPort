@@ -3,6 +3,9 @@ title : "StreamPort python-to-r migration"
 output : html_document
 ---
 
+FIX PATH ID
+
+
 Import reticulate to enable using python objects in R. py_run_string() statement here prints the current paths in the environment.
 
 ```{r setup, include=FALSE}
@@ -31,6 +34,13 @@ Import python modules to be run in R environment. Can be done using source_pytho
 reticulate::source_python('C:\\Users\\PC0118\\Desktop\\StreamPort\\src\\StreamPort\\device\\DeviceEngine.py')
 reticulate::source_python('C:\\Users\\PC0118\\Desktop\\StreamPort\\src\\StreamPort\\ml\\MachineLearningEngine.py')
 ```
+
+```{r}
+ml <- py$MachineLearningEngine()
+ml$print()
+
+```
+
 
 ```{r echo=FALSE}
 dev <- py$DeviceEngine(source = r'(C:\Users\PC0118\Desktop\ExtractedSignals)')

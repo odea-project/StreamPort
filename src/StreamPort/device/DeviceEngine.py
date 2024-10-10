@@ -572,12 +572,15 @@ class DeviceEngine(CoreEngine):
 
         #batch position and component features.
         bpos = {}
-        comp_features = {}
+        #comp_features = {}
 
-        #update each Device Pressure Analysis with its features in addition to creating the combined dataframe
+        #update each Device Pressure Analysis with its features 
         curve = data['Curve']
         sample = data['Sample']
-
+        print('Diag:\nsample : ')
+        print(sample)
+        print('Diag:\nruntime : ')
+        print(data['Runtime'])
         #features extracted from 'pct_change' curves hepl better model curve behaviour.
         curve_features = curve.iloc[:, 1].agg(features_list)
 
@@ -587,7 +590,8 @@ class DeviceEngine(CoreEngine):
             weighted_curve_features = (weighted_curve_features.fillna(0)).agg(features_list)
             weighted_curve_features.index = [f"{i}_percent_change" for i in weighted_curve_features.index]
             curve_features = weighted_curve_features
-                 
+
+        #add additional run features         
         runtime.update({sample : data['Runtime']})
         runtime_delta.update({sample : data['Runtime delta']})
         runtime_percent_error.update({sample : data['Runtime percent error']})
@@ -595,6 +599,7 @@ class DeviceEngine(CoreEngine):
         bpos.update({sample : data['Batch position']})
         idle_time.update({sample : data['Idle time']})
 
+        """
         logs = data['Log']
         
         component_number = 0
@@ -609,7 +614,8 @@ class DeviceEngine(CoreEngine):
         for index in range(component_number):
             comp_features.update({f'Component {index+1}' : comp_ids[index]}) 
 
-
+        """
+            
         run_features = pd.DataFrame([runtime, runtime_delta, runtime_percent_error, runtype, bpos, idle_time], 
                                     columns=runtype.keys())
                 
@@ -840,23 +846,31 @@ class DeviceEngine(CoreEngine):
         elif results == None:
             print('Invalid Input! Returning all existing results!')
         
+        #All existing or selected results have been retrieved till this point
+
+        #Now filter based on user selection to return scaled or unscaled features
+
         found_results = list(result_dict.keys())
         found_dict = {}
-        for resname in found_results:
-            if scaled == True:
+        #if scaled, only return scaled results
+        if scaled == True:
+            for resname in found_results:    
                 if '_scaled' in resname or 'Device Pressure Analysis' not in resname:
                     found_dict.update({resname : result_dict[resname]}) 
 
-        if len(list(found_dict.keys())) == 0:
-            print('No scaled results available!!')
+            if len(list(found_dict.keys())) == 0:
+                print('No scaled results available!!')
 
+        #if scaled False or unspecified, return unscaled data
         else:
-            result_dict = found_dict
-
-        return result_dict
+            for resname in found_results:    
+                if '_scaled' not in resname or 'Device Pressure Analysis' in resname:
+                    found_dict.update({resname : result_dict[resname]}) 
     
-
+        return found_dict
                 
+
+
     def remove_results(self, results, features=''):
         """
         Removes the specified results from the internal results dictionary.
@@ -950,24 +964,26 @@ class DeviceEngine(CoreEngine):
     
 
     #MAYBE group_analyses should handle only unscaled data and leave grouping scaled data to get_feature_matrix
+    """
     def group_analyses(self, data_list, group_by = 'method'):
-        """
+        
         Group and organize data appropriately into unique set of runs/experiments using method ids and dates.
         Args:
             list/dict of desired data.
         Returns:
             prepared list/dict of newly created analyses objects grouped appropriately.
 
-        """
+        
         if isinstance(data_list, list):
             anas_to_plot = data_list 
 
         elif isinstance(data_list, dict) and data_list != {}:
-            #identifier for existence of scaled data. important because scaled data has already been grouped 
+            #identifier for existence of scaled data. remains 0 if scaled data exists.
             unscaled_flag = 0
             scaled_anas = []
             anas_to_plot = []
             for key in list(data_list):
+                #key indicates whether data is scaled. 
                 if '_scaled' in key or 'Device Pressure Analysis' not in key :
                     print(key + ' is already prepared!!')
                     scaled_anas.append(DeviceAnalysis(name= key, data= data_list[key]))
@@ -976,23 +992,24 @@ class DeviceEngine(CoreEngine):
                     unscaled_flag = 1
                     anas_to_plot.append(DeviceAnalysis(name= key, data= data_list[key]))
 
-            #if scaled data was encountered 
-            if unscaled_flag != 1: 
-                if group_by == 'method':
-                    new_dict = {}
-                    curve_dfs = []
-                    feature_dfs = []
-                    for ana in scaled_anas:
-                        feature_dfs.append(ana.data['Features'])
-                        curve_dfs.append(ana.data['Curve'])
-                    newfeat_df = pd.concat(feature_dfs, axis=1)
-                    newcurv_df = pd.concat(curve_dfs, axis=1)
-                    new_dict = ana.data
-                    new_dict.update({'Features' : newfeat_df, 
-                                     'Sample' : newfeat_df.columns,
-                                     'Curve' : newcurv_df})
-                    scaled_anas = [DeviceAnalysis(name=ana.data['Method'], data=new_dict)]
+            #if only scaled data was encountered 
+            if unscaled_flag == 0: 
+                #Scaled data has already been grouped by method
                 
+                #new_dict = {}
+                #curve_dfs = []
+                #feature_dfs = []
+                #for ana in scaled_anas:
+                #    feature_dfs.append(ana.data['Features'])
+                #    curve_dfs.append(ana.data['Curve'])
+                #newfeat_df = pd.concat(feature_dfs, axis=1)
+                #newcurv_df = pd.concat(curve_dfs, axis=1)
+                #new_dict = ana.data
+                #new_dict.update({'Features' : newfeat_df, 
+                #                    'Sample' : newfeat_df.columns,
+                #                    'Curve' : newcurv_df})
+                #scaled_anas = [DeviceAnalysis(name=ana.data['Method'], data=new_dict)]
+            
                 return scaled_anas
 
         else:
@@ -1012,7 +1029,7 @@ class DeviceEngine(CoreEngine):
             method_name = analysis_data['Method']
             method_names.append(method_name)
             curves.append(analysis_data['Curve'])
-            #method_name is retained to tag samples with batch id
+            #method_name including date is retained to tag samples with batch id
             if len(analysis_data['Sample']) == 1:
                 samples.append(f"{method_name}_{analysis_data['Sample']}")
             else:
@@ -1134,7 +1151,7 @@ class DeviceEngine(CoreEngine):
                             unikey_index = names_list.index(methods[i-1-1])
                             #group the new grouped data with older storage
                             print(f'Merging this group with older {methods[i-1-1]} data..')
-                            grouped = self.group_analyses([objects_list[unikey_index], DeviceAnalysis(name = methods[i-1-1], data = new_data)])
+                            grouped = self.group_analyses([objects_list[unikey_index], DeviceAnalysis(name = method_names[i-1-1], data = new_data)])
                             #replace old object with the same name
                             del objects_list[unikey_index]
                             objects_list.extend(grouped)
@@ -1161,7 +1178,7 @@ class DeviceEngine(CoreEngine):
                             unikey_index = names_list.index(methods[i-1-1])
                             #group the new grouped data with older storage. Returns the grouped data as a list of Analysis objects.
                             print(f'Merging this group with older {methods[i-1-1]} data..')
-                            grouped = self.group_analyses([objects_list[unikey_index], DeviceAnalysis(name = methods[i-1-1], data = new_data)])
+                            grouped = self.group_analyses([objects_list[unikey_index], DeviceAnalysis(name = method_names[i-1-1], data = new_data)])
                             #replace old object with the same name
                             del objects_list[unikey_index]
                             objects_list.extend(grouped)
@@ -1173,9 +1190,146 @@ class DeviceEngine(CoreEngine):
 
         return objects_list
 
+    """
+    #TRY THIS OUT. ITS STARTING TO WORK
+
+    def group_analyses(self, data_list, group_by):
 
 
-    def plot_analyses(self, analyses=None, interactive=True, group_by = 'method'):
+        #helper functions
+        def initialize_group(analysis, group_by):
+            # Initialize a new group with the first analysis data
+            method_name = analysis.data['Method']
+            if group_by == 'method':            
+                method_name = self.trim_method_name(analysis.data['Method'])
+            print(f'Initialize Diag : method_name : {method_name}')
+            return {'Method': method_name, 'Data': analysis.data}
+
+        def can_merge(current_group, new_analysis, group_by):
+            # Logic to determine if two analyses can be merged
+            if group_by == 'method':
+                return (self.trim_method_name(current_group['Method']) == self.trim_method_name(new_analysis.data['Method']))
+            else:
+                return (current_group['Method'] == new_analysis.data['Method'])
+
+        def merge_groups(current_group, new_analysis):
+            # Logic to merge the data from new_analysis into current_group
+            new_data = new_analysis.data
+            current_data = current_group['Data']
+            current_method = current_group['Method']
+
+            merged_data = {}
+
+            print(f'Merge Diag : method_name : {current_method}')
+            merged_data.update({'Method' : current_method})
+            for data_item in ['Curve', 
+                              'Sample', 
+                              'Features', 
+                              'Trend', 
+                              'Seasonal', 
+                              'Residual', 
+                              'Raw curve frequencies', 
+                              'Curve seasonal frequencies', 
+                              'Curve noise frequencies']:
+                
+                if data_item == 'Curve':
+                    df = pd.merge(current_data[data_item],new_data[data_item], on='Time')
+                    merged_data.update({data_item : df})
+                
+                elif data_item == 'Sample':
+                    current_samples = current_data[data_item]
+                    new_samples = new_data[data_item]
+                    merged_samples = []
+                    if not isinstance(current_samples, list):
+                        merged_samples.append(current_samples)
+                    else:
+                        merged_samples = current_samples
+                    if not isinstance(new_samples, list):
+                        merged_samples.append(new_samples)
+                    else:
+                        merged_samples.extend(new_samples)
+                    merged_data.update({data_item : merged_samples})    
+                
+                else:
+                    if data_item in list(current_data.keys()):
+                        merged_data.update({data_item : pd.concat([current_data[data_item],new_data[data_item]], axis = 1)})
+            # Handle DataFrame concatenation and updating as needed
+            current_group.update({'Data' : merged_data})
+            return current_group
+        
+
+        if not isinstance(data_list, (list, dict)):
+            raise ValueError('Invalid input data type. Expected list or dict.')
+
+        scaled_anas, anas_to_plot = [], []
+
+        if isinstance(data_list, dict):
+            for key, value in data_list.items():
+                if '_scaled' in key or 'Device Pressure Analysis' not in key:
+                    print(f'{key} is already prepared!')
+                    scaled_anas.append(DeviceAnalysis(name=key, data=value))
+                else:
+                    anas_to_plot.append(DeviceAnalysis(name=key, data=value))
+
+            if not anas_to_plot:
+                return scaled_anas
+        
+        elif isinstance(data_list, list):
+            anas_to_plot = data_list
+
+        num_analyses = len(anas_to_plot)
+        if num_analyses == 0:
+            print('No analyses found!')
+            return []
+
+        # Grouping logic
+        objects_list = []
+        current_group = initialize_group(anas_to_plot[0], group_by)
+
+        for ana in anas_to_plot[1:]:
+            if can_merge(current_group, ana, group_by):
+                current_group = merge_groups(current_group, ana)
+            else:
+                current_method = current_group['Method']
+                print('now saving current group... '  + current_method)
+                names_list = [ana.name for ana in objects_list]
+                if current_method not in names_list:
+                    objects_list.append(DeviceAnalysis(name=current_method, data=current_group['Data']))
+                else:
+                    #match the index of the analysis that has the same name as the current one
+                    unikey_index = names_list.index(current_method)
+                    #group the new grouped data with older storage
+                    print(f'Merging this group with older {current_method} data..')
+                    grouped = self.group_analyses([objects_list[unikey_index], DeviceAnalysis(name = current_method, data = current_group['Data'])], group_by)
+                    #replace old object with the same name
+                    del objects_list[unikey_index]
+                    objects_list.extend(grouped)
+
+                current_group = initialize_group(ana, group_by)
+        
+        current_method = current_group['Method']
+        names_list = [ana.name for ana in objects_list]
+        if current_method not in names_list:
+            objects_list.append(DeviceAnalysis(name=current_method, data=current_group['Data']))
+        else:
+            #match the index of the analysis that has the same name as the current one
+            unikey_index = names_list.index(current_method)
+            #group the new grouped data with older storage
+            print(f'Merging this group with older {current_method} data..')
+            grouped = self.group_analyses([objects_list[unikey_index], DeviceAnalysis(name = current_method, data = current_group['Data'])], group_by)
+            #replace old object with the same name
+            del objects_list[unikey_index]
+            objects_list.extend(grouped)  # Append the last group
+
+        if group_by != 'method':
+            for ana in objects_list:
+                if (ana.data['Method'][0] != '_' and ana.data['Method'][-1] != '_') and len(ana.data['Method']) <= 10:
+                    del ana
+        return objects_list
+
+
+
+    def plot_analyses(self, analyses=None, interactive=True, group_by='method'):
         """
         Plots each analysis dataframe by calling plot() function of respective DeviceAnalysis objects
 
@@ -1191,7 +1345,7 @@ class DeviceEngine(CoreEngine):
     
     
 
-    def plot_results(self, results=None, features='', type=None, scaled=True, interactive=True, transpose=False, group_by = 'method'):
+    def plot_results(self, results=None, features='', type=None, scaled=True, interactive=True, transpose=False, group_by='method'):
         """
         Plot the computed (and added) results of feature extraction, seasonal decomposition, fourier transform.
     

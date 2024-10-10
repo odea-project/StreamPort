@@ -311,9 +311,9 @@ class MachineLearningEngine(CoreEngine):
             #bootstrap:
             #Description: If set to True, individual trees are fit on random subsets of the training data sampled with replacement.
             #Default: False.
-            #Impact: Bootstrapping can help improve the robustness of the model by introducing more variability in the training data1.
+            #Impact: Bootstrapping can help improve the robustness of the model by introducing more variability in the training data.
 
-            classifier = iso(contamination= 0.25, bootstrap= False, random_state=random_state)
+            classifier = iso(contamination= 0.25, bootstrap= True, random_state=random_state)
             classifier.fit(train_data)
 
             prediction = classifier.decision_function(test_data)
