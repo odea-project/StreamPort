@@ -313,13 +313,16 @@ class MachineLearningEngine(CoreEngine):
             #Default: False.
             #Impact: Bootstrapping can help improve the robustness of the model by introducing more variability in the training data.
 
-            classifier = iso(contamination= 0.25, bootstrap= True, random_state=random_state)
+            classifier = iso(contamination= 0.15, bootstrap= True, random_state=random_state)
             classifier.fit(train_data)
 
             prediction = classifier.decision_function(test_data)
 
+            #try better threshold than mean. Set as hyperparameter
             #find std for anomaly scores and use as threshold for decision function
-            mean_std = prediction.mean()
+            mean_pred = prediction.mean()
+            #mean_std = prediction.std()
+            mean_std = mean_pred * prediction.std()
 
             #set outlier detection threshold
             threshold = prediction < mean_std
