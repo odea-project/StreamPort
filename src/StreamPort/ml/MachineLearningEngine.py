@@ -4,10 +4,9 @@ import pandas as pd
 import numpy as np
 import os
 import matplotlib.pyplot as plt
-from sklearn.decomposition import PCA
 import plotly.graph_objects as go
 import plotly.express as px
-from datetime import datetime
+
 
 
 class MachineLearningEngine(CoreEngine):
@@ -48,7 +47,7 @@ class MachineLearningEngine(CoreEngine):
 
         super().__init__(headers, settings, analyses, results)
         self._classes=[]
-        self._dates = []  
+        self._dates = []
 
     def add_analyses_from_csv(self, path=None):
         """
@@ -135,6 +134,76 @@ class MachineLearningEngine(CoreEngine):
                 self.add_classes(class_name[index])
             else:
                 print(f"Analysis {class_name[index]} did not pass validation.")
+
+    
+    def month_march(self, class_path=None):
+        if class_path is not None:
+            if os.path.exists(class_path):
+                df = pd.read_csv(class_path)
+            else:
+                raise FileNotFoundError(f"The file {class_path} does not exist.")
+        else:
+            return None
+        
+        df_march = df[df['month'] == 'march']
+    
+        if df_march.empty:
+            print("No data found for the month 'march' ")
+            return None
+        
+        if 'monthclass' not in df_march.columns:
+            print("'monthclass' colum not found")
+            return None
+
+        class_name = df_march['monthclass'].tolist()
+        column_names = df_march.columns.tolist()[1:]
+
+        for index, row in df_march.iterrows():
+            row_value = row.tolist()[1:]
+            ana = MachineLearningAnalysis(name=str(class_name[index]), data={"x": np.array(column_names), "y": np.array(row_value)})
+            if ana.validate():
+                self.add_classes(class_name[index])
+            else:
+                print(f"Analysis {class_name[index]} did not pass validation.")
+
+    def month_april(self, class_path=None):
+        if class_path is not None:
+            if os.path.exists(class_path):
+                df = pd.read_csv(class_path)
+            else:
+                raise FileNotFoundError(f"The file {class_path} does not exist.")
+        else:
+            return None
+
+        df_april = df[df['month'] == 'april']
+
+        if df_april.empty:
+            print("No data for the month 'april'.")
+            return None
+
+        if 'monthclass' not in df_april.columns:
+            print("'monthclass' colum not found")
+            return None
+
+        if df_april['monthclass'].isnull().any():
+                print("Warning: Missing values in 'monthclass' column. Ignoring these rows.")
+                df_april = df_april.dropna(subset=['monthclass'])
+
+        class_name = df_april['monthclass'].tolist()
+        column_names = df_april.columns.tolist()[1:]
+
+        if len(class_name) != len(df_april):
+            print(f"Error: Mismatched lengths! class_name has {len(class_name)} entries, but df_april has {len(df_april)} rows.")
+            return None
+            
+        for class_name_value, (index, row) in zip(class_name, df_april.iterrows()):
+            row_value = row.tolist()[1:] 
+            ana = MachineLearningAnalysis(name=str(class_name_value), data={"x": np.array(column_names), "y": np.array(row_value)})
+            if ana.validate():
+                self.add_classes(class_name_value)
+            else:
+                print(f"Analysis {class_name_value} did not pass validation.")
+
      
     def get_data(self):
         """
@@ -425,26 +494,4 @@ class MachineLearningEngine(CoreEngine):
         )
         fig.show()
 
-    def extract_dates(self):
-        """
-        Method to extract date strings from analysis names and convert them into datetime objects.
-        The date is assumed to be in the first six digits of the name (for example: M200317000A -> 2020-03-17).
-        """
-
-        if not self._analyses:
-            print("No analyses found")
-            return None
-
-        for analysis in self._analyses:
-            name = analysis.name
-            # extract the first six digits
-            date_part = name[1:7] 
-            try:
-                # convert to datetime
-                date_obj = datetime.strptime(date_part, '%y%m%d')  
-                self._dates.append(date_obj)
-            except ValueError:
-                print(f"coundnt find date from analysis name: {name}")
-                self._dates.append(None)
-
-
+  

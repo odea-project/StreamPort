@@ -71,13 +71,14 @@ class MakeModelDBSCANSKL(MakeModel): # try to aply a different model to evaluate
 
 
 class MakeModelUMAP(MakeModel):
-    def __init__(self, n_neighbors=15, min_dist=0.1, n_components=2):
+    def __init__(self, n_neighbors=15, min_dist=0.1, n_components=2, random_state=None):
         super().__init__()
         self.algorithm = "UMAP"
         self.parameters = {
             "n_neighbors": n_neighbors,
             "min_dist": min_dist,
-            "n_components": n_components
+            "n_components": n_components,
+            "random_state": random_state
         }
         self.version = "1.4.2"
         self.software = "sklearn"
@@ -86,7 +87,8 @@ class MakeModelUMAP(MakeModel):
         data = engine.get_data()
         umap = UMAP(n_neighbors=self.parameters["n_neighbors"],
                     min_dist=self.parameters["min_dist"],
-                    n_components=self.parameters["n_components"])
+                    n_components=self.parameters["n_components"],
+                    random_state=self.parameters["random_state"])
         umap_results = umap.fit_transform(data)
         return {"umap_model" : (umap_results, umap)}
 
