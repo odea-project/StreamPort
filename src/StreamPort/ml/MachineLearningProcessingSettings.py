@@ -1,6 +1,7 @@
 from ..core.ProcessingSettings import ProcessingSettings
 from sklearn.decomposition import PCA
 from sklearn.cluster import DBSCAN
+from umap import UMAP
 import numpy as np
 
 
@@ -32,10 +33,10 @@ class MakeModelPCASKL(MakeModel):
             # mean center the data before PCA
             mean = np.mean(data, axis=0)
             data = data - mean
-        else:
-            # Perform PCA directly on uncentered data
-            pca = PCA(n_components=self.parameters.get("n_components", None))
-            pca_results = pca.fit_transform(data)
+
+        # Perform PCA directly on uncentered data
+        pca = PCA(n_components=self.parameters.get("n_components", None))
+        pca_results = pca.fit_transform(data)
             
         # the pca_results should be a general model object to be algorithm dependent structure
         return {"pca_model": (pca_results, pca)}
@@ -68,6 +69,28 @@ class MakeModelDBSCANSKL(MakeModel): # try to aply a different model to evaluate
 
         return {"dbscan_model": dbscan_results}
 
+
+class MakeModelUMAP(MakeModel):
+    def __init__(self, n_neighbors=15, min_dist=0.1, n_components=2, random_state=None):
+        super().__init__()
+        self.algorithm = "UMAP"
+        self.parameters = {
+            "n_neighbors": n_neighbors,
+            "min_dist": min_dist,
+            "n_components": n_components,
+            "random_state": random_state
+        }
+        self.version = "1.4.2"
+        self.software = "sklearn"
+
+    def run(self, engine):
+        data = engine.get_data()
+        umap = UMAP(n_neighbors=self.parameters["n_neighbors"],
+                    min_dist=self.parameters["min_dist"],
+                    n_components=self.parameters["n_components"],
+                    random_state=self.parameters["random_state"])
+        umap_results = umap.fit_transform(data)
+        return {"umap_model" : (umap_results, umap)}
 
 
 # class StatisticModel():
