@@ -6,7 +6,7 @@ import os
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import plotly.express as px
-
+#from sklearn.metrics import confusion_matrix, classification_report
 
 
 class MachineLearningEngine(CoreEngine):
@@ -476,7 +476,7 @@ class MachineLearningEngine(CoreEngine):
         if classes is None:
             print("No classes found")
             return None
-
+            
         # Create a DataFrame for the UMAP results
         umap_df = pd.DataFrame(data=umap_results, columns=['UMAP1', 'UMAP2'])
         if len(classes) != len(umap_df):
@@ -494,4 +494,38 @@ class MachineLearningEngine(CoreEngine):
         )
         fig.show()
 
-  
+
+
+    # def plot_random_forest(self):
+
+    #     if not self._analyses:
+    #         print("No analyses found")
+    #         return None
+
+    #     rf_results, rf_model = self.get_results("random_forest_model")
+    #     if rf_results is None:
+    #         print("No random forest results found")
+    #         return None
+
+    #     classes = self.get_classes()
+    #     if classes is None:
+    #         print("No classes found")
+    #         return None
+
+    #     data = self.get_data()
+    #     target = self.get_target()
+
+    #     # Vorhersagen treffen
+    #     y_pred = rf_model.predict(data)
+
+    #     # Ergebnisse ausgeben
+    #     print("Classification Report:\n", classification_report(target, y_pred))
+    #     print("Confusion Matrix:\n", confusion_matrix(target, y_pred))
+
+    #     # Plotten der Ergebnisse
+    #     plt.figure(figsize=(10, 8))
+    #     plt.scatter(data[:, 0], data[:, 1], c=y_pred, cmap='viridis', edgecolor='k', s=20)
+    #     plt.title('Random Forest Classification Results')
+    #     plt.xlabel('Feature 1')
+    #     plt.ylabel('Feature 2')
+    #     plt.show()

@@ -1,8 +1,10 @@
 from ..core.ProcessingSettings import ProcessingSettings
 from sklearn.decomposition import PCA
-from sklearn.cluster import DBSCAN
+from sklearn.cluster import DBSCAN, HDBSCAN
+from sklearn.ensemble import RandomForestClassifier
 from umap import UMAP
 import numpy as np
+import warnings
 
 
 # Processing method specific class
@@ -85,12 +87,77 @@ class MakeModelUMAP(MakeModel):
 
     def run(self, engine):
         data = engine.get_data()
-        umap = UMAP(n_neighbors=self.parameters["n_neighbors"],
-                    min_dist=self.parameters["min_dist"],
-                    n_components=self.parameters["n_components"],
-                    random_state=self.parameters["random_state"])
-        umap_results = umap.fit_transform(data)
+        
+        # Hier unterdrücken wir die Warnung während des UMAP-Aufrufs
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="n_jobs value 1 overridden to 1 by setting random_state")
+            
+            # UMAP-Modell ausführen
+            umap = UMAP(n_neighbors=self.parameters["n_neighbors"],
+                        min_dist=self.parameters["min_dist"],
+                        n_components=self.parameters["n_components"],
+                        random_state=self.parameters["random_state"])
+            
+            umap_results = umap.fit_transform(data)
+
         return {"umap_model" : (umap_results, umap)}
+
+class MakeModelHDBSCAN(MakeModel):
+    def __init__(self, min_cluster_size=5, min_samples=None, metric='euclidean'):
+        super().__init__()
+        self.algorithm = "HDBSCAN"
+        self.parameters = {
+            "min_cluster_size": min_cluster_size,
+            "min_samples": min_samples,
+            "metric": metric
+        }
+        self.version = "1.4.2"
+        self.software = "sklearn"
+
+    def run(self, engine):
+        # Retrieve the data
+        data = engine.get_data()
+        
+        # Create and fit the HDBSCAN model
+        hdbscan_model = HDBSCAN(min_cluster_size=self.parameters["min_cluster_size"],
+                                min_samples=self.parameters["min_samples"],
+                                metric=self.parameters["metric"])
+
+        # Fit the model to the data
+        hdbscan_model.fit(data)
+        
+        # Get cluster labels
+        cluster_labels = hdbscan_model.labels_
+        
+        # Return the model and the cluster labels as a dictionary
+        return {"hdbscan_model": hdbscan_model, "cluster_labels": cluster_labels}
+
+
+# class MakeModelRandomForest(MakeModel):
+#     def __init__(self, n_estimators=100, max_depth=None, random_state=42):
+#         super().__init__()
+#         self.algorithm = "RandomForest"
+#         self.parameters = {
+#             "n_estimators": n_estimators,
+#             "max_depth": max_depth,
+#             "random_state": random_state
+#         }
+#         self.version = "1.4.2"
+#         self.software = "sklearn"
+
+#     def run(self, engine):
+#         data = engine.get_data()
+#         target = engine.get_target()
+
+#         rf = RandomForestClassifier(
+#             n_estimators=self.parameters["n_estimators"],
+#             max_depth=self.parameters["max_depth"],
+#             random_state=self.parameters["random_state"]
+#         )
+#         rf.fit(data, target)
+#         rf_results = rf.predict(data)
+
+#         return {"random_forest_model": (rf_results, rf)}
 
 
 # class StatisticModel():
