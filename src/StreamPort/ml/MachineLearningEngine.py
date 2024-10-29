@@ -368,7 +368,8 @@ class MachineLearningEngine(CoreEngine):
             labels={'PC1': 'Principal Component 1', 'PC2': 'Principal Component 2'},
             template='plotly'
         )
-        fig.write_html('pca_scores_plot.html')
+        #fig.write_html('pca_scores_plot.html')
+        fig.show()
 
         # for plot pca loading
         loadings = pd.DataFrame(pca.components_[:2].T, columns=['PC1', 'PC2'], index=feature_names)
@@ -386,7 +387,8 @@ class MachineLearningEngine(CoreEngine):
             textfont=dict(size=12),
             marker=dict(size=10)
         )
-        fig.write_html('pca_loadings_plot.html')
+        #fig.write_html('pca_loadings_plot.html')
+        fig.show()
 
     def plot_dbscan(self):
 
@@ -408,7 +410,7 @@ class MachineLearningEngine(CoreEngine):
         plt.figure(figsize=(10, 8))
 
         # Unique labels
-        fitted_model = dbscan_results[0]
+        fitted_model = dbscan_results
         labels = fitted_model.labels_
 
         # print labes to console
