@@ -135,75 +135,6 @@ class MachineLearningEngine(CoreEngine):
             else:
                 print(f"Analysis {class_name[index]} did not pass validation.")
 
-    
-    def month_march(self, class_path=None):
-        if class_path is not None:
-            if os.path.exists(class_path):
-                df = pd.read_csv(class_path)
-            else:
-                raise FileNotFoundError(f"The file {class_path} does not exist.")
-        else:
-            return None
-        
-        df_march = df[df['month'] == 'march']
-    
-        if df_march.empty:
-            print("No data found for the month 'march' ")
-            return None
-        
-        if 'monthclass' not in df_march.columns:
-            print("'monthclass' colum not found")
-            return None
-
-        class_name = df_march['monthclass'].tolist()
-        column_names = df_march.columns.tolist()[1:]
-
-        for index, row in df_march.iterrows():
-            row_value = row.tolist()[1:]
-            ana = MachineLearningAnalysis(name=str(class_name[index]), data={"x": np.array(column_names), "y": np.array(row_value)})
-            if ana.validate():
-                self.add_classes(class_name[index])
-            else:
-                print(f"Analysis {class_name[index]} did not pass validation.")
-
-    def month_april(self, class_path=None):
-        if class_path is not None:
-            if os.path.exists(class_path):
-                df = pd.read_csv(class_path)
-            else:
-                raise FileNotFoundError(f"The file {class_path} does not exist.")
-        else:
-            return None
-
-        df_april = df[df['month'] == 'april']
-
-        if df_april.empty:
-            print("No data for the month 'april'.")
-            return None
-
-        if 'monthclass' not in df_april.columns:
-            print("'monthclass' colum not found")
-            return None
-
-        if df_april['monthclass'].isnull().any():
-                print("Warning: Missing values in 'monthclass' column. Ignoring these rows.")
-                df_april = df_april.dropna(subset=['monthclass'])
-
-        class_name = df_april['monthclass'].tolist()
-        column_names = df_april.columns.tolist()[1:]
-
-        if len(class_name) != len(df_april):
-            print(f"Error: Mismatched lengths! class_name has {len(class_name)} entries, but df_april has {len(df_april)} rows.")
-            return None
-            
-        for class_name_value, (index, row) in zip(class_name, df_april.iterrows()):
-            row_value = row.tolist()[1:] 
-            ana = MachineLearningAnalysis(name=str(class_name_value), data={"x": np.array(column_names), "y": np.array(row_value)})
-            if ana.validate():
-                self.add_classes(class_name_value)
-            else:
-                print(f"Analysis {class_name_value} did not pass validation.")
-
      
     def get_data(self):
         """
@@ -387,8 +318,8 @@ class MachineLearningEngine(CoreEngine):
             textfont=dict(size=12),
             marker=dict(size=10)
         )
-        #fig.write_html('pca_loadings_plot.html')
-        fig.show()
+        fig.write_html('pca_loadings_plot.html')
+        #fig.show()
 
     def plot_dbscan(self):
 
@@ -496,7 +427,29 @@ class MachineLearningEngine(CoreEngine):
         )
         fig.show()
 
+    def add_month_classes(self, df, month):
+        """
+            Adds classes for a specific month to the engine.
 
+            Args:
+                df: DataFrame containing class data with a 'month' column.
+                month: String specifying the month to filter data by.
+        """
+        df_filtered = df[df['month'] == month]
+        
+        for index, row in df_filtered.iterrows():
+            row_value = row.tolist()[1:] 
+            class_name = row['monthclass']
+            ana = MachineLearningAnalysis(name=str(class_name), 
+                                          data={"x": np.array(df_filtered.columns.tolist()[1:]), 
+                                                "y": np.array(row_value)})
+            if ana.validate():
+                self.add_classes(class_name)
+            else:
+                print(f"Analysis {class_name} did not pass validation.")
+
+
+    
 
     # def plot_random_forest(self):
 
