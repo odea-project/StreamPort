@@ -1,5 +1,6 @@
 from ..core.ProcessingSettings import ProcessingSettings
 from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import DBSCAN, HDBSCAN
 from sklearn.ensemble import RandomForestClassifier
 from umap import UMAP
@@ -36,12 +37,25 @@ class MakeModelPCASKL(MakeModel):
             mean = np.mean(data, axis=0)
             data = data - mean
 
+        scaled_data = StandardScaler().fit_transform(data)
+
         # Perform PCA directly on uncentered data
         pca = PCA(n_components=self.parameters.get("n_components", None))
-        pca_results = pca.fit_transform(data)
+        pca_results = pca.fit_transform(scaled_data)
             
+        # Show PCA characteristics
+        print('Shape before PCA: ', scaled_data.shape)
+        print('Shape after PCA: ', pca_results.shape)
+
+        explained_variance_ratio = pca.explained_variance_ratio_
+        print("Erklärte Varianz der einzelnen Komponenten:", explained_variance_ratio)
+
+        # Kumulierte erklärte Varianz
+        cumulative_variance = explained_variance_ratio.cumsum()
+        print("Kumulierte erklärte Varianz:", cumulative_variance)
+
         # the pca_results should be a general model object to be algorithm dependent structure
-        return {"pca_model": (pca_results, pca)}
+        return {"pca_model": (pca_results, pca), "explained_variance_ratio": explained_variance_ratio, "cumulative_variance": cumulative_variance}
 
 class MakeModelDBSCANSKL(MakeModel): # try to aply a different model to evaluate the different between the analyses
     def __init__(self, eps = 0.5, min_samples = 5):
