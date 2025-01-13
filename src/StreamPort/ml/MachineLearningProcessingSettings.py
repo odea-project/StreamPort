@@ -41,19 +41,10 @@ class MakeModelIsoForest(MakeModel):
             print('This engine: \n')
             obj[0].print()
             print('Anomaly detection - ' + method)
-            #total_num_samples = len(list(ana[1].columns))
-            #if total_num_samples > 7:
-            #    iterlimit = int(total_num_samples/2)
-            #else:
-            #    iterlimit = total_num_samples 
-            #for i in range(iterlimit):
-            #    if 'Undefined' in engine._classes:
             prediction_scores = obj[0].make_iso_forest(features_df, obj[1], random_state=self.parameters['random_state'])
             print(prediction_scores)
             self._linked_objects.append(obj[0])
 
-            #engine._classes = []
-            #engine.remove_analyses()
         return self._linked_objects
 
 

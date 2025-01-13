@@ -152,7 +152,7 @@ class DeviceAnalysis(Analysis):
             transpose = False
             scaled = False
             num_figs =  3
-            title_suffix = 'frequencies'
+            title_suffix = 'frequency components'
             feature_flag = 3
 
         else:
@@ -189,6 +189,7 @@ class DeviceAnalysis(Analysis):
 
         # Create subplots with the specified number of rows
         fig = make_subplots(rows=num_figs, cols=1, shared_xaxes=True)
+        title_prefix = "Pressure/Time "
         for index, sample_name in enumerate(list(curves)):
             ytext = ["Pressure (bar)"]
             xtext = "Time (min)"
@@ -199,27 +200,35 @@ class DeviceAnalysis(Analysis):
             
                 if feature_flag == 1:
                     xtext = "Features"
+                    ytext = ["Values"]
                     if scaled == True:
-                         xtext = "Features(scaled)"
-                         ytext = "Values(scaled)"
+                         ytext = ["Values(scaled)"]
                     if transpose == True:
                          xtext = "Samples"
-                         ytext = "Features"
 
                 elif feature_flag == 3:
-                    ytext = ["Frequencies(Raw)", "Frequencies(Snl)", "Frequencies(Rsd)"]
+                    #frequency bins corresponding to fft results
+                    import numpy as np
+                    time_axis = np.fft.fftfreq(len(curve))
+                    title_prefix = "Magnitudes of "
+                    xtext = "Frequency(Hz)"
+                    ytext = ["Amp(Raw)", "Amp(Snl)", "Amp(Rsd)"]
 
                 elif feature_flag == 2:
                     ytext = ["Trend", "Seasonal", "Residual"]
                     xtext = "Time (min)"
 
+                if feature_flag==1 and transpose==True:
+                    labelname = sample_name.split('|')[-1]
+                else:
+                    labelname = (sample_name.split('|')[-1]).split(' ')[-2]
 
                 if type == 'box':        
                     # Create a scatter trace for each column        
-                    fig.add_trace(go.Box(x=time_axis, y=curve, visible=True, name=sample_name.split('|')[-1], marker=dict(color=colors_list[index], opacity=0.4), hovertext=sample_name, legendgroup=f'group{index}'), row=i + 1, col=1) 
+                    fig.add_trace(go.Box(x=time_axis, y=curve, visible=True, name=labelname, marker=dict(color=colors_list[index], opacity=0.4), hovertext=sample_name, legendgroup=f'group{index}'), row=i + 1, col=1) 
 
                 else:
-                    fig.add_trace(go.Scatter(x=time_axis, y=curve, visible=True, name=sample_name.split('|')[-1], mode='lines',
+                    fig.add_trace(go.Scatter(x=time_axis, y=curve, visible=True, name=labelname, mode='lines',
                                     marker=dict(size=5, color=colors_list[index], line=dict(width=0)), text=sample_name, legendgroup=f'group{index}'), row=i + 1, col=1)
                 
                 fig.update_yaxes(title_text= ytext[i], row=i + 1, col=1)
@@ -228,7 +237,7 @@ class DeviceAnalysis(Analysis):
 
         # Update the overall layout
         fig.update_layout(
-                        title="Pressure/Time " + title_suffix + " - " + identifier,
+                        title= title_prefix + title_suffix + " - " + identifier,
                         showlegend=True,  # Set to True if legend must be visible
                         legend = dict(borderwidth = 0)
                         )
@@ -282,6 +291,7 @@ class DeviceActuals(DeviceAnalysis):
     def __init__(self, name=None, replicate=None, blank=None, data=None, analysis_type='actuals', class_label=None, key_list=None):
         super().__init__(name, replicate, blank, data, analysis_type, class_label, key_list)
         self._analysis_type = analysis_type
+
 
 
 class DeviceMetadata(DeviceAnalysis):

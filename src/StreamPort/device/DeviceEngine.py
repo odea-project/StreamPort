@@ -612,7 +612,8 @@ class DeviceEngine(CoreEngine):
             
         run_features = pd.DataFrame([runtime, runtime_delta, runtime_percent_error, runtype, bpos, idle_time], 
                                     columns=runtype.keys())
-                
+
+
         run_features.index = ['Runtime(Rt)', 'RtDelta', 'RtPctError', 'Runtype', 'BatPos', 'IdleTime']
 
         curve_features = pd.concat([curve_features, run_features], axis = 0)
@@ -623,60 +624,123 @@ class DeviceEngine(CoreEngine):
     
 
 
-    def bin_frequencies(self, data, resolution):
+    def bin_frequencies(self, data):
         """
-        Bin frequency data extracted by performing fourier transform on deconposed curves.
-        Aggregate(mean) of the values in these bins will be additional features to identify most active frequencies within these discrete bins. 
-        Bins represent windows of size <resolution> on the time axis of the curve.
+        Bin frequency results of fourier transform on decomposed curves.
+        Aggregate(mean) of the values in these bins will be additional features to identify the most active frequencies within these discrete bins. 
+        Bins represent windows of size on the time axis of the curve.
+        Args: (self : DeviceEngine object, data(DeviceAnalysis.data) : data entry of an individual analysis object)  
 
-        """        
-        def mean(values):
-            if len(values) != 0:
-                return sum(values)/len(values)
-            else:
-                print('data is invalid')
+        """       
 
-        
+        def find_split(freq_bins):
+            res = (round(abs(min(freq_bins)) + abs(max(freq_bins)), 2))
+            for i in [3, 4, 5, 7]:
+                if res%i == 0:
+                    return i
+            return 4
+
         #keys for bin dict
         feature_names = []
         bins_list = []
 
-
-        seasonal_freqs = data['Curve seasonal frequencies']
-        num_datapoints = len(seasonal_freqs)
-        num_bins = int(num_datapoints / resolution)
-        seasonal_bins = np.linspace(0, num_datapoints, num=num_bins)
-        mean_seasonal = seasonal_freqs.agg(['mean']) 
-        std_seasonal = seasonal_freqs.agg(['std'])
-        bins_list.append({data['Sample'] : std_seasonal})
-        bins_list.append({data['Sample'] : mean_seasonal})
-        feature_names.append('std_seasonal')
-        feature_names.append('mean_seasonal')
-        print(seasonal_bins)
-        for i, j in zip(seasonal_bins[:-1], seasonal_bins[1:]):
-            feature_names.append(f"fseason_{int(i)}-{int(j)}")
-            new_dict = {data['Sample'] : mean(seasonal_freqs[int(i):int(j)])}
-            bins_list.append(new_dict)
-
-
-        noise_freqs = data['Curve noise frequencies']
-        num_datapoints = len(noise_freqs)
-        num_bins = int(num_datapoints / resolution)
-        noise_bins = np.linspace(0, num_datapoints, num=num_bins)
-        mean_noise = noise_freqs.agg(['mean']) 
-        std_noise = noise_freqs.agg(['std'])
-        bins_list.append({data['Sample'] : std_noise})
-        bins_list.append({data['Sample'] : mean_noise})
-        feature_names.append('std_noise')
-        feature_names.append('mean_noise')
-        print(noise_bins)
-        for i, j in zip(noise_bins[:-1], noise_bins[1:]):
-            feature_names.append(f"fnoise_{int(i)}-{int(j)}")
-            new_dict = {data['Sample'] : mean(noise_freqs[int(i):int(j)])}
-            bins_list.append(new_dict)
+        """frequency bins corresponding to seasonal and noise components"""
+        seasonal = data['Seasonal']
+        seasonal_freq_bins = np.fft.fftfreq(len(seasonal))
+        #
+        noise = data['Residual']
+        noise_freq_bins = np.fft.fftfreq(len(noise))
         
-        return pd.DataFrame(bins_list, index=feature_names)
+        """magnitudes of seasonal and noise frequency components"""
+        seasonal_freqs = data['Curve seasonal frequencies']
+        #
+        noise_freqs = data['Curve noise frequencies']
 
+        """dynamically set number of bins edges to split frequencies into"""
+        num_seasonal_bins = find_split(seasonal_freq_bins)   
+        #
+        num_noise_bins = find_split(noise_freq_bins)
+
+        """create bin edges"""
+        seasonal_bin_edges = np.linspace(min(seasonal_freq_bins), max(seasonal_freq_bins), num=num_seasonal_bins)
+        #
+        noise_bin_edges = np.linspace(min(noise_freq_bins), max(noise_freq_bins), num=num_noise_bins)
+
+        """create bins based on preset edges and determine grouping of data"""
+        seasonal_bin_indices = np.digitize(seasonal_freqs, seasonal_bin_edges, right=True)
+        #
+        noise_bin_indices = np.digitize(noise_freqs, noise_bin_edges, right=True)
+
+        """average data"""
+        mean_binned_seasonal_magnitudes = pd.Series(
+                                                [np.mean(seasonal_freqs[seasonal_bin_indices == i]) 
+                                                        for i in range(1, len(seasonal_bin_edges))
+                                                ]
+                                              ).fillna(0)
+        """add data"""
+        sum_binned_seasonal_magnitudes = pd.Series(
+                                            [np.sum(seasonal_freqs[seasonal_bin_indices == i]) 
+                                             for i in range(1, len(seasonal_bin_edges))]
+                                             ).fillna(0)
+        #
+        #
+        mean_binned_noise_magnitudes = pd.Series(
+                                                [np.mean(noise_freqs[noise_bin_indices == i]) 
+                                                        for i in range(1, len(noise_bin_edges))
+                                                ]
+                                              ).fillna(0)
+
+        sum_binned_noise_magnitudes = pd.Series(
+                                            [np.sum(noise_freqs[noise_bin_indices == i]) 
+                                             for i in range(1, len(noise_bin_edges))]
+                                             ).fillna(0)
+
+        #concatenate the series head to tail (along axis=0)
+        combined_analysis_mags = pd.concat([mean_binned_seasonal_magnitudes, 
+                                            sum_binned_seasonal_magnitudes, 
+                                            mean_binned_noise_magnitudes, 
+                                            sum_binned_noise_magnitudes], ignore_index=True)
+        
+        #create a DataFrame with a single column
+        bins_df = combined_analysis_mags.to_frame(name=data['Sample'])
+        new_feat_names = []
+        #round bin eedge values
+        seasonal_bin_edges = [round(i, 2) for i in seasonal_bin_edges]
+        noise_bin_edges = [round(i, 2) for i in noise_bin_edges]
+        #create index/feature names
+        for feat in ['snl', 'noise']:
+            if feat == 'snl':
+                bin_edges = seasonal_bin_edges
+            else:
+                bin_edges = noise_bin_edges
+            for i, j in zip(bin_edges[:-1], bin_edges[1:]):
+                new_feat_names.extend([f'mean_{feat}_{i}-{j}', f'sum_{feat}_{i}-{j}'])
+        bins_df.index = new_feat_names
+
+        """average and std of whole frequency magnitude arrays"""
+        mean_seasonal_magnitudes = seasonal_freqs.agg(['mean']) 
+        std_seasonal_magnitudes = seasonal_freqs.agg(['std'])
+        bins_list.append({data['Sample'] : std_seasonal_magnitudes})
+        bins_list.append({data['Sample'] : mean_seasonal_magnitudes})
+        feature_names.append('std_snl_sample')
+        feature_names.append('mean_snl_sample')
+        #
+        mean_noise_magnitudes = noise_freqs.agg(['mean']) 
+        std_noise_magnitudes = noise_freqs.agg(['std'])
+        bins_list.append({data['Sample'] : std_noise_magnitudes})
+        bins_list.append({data['Sample'] : mean_noise_magnitudes})
+        feature_names.append('std_noise_sample')
+        feature_names.append('mean_noise_sample')
+        
+        #whole array aggregates 
+        whole_df = pd.DataFrame(bins_list, index=feature_names)
+
+        #bin aggregates
+        feature_df = pd.concat([whole_df, bins_df], axis = 0)
+        feature_df[data['Sample']] = feature_df[data['Sample']].astype('float64')
+
+        return feature_df
+    
 
 
     def add_extracted_features(self, data):
@@ -685,8 +749,9 @@ class DeviceEngine(CoreEngine):
 
         """
         features_df = data['Features']
-        new_features_df = self.bin_frequencies(data, resolution=30)
+        new_features_df = self.bin_frequencies(data)
         features_df = pd.concat([features_df, new_features_df], axis=0)
+        features_df[data['Sample']] = features_df[data['Sample']].astype('float64')
         data.update({'Features' : features_df})
         return data
     
@@ -774,8 +839,9 @@ class DeviceEngine(CoreEngine):
         
         """
         curve = data['Curve'].iloc[:, 1]
+        #np.fft.fft can only be performed on array so use curve.values
         transformed_curve = np.fft.fft(curve.values)
-        #convert result frequencies array into absolute values for better readability
+        #convert result frequencies array into absolute values to get magnitudes of frequency components
         transformed_curve = abs(transformed_curve)
         transformed_curve = pd.Series(transformed_curve, name=curve.name)
         data.update({'Raw curve frequencies' : transformed_curve})
@@ -971,7 +1037,7 @@ class DeviceEngine(CoreEngine):
             method_name = analysis.data['Method']
             if group_by == 'method':            
                 method_name = self.trim_method_name(analysis.data['Method'])
-            print(f'Initialize Diag : method_name : {method_name}')
+
             return {'Method': method_name, 'Data': analysis.data}
 
         def can_merge(current_group, new_analysis, group_by):
@@ -989,7 +1055,6 @@ class DeviceEngine(CoreEngine):
 
             merged_data = {}
 
-            print(f'Merge Diag : method_name : {current_method}')
             merged_data.update({'Method' : current_method})
             for data_item in ['Curve', 
                               'Sample', 
@@ -1021,6 +1086,7 @@ class DeviceEngine(CoreEngine):
                 
                 else:
                     if data_item in list(current_data.keys()):
+                        #seems to be fixed. KEEP AN EYE ON THIS
                         merged_data.update({data_item : pd.concat([current_data[data_item],new_data[data_item]], axis = 1)})
             # Handle DataFrame concatenation and updating as needed
             current_group.update({'Data' : merged_data})

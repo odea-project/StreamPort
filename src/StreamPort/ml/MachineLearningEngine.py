@@ -10,6 +10,7 @@ from sklearn.decomposition import PCA
 from sklearn.ensemble import IsolationForest as iso
 #to split data into training and testing sets
 from sklearn.model_selection import train_test_split as splitter
+
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -296,10 +297,11 @@ class MachineLearningEngine(CoreEngine):
     def make_iso_forest(self, data, curve_data, random_state=None):
             """
             3-way function that uses ML engines that each run host DeviceEngine methods to classify data from a particular method.
-            ML object with an iteration of this function exists for each method in DeviceEngine.  
+            ML object with an iteration of this function exists for each unique method id in DeviceEngine.  
             
             """
             random_state = random_state
+            #handle missing values if any
             data.fillna(0, inplace=True)
             #split data into training and testing sets
             train_data, test_data = splitter(data, test_size=0.5, random_state= random_state)
@@ -548,7 +550,7 @@ class MachineLearningEngine(CoreEngine):
         plt.figure(figsize=(10, 8))
 
         # Unique labels
-        fitted_model = dbscan_results[0]
+        fitted_model = dbscan_results[list(dbscan_results.keys())[0]]
         labels = fitted_model.labels_
 
         # print labes to console
