@@ -34,8 +34,6 @@ class ExtractPressureFeatures(ExtractFeatures):
       analyses = engine.get_analyses([i for i in range(0,len(engine._analyses))])
       for analysis in analyses:
         results.update({analysis.name: analysis.data})
-        print('ProcSettingsDiag :\nsamples:')
-        print(analysis.data['Sample'])
 
     for key in list(results):
       data = results[key]
@@ -56,6 +54,7 @@ class DecomposeCurves(ExtractFeatures):
   _period = None
   def __init__(self, period=None):
     super().__init__()
+    self.algorithm = "decompose_curves"
     self._period = period 
   
   def run(self, engine):
@@ -82,6 +81,7 @@ class FourierTransform(ExtractFeatures):
   """
   def __init__(self):
     super().__init__()
+    self.algorithm = "fourier_analysis"
 
   def run(self, engine):
     if engine._results.__len__() > 0:
@@ -95,7 +95,8 @@ class FourierTransform(ExtractFeatures):
     for key in list(results):
       data = results[key]
       transformed_data = engine.make_fourier_transform(data)
-      results.update({key : transformed_data})
+      updated_data = engine.add_extracted_features(transformed_data)
+      results.update({key : updated_data})
   
     return results
 
@@ -108,6 +109,7 @@ class Scaler(ProcessingSettings):
   """
   def __init__(self, parameters= None):
     super().__init__() 
+    self.call = "scale_matrix"
     self.parameters = 'minmax' if isinstance(parameters, type(None)) else parameters
     self.algorithm = "scaling"
 
@@ -120,18 +122,8 @@ class Scaler(ProcessingSettings):
       for analysis in analyses:
         results.update({analysis.name: analysis.data})
 
-    for ana_name in list(results):
-      this_analysis_data = results[ana_name]
-      #fix NaN values in extraction or calculation
-      updated_data = engine.add_extracted_features(this_analysis_data)
-      print('after add_extracted_feats()')
-      print(updated_data)
-      results.update({ana_name : updated_data})
-    #something goes wrong here
     prepared_data = engine.group_analyses(results, 'method')
-    print('after group_analyses')
-    print(f'number of newly grouped analysis objects : {len(prepared_data)}')
-    print([ana.name for ana in prepared_data])
+
     scaled_data = engine.scale_features(prepared_data, type=self.parameters)
     
     return scaled_data

@@ -233,6 +233,7 @@ class DeviceEngine(CoreEngine):
                     #preliminal list to carry objects of all runs in one directory idetified by method name and date
                     analyses_list = []
 
+                    current_run_of_batch = datetime.now()
                     #traverse list of all subdirectories in root/source_dir
                     for d in runs_list:  
 
@@ -651,6 +652,16 @@ class DeviceEngine(CoreEngine):
         noise = data['Residual']
         noise_freq_bins = np.fft.fftfreq(len(noise))
         
+        """add mean and sum residual feature"""
+        mean_noise = noise.agg(['mean'])
+        sum_noise = noise.agg(['sum'])
+        max_noise = noise.agg(['max'])
+        bins_list.append({data['Sample'] : mean_noise})
+        bins_list.append({data['Sample'] : sum_noise})
+        bins_list.append({data['Sample'] : max_noise})
+        feature_names.append('mean_noise')
+        feature_names.append('sum_noise')
+        feature_names.append('max_noise')
         """magnitudes of seasonal and noise frequency components"""
         seasonal_freqs = data['Curve seasonal frequencies']
         #
@@ -722,15 +733,15 @@ class DeviceEngine(CoreEngine):
         std_seasonal_magnitudes = seasonal_freqs.agg(['std'])
         bins_list.append({data['Sample'] : std_seasonal_magnitudes})
         bins_list.append({data['Sample'] : mean_seasonal_magnitudes})
-        feature_names.append('std_snl_sample')
-        feature_names.append('mean_snl_sample')
+        feature_names.append('std_snl_mag')
+        feature_names.append('mean_snl_mag')
         #
         mean_noise_magnitudes = noise_freqs.agg(['mean']) 
         std_noise_magnitudes = noise_freqs.agg(['std'])
         bins_list.append({data['Sample'] : std_noise_magnitudes})
         bins_list.append({data['Sample'] : mean_noise_magnitudes})
-        feature_names.append('std_noise_sample')
-        feature_names.append('mean_noise_sample')
+        feature_names.append('std_noise_mag')
+        feature_names.append('mean_noise_mag')
         
         #whole array aggregates 
         whole_df = pd.DataFrame(bins_list, index=feature_names)
@@ -748,8 +759,8 @@ class DeviceEngine(CoreEngine):
         Add features engineered from seasonal decomposition and fourier transform to features-matrix to improve classification
 
         """
-        features_df = data['Features']
         new_features_df = self.bin_frequencies(data)
+        features_df = data['Features']
         features_df = pd.concat([features_df, new_features_df], axis=0)
         features_df[data['Sample']] = features_df[data['Sample']].astype('float64')
         data.update({'Features' : features_df})
@@ -999,11 +1010,16 @@ class DeviceEngine(CoreEngine):
         Method to trim Analysis/Method names for comparison and grouping. 
 
         """
+        #pattern to find date extension to trim
+        pattern = r'\d{6}'
+        
         if isinstance(method_name, type(None)):
             return [self.trim_method_name(name) for name in self._method_ids]
 
         # Base case: If the string doesn't start or end with an underscore, return it as long as it has been trimmed.
         if (method_name[0] != '_' and method_name[-1] != '_') and len(method_name) <= 10:
+            if re.search(r'^Mix-.*_training-data_', method_name):
+                    method_name = re.sub(r'^Mix-.*_training-data_', '', method_name)
             return method_name
         
         # Recursive cases:
@@ -1017,10 +1033,9 @@ class DeviceEngine(CoreEngine):
         
         else:
             #whole method names have no trailing or leading '_' but have length > 10 and always have a six-digit date extension
+                
             #get part of string containing method name without date
             new_method_name = method_name.split(' ')[0]
-            #pattern to find date extension to trim
-            pattern = r'\d{6}'
             # Substitute the 6-digit numbers with an empty string
             result = re.sub(pattern, '', new_method_name)   
             return self.trim_method_name(result)
