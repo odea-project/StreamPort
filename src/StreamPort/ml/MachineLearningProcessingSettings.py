@@ -25,27 +25,39 @@ class MakeModelIsoForest(MakeModel):
         super().__init__()
         self.algorithm = "Isolation forest"
         self.parameters = {
-          "random_state": random_state
+            "random_state": random_state
         }
         self.version = "1.4.2"
         self.software = "sklearn"
         self._device = device
-        self._linked_objects = []
+        #self._linked_objects = []
 
     def run(self, engine):
         #mods to pass MLEngine objects for each method_grouped set of results
         #each feature_analysis in feature_analyses is a tuple of MLEngine object and curve_df
-        (feature_analyses, methods) = engine.get_device_data(device=self._device)
-        for obj, method in zip(feature_analyses, methods):
-            features_df = obj[0].get_data()
-            print('This engine: \n')
-            obj[0].print()
-            print('Anomaly detection - ' + method)
-            prediction_scores = obj[0].make_iso_forest(features_df, obj[1], random_state=self.parameters['random_state'])
-            print(prediction_scores)
-            self._linked_objects.append(obj[0])
+        #(feature_analyses, methods) = engine.get_device_data(device=self._device)
+        #for obj, method in zip(feature_analyses, methods):
+            #to handle new data. obj[0] is ML engine, obj[1] is a df
+            #features_df = obj[0].get_data()
+            #curve_data = obj[1]
+            #test_df = None
+            #if 'basis' not in method:
+            #    test_df = obj[0].get_data()
+            #    features_df = old_data
+            #    curve_data = old_curve_data
+            #else:
+            #    old_data = features_df
+            #    old_curve_data = curve_data
+            #print('This engine: \n')
+            #obj[0].print()
+            #print('Anomaly detection - ' + method)
+            (train, test, curve) = engine.get_device_data(self._device)  
+            prediction_scores = engine.make_iso_forest(train, curve, random_state=self.parameters['random_state'], user_test_data = test)
+            return prediction_scores
+            #print(prediction_scores)
+            #self._linked_objects.append(obj[0])
 
-        return self._linked_objects
+        #return self._linked_objects
 
 
 

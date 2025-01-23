@@ -1017,7 +1017,7 @@ class DeviceEngine(CoreEngine):
             return [self.trim_method_name(name) for name in self._method_ids]
 
         # Base case: If the string doesn't start or end with an underscore, return it as long as it has been trimmed.
-        if (method_name[0] != '_' and method_name[-1] != '_') and len(method_name) <= 10:
+        if (method_name[0] != '_' and method_name[-1] != '_') and not re.search(pattern, method_name):
             if re.search(r'^Mix-.*_training-data_', method_name):
                     method_name = re.sub(r'^Mix-.*_training-data_', '', method_name)
             return method_name
@@ -1033,13 +1033,12 @@ class DeviceEngine(CoreEngine):
         
         else:
             #whole method names have no trailing or leading '_' but have length > 10 and always have a six-digit date extension
-                
             #get part of string containing method name without date
             new_method_name = method_name.split(' ')[0]
             # Substitute the 6-digit numbers with an empty string
             result = re.sub(pattern, '', new_method_name)   
             return self.trim_method_name(result)
-    
+        
 
 
     def group_analyses(self, data_list, group_by):
@@ -1051,8 +1050,7 @@ class DeviceEngine(CoreEngine):
             # Initialize a new group with the first analysis data
             method_name = analysis.data['Method']
             if group_by == 'method':            
-                method_name = self.trim_method_name(analysis.data['Method'])
-
+                method_name = self.trim_method_name(method_name)
             return {'Method': method_name, 'Data': analysis.data}
 
         def can_merge(current_group, new_analysis, group_by):
@@ -1065,7 +1063,9 @@ class DeviceEngine(CoreEngine):
         def merge_groups(current_group, new_analysis):
             # Logic to merge the data from new_analysis into current_group
             new_data = new_analysis.data
+            #print('new data:', new_data)
             current_data = current_group['Data']
+            #print('current data:', current_data)
             current_method = current_group['Method']
 
             merged_data = {}
@@ -1082,7 +1082,10 @@ class DeviceEngine(CoreEngine):
                               'Curve noise frequencies']:
                 
                 if data_item == 'Curve':
-                    df = pd.merge(current_data[data_item],new_data[data_item], on='Time')
+                    # to handle new data with varying time entries
+                    df = pd.merge_asof(current_data[data_item], new_data[data_item], on='Time', direction='nearest')
+                    # for old HPLC data
+                    #df = pd.merge(current_data[data_item],new_data[data_item], on='Time')
                     merged_data.update({data_item : df})
                 
                 elif data_item == 'Sample':
@@ -1142,6 +1145,7 @@ class DeviceEngine(CoreEngine):
             else:
                 current_method = current_group['Method']
                 print('now saving current group... '  + current_method)
+                #print('Diag:', current_group['Data'])
                 names_list = [ana.name for ana in objects_list]
                 if current_method not in names_list:
                     objects_list.append(DeviceAnalysis(name=current_method, data=current_group['Data']))
@@ -1236,40 +1240,52 @@ class DeviceEngine(CoreEngine):
         result_dict = self.get_results(results=results, scaled=True)
         result_keys = list(result_dict.keys())
         
+        #setup train and test sets
+        train_feature_dfs = []
+        test_feature_dfs = []
+
+        curve_dfs = []
         print(result_keys)
-        feature_dfs = [result_dict[result_keys[0]]['Features']]
-        new_df = feature_dfs[0]
-        curve_dfs = [result_dict[result_keys[0]]['Curve']]
-        for (this_key, next_key) in zip(result_keys[:-1], result_keys[1:]):
-            if this_key == next_key:
-                feature_dfs.append(result_dict[next_key]['Features'])
-                curve_dfs.append(result_dict[next_key]['Curve'])
+        #feature_dfs = [result_dict[result_keys[0]]['Features']]
+        #new_df = feature_dfs[0]
+        # ´join all curves, split features of training and test sets
+        #curve_dfs = [result_dict[result_keys[0]]['Curve']]
+        #for (this_key, next_key) in zip(result_keys[:-1], result_keys[1:]):
+        for key in result_keys:
+            curve_dfs.append(result_dict[key]['Curve'])
+            if 'basis' in key:
+                train_feature_dfs.append(result_dict[key]['Features'])
             
             else:
-                new_df = pd.concat(feature_dfs, axis=1)
-                break
+                if 'cell' in key:
+                    test_feature_dfs.append(result_dict[key]['Features'])
 
+        train_features = pd.concat(train_feature_dfs, axis=1)
+        test_features = pd.concat(test_feature_dfs, axis=1)
+        
         new_curve_df = curve_dfs[0]
         for i in range(1, len(curve_dfs)):
-            new_curve_df = pd.merge(new_curve_df, curve_dfs[i], on='Time')
+            new_curve_df = pd.merge_asof(new_curve_df, curve_dfs[i], on='Time', direction='nearest')
 
         #transpose to enable ML
-        new_df = new_df.T
+        train_features = train_features.T
+        test_features = test_features.T
         
         #migrate prepared and scaled features matrix as MachineLearningAnalysis data to MachineLearningEngine
-        ml_objects = []
-        x_values = list(new_df.columns)
-        samples = list(new_df.index)
-        for i in range(len(new_df)):
-            name = samples[i]
-            data = {'x' : x_values, 
-                    'y' : new_df.iloc[i]}
-            ml_objects.append(MachineLearningAnalysis(name=name, data=data))
+        #ml_objects = []
+        #x_values = list(new_df.columns)
+        #samples = list(new_df.index)
+        #for i in range(len(new_df)):
+        #    name = samples[i]
+        #    data = {'x' : x_values, 
+        #            'y' : new_df.iloc[i]}
+        #    ml_objects.append(MachineLearningAnalysis(name=name, data=data))
 
         #create MLEngine objects for each method-grouped set of results like 'Pac' or 'Doc'
    
-        ml_engine = MachineLearningEngine(headers = {'name': f'ML{results}', 'author': 'Sandeep H.'}, analyses = ml_objects)
-        return (ml_engine, new_curve_df)
+        #ml_engine = MachineLearningEngine(headers = {'name': f'ML{results}', 'author': 'Sandeep H.'}, analyses = ml_objects)
+        #return (ml_engine, new_curve_df)
+        return(train_features, test_features, new_curve_df)
         
 
 

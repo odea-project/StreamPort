@@ -209,15 +209,17 @@ class MachineLearningEngine(CoreEngine):
         DeviceEngine object returns a list of MLEngine objects with scaled and prepared MLAnalysis objects compatible with MLEngine specifications. 
 
         """
-        features_analyses =[]
-        methods = []
-        for method in list(device._method_ids):
-            if device.trim_method_name(method) not in methods:
-                methods.append(device.trim_method_name(method))
-        for resname in methods:
-            features_analysis = device.get_feature_matrix(results=resname)
-            features_analyses.append(features_analysis)
-        return (features_analyses, methods)
+        #features_analyses =[]
+        #methods = []
+        #for method in list(device._method_ids):
+        #    if device.trim_method_name(method) not in methods:
+        #        methods.append(device.trim_method_name(method))
+        
+        #for resname in methods:
+            #features_analysis = device.get_feature_matrix(results=resname)
+            #features_analyses.append(features_analysis)
+        #return (features_analyses, methods)
+        return device.get_feature_matrix()
 
     def add_classes(self, classes):
         """
@@ -294,18 +296,26 @@ class MachineLearningEngine(CoreEngine):
         else:
             print("No settings object found")
     
-    def make_iso_forest(self, data, curve_data, random_state=None):
+    def make_iso_forest(self, data, curve_data, random_state=None, user_test_data = None):
             """
             3-way function that uses ML engines that each run host DeviceEngine methods to classify data from a particular method.
-            ML object with an iteration of this function exists for each unique method id in DeviceEngine.  
+            ML object with an iteration of this function exists for each unique method id in DeviceEngine. 
+            If user passes user_test data, it will take the place of test data and data argument will not be split.
             
             """
             random_state = random_state
             #handle missing values if any
             data.fillna(0, inplace=True)
-            #split data into training and testing sets
-            train_data, test_data = splitter(data, test_size=0.5, random_state= random_state)
 
+            if not isinstance(user_test_data, type(None)):
+                test_data = user_test_data
+                train_data = data
+            else:
+                #split data into training and testing sets. For unlabeled data
+                train_data, test_data = splitter(data, test_size=0.35, random_state= random_state)
+            #print('train:', train_data)
+            #print('test:', test_data)
+            #print('curves:', curve_data)
             #contamination:
             #Description: This parameter specifies the proportion of outliers in the dataset.
             #Default: 'auto', which estimates the contamination based on the data.
@@ -406,17 +416,17 @@ class MachineLearningEngine(CoreEngine):
                         name=dataset[i].split('|')[-1]
                     ))
                     #get run start date from sample name and use it to find the appropriate analysis/analyses
-                    curve_timestamp = dataset[i].split('|')[-1]
-                    analysis = self.get_analyses(curve_timestamp)
+                    #curve_timestamp = dataset[i].split('|')[-1]
+                    #analysis = self.get_analyses(curve_timestamp)
                     #there can only be one analysis with a unique timestamp
-                    analysis = analysis[0]
+                    #analysis = analysis[0]
                     #if current run found to be an anomaly, its respective analysis object's class is set to indicate it.
-                    if colors[i] == 'red' and analysis.classes != 'Deviant':    
-                        analysis.set_class_label('Deviant')
-                    else:
-                        analysis.set_class_label('Normal')
+                    #if colors[i] == 'red' and analysis.classes != 'Deviant':    
+                    #    analysis.set_class_label('Deviant')
+                    #else:
+                    #    analysis.set_class_label('Normal')
                     
-                    self.add_classes(analysis.classes)
+                    #self.add_classes(analysis.classes)
 
                 # Update layout
                 fig.update_layout(
