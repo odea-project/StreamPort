@@ -43,7 +43,7 @@ class MakeModelIsoForest(MakeModel):
             print('Anomaly detection - ' + method)
             prediction_scores = obj[0].make_iso_forest(features_df, obj[1], random_state=self.parameters['random_state'])
             print(prediction_scores)
-            self._linked_objects.append(obj[0])
+            self._linked_objects.append((obj[0], prediction_scores))
 
         return self._linked_objects
 

@@ -923,7 +923,7 @@ class DeviceEngine(CoreEngine):
 
         found_results = list(result_dict.keys())
         found_dict = {}
-        #if scaled, only return scaled results
+        #if scaled, only return scaled results. SOMETHING OFF HERE WHEN SEARCHING FOR INDIVIDUAL SCALED FEATURE CURVES
         if scaled == True:
             for resname in found_results:    
                 if '_scaled' in resname or 'Device Pressure Analysis' not in resname:

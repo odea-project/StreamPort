@@ -227,9 +227,13 @@ class DeviceAnalysis(Analysis):
                     # Create a scatter trace for each column        
                     fig.add_trace(go.Box(x=time_axis, y=curve, visible=True, name=labelname, marker=dict(color=colors_list[index], opacity=0.4), hovertext=sample_name, legendgroup=f'group{index}'), row=i + 1, col=1) 
 
+                elif type == 'bar':
+                    fig.add_trace(go.Bar(x=time_axis, y=curve, text=round(curve, 2), textposition='auto', visible=True, name=labelname, marker=dict(color=colors_list[index], opacity=0.4), hovertext=sample_name, legendgroup=f'group{index}'), row=i + 1, col=1)
+
                 else:
                     fig.add_trace(go.Scatter(x=time_axis, y=curve, visible=True, name=labelname, mode='lines',
                                     marker=dict(size=5, color=colors_list[index], line=dict(width=0)), text=sample_name, legendgroup=f'group{index}'), row=i + 1, col=1)
+                    
                 
                 fig.update_yaxes(title_text= ytext[i], row=i + 1, col=1)
                 fig.update_xaxes(title_text=xtext, row=i + 1, col=1)

@@ -295,152 +295,154 @@ class MachineLearningEngine(CoreEngine):
             print("No settings object found")
     
     def make_iso_forest(self, data, curve_data, random_state=None):
+        """
+        3-way function that uses ML engines that each run host DeviceEngine methods to classify data from a particular method.
+        ML object with an iteration of this function exists for each unique method id in DeviceEngine.  
+        
+        """
+        random_state = random_state
+        #handle missing values if any
+        data.fillna(0, inplace=True)
+        #split data into training and testing sets
+        train_data, test_data = splitter(data, test_size=0.5, random_state= random_state)
+
+        #contamination:
+        #Description: This parameter specifies the proportion of outliers in the dataset.
+        #Default: 'auto', which estimates the contamination based on the data.
+
+        #bootstrap:
+        #Description: If set to True, individual trees are fit on random subsets of the training data sampled with replacement.
+        #Default: False.
+        #Impact: Bootstrapping can help improve the robustness of the model by introducing more variability in the training data.
+
+        classifier = iso(contamination= 0.15, bootstrap= True, random_state=random_state)
+        classifier.fit(train_data)
+
+        prediction = classifier.decision_function(test_data)
+
+        #try better threshold than mean. Set as hyperparameter
+        #find std for anomaly scores and use as threshold for decision function
+        mean_pred = prediction.mean()
+        #mean_std = prediction.std()
+        mean_std = mean_pred * prediction.std()
+
+        #set outlier detection threshold
+        threshold = prediction < mean_std
+
+        # Assign different colors to normal data and anomalies
+        colors = np.where(threshold, 'red', 'black')                                    
+
+        labels = np.where(colors=='red', -1, 0)
+
+        # Assign different sizes to outliers and inliers
+        sizes = np.where(threshold, 30, 20)
+
+        test_set = test_data.index
+        train_set = train_data.index
+
+        def plot_anomalies(dataset, colors=None):
+            test_or_train = 0
+            if dataset == "train":
+                colors = ['black' for i in range(len(train_set))]
+                title = 'Training set'
+                test_or_train = 1
+                dataset = train_set
+            else:
+                title = "Anomalous curves(Red) - test set"
+                dataset = test_set
+                colors=colors
             """
-            3-way function that uses ML engines that each run host DeviceEngine methods to classify data from a particular method.
-            ML object with an iteration of this function exists for each unique method id in DeviceEngine.  
-            
+            First show prediction w.r.t threshold values
             """
-            random_state = random_state
-            #handle missing values if any
-            data.fillna(0, inplace=True)
-            #split data into training and testing sets
-            train_data, test_data = splitter(data, test_size=0.5, random_state= random_state)
-
-            #contamination:
-            #Description: This parameter specifies the proportion of outliers in the dataset.
-            #Default: 'auto', which estimates the contamination based on the data.
-
-            #bootstrap:
-            #Description: If set to True, individual trees are fit on random subsets of the training data sampled with replacement.
-            #Default: False.
-            #Impact: Bootstrapping can help improve the robustness of the model by introducing more variability in the training data.
-
-            classifier = iso(contamination= 0.15, bootstrap= True, random_state=random_state)
-            classifier.fit(train_data)
-
-            prediction = classifier.decision_function(test_data)
-
-            #try better threshold than mean. Set as hyperparameter
-            #find std for anomaly scores and use as threshold for decision function
-            mean_pred = prediction.mean()
-            #mean_std = prediction.std()
-            mean_std = mean_pred * prediction.std()
-
-            #set outlier detection threshold
-            threshold = prediction < mean_std
-
-            # Assign different colors to normal data and anomalies
-            colors = np.where(threshold, 'red', 'black')                                    
-
-            # Assign different sizes to outliers and inliers
-            sizes = np.where(threshold, 30, 20)
-
-            test_set = test_data.index
-            train_set = train_data.index
-
-            def plot_anomalies(dataset, colors=None):
-                test_or_train = 0
-                if dataset == "train":
-                    colors = ['black' for i in range(len(train_set))]
-                    title = 'Training set'
-                    test_or_train = 1
-                    dataset = train_set
-                else:
-                    title = "Anomalous curves(Red) - test set"
-                    dataset = test_set
-                    colors=colors
-                """
-                First show prediction w.r.t threshold values
-                """
-                if test_or_train != 1:
-                    # Create the scatter plot
-                    fig = go.Figure()
-
-                    for i in range(len(dataset)):
-                        fig.add_trace(go.Scatter(
-                            x=[dataset[i].split('|')[-1]],
-                            y=[prediction[i]],
-                            mode='markers',
-                            marker=dict(
-                                color=colors[i],
-                                size=sizes[i]
-                                ),
-                            text=dataset[i],
-                            name=dataset[i].split('|')[-1]
-                            )
-                        )
-
-                    # Update layout
-                    fig.update_layout(
-                        title=title,
-                        xaxis_title="Samples",
-                        yaxis_title="Anomaly scores",
-                        yaxis=dict(
-                            dtick=0.1  # Set the y-axis resolution to 0.005
-                        )
-                    )
-
-                    # Show the plot
-                    fig.show()
-
-
-                """
-                Then show anomalous curves
-                """
+            if test_or_train != 1:
                 # Create the scatter plot
                 fig = go.Figure()
-                time_axis = curve_data['Time']
 
-                # loop over all samples in the test set
                 for i in range(len(dataset)):
                     fig.add_trace(go.Scatter(
-                        x=time_axis,
-                        y=curve_data[dataset[i]],
-                        visible=True,
-                        mode='lines',
+                        x=[dataset[i].split('|')[-1]],
+                        y=[prediction[i]],
+                        mode='markers',
                         marker=dict(
                             color=colors[i],
-                            size=sizes
-                        ),
+                            size=sizes[i]
+                            ),
                         text=dataset[i],
                         name=dataset[i].split('|')[-1]
-                    ))
-                    #get run start date from sample name and use it to find the appropriate analysis/analyses
-                    curve_timestamp = dataset[i].split('|')[-1]
-                    analysis = self.get_analyses(curve_timestamp)
-                    #there can only be one analysis with a unique timestamp
-                    analysis = analysis[0]
-                    #if current run found to be an anomaly, its respective analysis object's class is set to indicate it.
-                    if colors[i] == 'red' and analysis.classes != 'Deviant':    
-                        analysis.set_class_label('Deviant')
-                    else:
-                        analysis.set_class_label('Normal')
-                    
-                    self.add_classes(analysis.classes)
+                        )
+                    )
 
                 # Update layout
                 fig.update_layout(
                     title=title,
-                    xaxis_title="Time",
-                    yaxis_title="Pressure",
-                    #yaxis=dict(
-                    #    dtick=0.005  # Set the y-axis resolution to 0.05
-                    #)
+                    xaxis_title="Samples",
+                    yaxis_title="Anomaly scores",
+                    yaxis=dict(
+                        dtick=0.1  # Set the y-axis resolution to 0.005
+                    )
                 )
 
                 # Show the plot
                 fig.show()
 
-            print('Training set')            
-            plot_anomalies('train')
-            print('Test set')
-            plot_anomalies('test', colors=colors)
 
-            print('Classes')
-            for ana in self._analyses:
-                print(f"{ana.name} : {ana.classes}")
+            """
+            Then show anomalous curves
+            """
+            # Create the scatter plot
+            fig = go.Figure()
+            time_axis = curve_data['Time']
 
-            return prediction  
+            # loop over all samples in the test set
+            for i in range(len(dataset)):
+                fig.add_trace(go.Scatter(
+                    x=time_axis,
+                    y=curve_data[dataset[i]],
+                    visible=True,
+                    mode='lines',
+                    marker=dict(
+                        color=colors[i],
+                        size=sizes
+                    ),
+                    text=dataset[i],
+                    name=dataset[i].split('|')[-1]
+                ))
+                #get run start date from sample name and use it to find the appropriate analysis/analyses
+                curve_timestamp = dataset[i].split('|')[-1]
+                analysis = self.get_analyses(curve_timestamp)
+                #there can only be one analysis with a unique timestamp
+                analysis = analysis[0]
+                #if current run found to be an anomaly, its respective analysis object's class is set to indicate it.
+                if colors[i] == 'red' and analysis.classes != 'Deviant':    
+                    analysis.set_class_label('Deviant')
+                else:
+                    analysis.set_class_label('Normal')
+                
+                self.add_classes(analysis.classes)
+
+            # Update layout
+            fig.update_layout(
+                title=title,
+                xaxis_title="Time",
+                yaxis_title="Pressure",
+                #yaxis=dict(
+                #    dtick=0.005  # Set the y-axis resolution to 0.05
+                #)
+            )
+
+            # Show the plot
+            fig.show()
+
+        print('Training set')            
+        plot_anomalies('train')
+        print('Test set')
+        plot_anomalies('test', colors=colors)
+
+        print('Classes')
+        for ana in self._analyses:
+            print(f"{ana.name} : {ana.classes}")
+
+        return labels 
 
 
     def plot_data(self):
