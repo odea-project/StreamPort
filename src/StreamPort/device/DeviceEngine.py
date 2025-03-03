@@ -164,6 +164,7 @@ class DeviceEngine(CoreEngine):
             rawdata = open(datafile, 'rb').read()
             decoding_result = chardet.detect(rawdata)
             character_encoding = decoding_result['encoding']
+
             return(character_encoding)
 
         #initialize stack to iterate over all superfolders
@@ -322,7 +323,6 @@ class DeviceEngine(CoreEngine):
                                     
                             print("Times started(in event of fault) : " + str(times_started))
 
-                        f.close()
 
                         print('This files logs')
                         print(log_data)
@@ -397,7 +397,6 @@ class DeviceEngine(CoreEngine):
                                     if ',' in first_line:
                                         decimal = ','                                    
                                     
-                                file.close()
 
                                 return decimal
 
@@ -1272,6 +1271,12 @@ class DeviceEngine(CoreEngine):
         return (ml_engine, new_curve_df)
         
 
-
+class _2DEngine(DeviceEngine):
+    def __init__():
+        super().__init__()
         
+
+class TimeSeriesEngine(DeviceEngine):
+    def __init__():
+        super().__init__()
         

@@ -28,7 +28,7 @@ class MachineLearningAnalysis(Analysis):
             replicate (str): The name of the replicate.
             blank (str): The name of the blank.
             data (dict): The data of the analysis, which is a dict of one dimension numpy arrays.
-            class (str): Soon!
+            classes (str): Analysis class label assigned at runtime based on IsoForest results.
         """
 
         super().__init__(name, replicate, blank, data)

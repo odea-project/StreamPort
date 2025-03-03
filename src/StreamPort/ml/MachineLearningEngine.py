@@ -25,6 +25,7 @@ class MachineLearningEngine(CoreEngine):
         settings (list, optional): The list of settings. Instance or list of instances of ProcessingSettings class.
         analyses (list, optional): The list of analyses. Instance or list of instances of MachineLearningAnalysis class.
         results (dict, optional): The dictionary of results.
+        _anomalies_df (df, optional): DataFrame object containing all detected anomalies for the current object.
     
     Methods:
         __init__ (self, headers=None, settings=None, analyses=None, results=None): Initializes the CoreEngine instance.
@@ -39,7 +40,7 @@ class MachineLearningEngine(CoreEngine):
     """  
 
  
-    def __init__(self, headers=None, settings=None, analyses=None, results=None):
+    def __init__(self, headers=None, settings=None, analyses=None, results=None, anomalies_df = None, curve_data = None, features_df = None):
 
         """ 
         Initializes the MachineLearningEngine instance
@@ -53,6 +54,9 @@ class MachineLearningEngine(CoreEngine):
 
         super().__init__(headers, settings, analyses, results)
         self._classes=[]
+        self._anomalies_df = anomalies_df
+        self._curve_data = curve_data
+        self._features_df = features_df
 
     def get_analyses(self, analyses=None):
         """
@@ -294,17 +298,24 @@ class MachineLearningEngine(CoreEngine):
         else:
             print("No settings object found")
     
-    def make_iso_forest(self, data, curve_data, random_state=None):
+    def make_iso_forest(self, data=None, curve_data=None, random_state=None, train_data = None, test_data = None):
         """
         3-way function that uses ML engines that each run host DeviceEngine methods to classify data from a particular method.
         ML object with an iteration of this function exists for each unique method id in DeviceEngine.  
         
         """
+        anomalies = []
+        classes = []
+        anomalies_df = None
+
+        self._curve_data = curve_data if not isinstance(curve_data, type(None)) else self._curve_data
+        self._features_df = data if not isinstance(data, type(None)) else self._features_df
+
         random_state = random_state
         #handle missing values if any
         data.fillna(0, inplace=True)
         #split data into training and testing sets
-        train_data, test_data = splitter(data, test_size=0.5, random_state= random_state)
+        train_data, test_data = splitter(data, test_size=0.5, random_state= random_state) if isinstance(train_data, type(None)) else train_data, test_data
 
         #contamination:
         #Description: This parameter specifies the proportion of outliers in the dataset.
@@ -415,6 +426,8 @@ class MachineLearningEngine(CoreEngine):
                 #if current run found to be an anomaly, its respective analysis object's class is set to indicate it.
                 if colors[i] == 'red' and analysis.classes != 'Deviant':    
                     analysis.set_class_label('Deviant')
+                    anomalies.append(analysis.name)
+                    classes.append(analysis.classes)
                 else:
                     analysis.set_class_label('Normal')
                 
@@ -438,11 +451,18 @@ class MachineLearningEngine(CoreEngine):
         print('Test set')
         plot_anomalies('test', colors=colors)
 
+        anomalies_df = pd.DataFrame({'samples' : anomalies, 'classes' : classes})
+        self._anomalies_df = anomalies_df
+
         print('Classes')
         for ana in self._analyses:
             print(f"{ana.name} : {ana.classes}")
 
         return labels 
+
+
+    def get_anomalies(self):
+        return self._anomalies_df
 
 
     def plot_data(self):
