@@ -298,7 +298,7 @@ class MachineLearningEngine(CoreEngine):
         else:
             print("No settings object found")
     
-    def make_iso_forest(self, data=None, curve_data=None, random_state=None, train_data = None, test_data = None):
+    def make_iso_forest(self, data=None, curve_data=None, random_state=None, train = None, test = None):
         """
         3-way function that uses ML engines that each run host DeviceEngine methods to classify data from a particular method.
         ML object with an iteration of this function exists for each unique method id in DeviceEngine.  
@@ -315,8 +315,11 @@ class MachineLearningEngine(CoreEngine):
         #handle missing values if any
         data.fillna(0, inplace=True)
         #split data into training and testing sets
-        train_data, test_data = splitter(data, test_size=0.5, random_state= random_state) if isinstance(train_data, type(None)) else train_data, test_data
+        train_data, test_data = splitter(data, test_size=0.5, random_state= random_state) 
 
+
+
+        print('Diag:', train_data.shape)
         #contamination:
         #Description: This parameter specifies the proportion of outliers in the dataset.
         #Default: 'auto', which estimates the contamination based on the data.

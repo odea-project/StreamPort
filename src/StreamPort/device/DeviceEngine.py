@@ -408,6 +408,13 @@ class DeviceEngine(CoreEngine):
                                                                 header = None, 
                                                                 names = cols)
                             
+                            print(f'cleaning data if type is str. Type: {type(pressure_file['Time'].max())}')
+                            for col in pressure_file.select_dtypes(include=['object']):  # Iterate over object (string) columns
+                                # Check if the column looks like it contains numeric data (i.e., it has commas that need to be replaced)
+                                if pressure_file[col].str.contains(',').any():
+                                    pressure_file[col] = pressure_file[col].str.replace(',', '.')
+                                    pressure_file[col] = pd.to_numeric(pressure_file[col], errors='coerce') 
+                                                    
                             curve_runtime = (int(pressure_file['Time'].max()) - int(pressure_file['Time'].min())) * 60 # convert to seconds
 
                             #add pressure curve to list of curves for current method  
@@ -1013,12 +1020,12 @@ class DeviceEngine(CoreEngine):
         pattern = r'\d{6}'
         
         if isinstance(method_name, type(None)):
-            return [self.trim_method_name(name) for name in self._method_ids]
+            return [self.trim_method_name(name) for name in list(self._method_ids.keys)]
 
         # Base case: If the string doesn't start or end with an underscore, return it as long as it has been trimmed.
         if (method_name[0] != '_' and method_name[-1] != '_') and len(method_name) <= 10:
-            if re.search(r'^Mix-.*_training-data_', method_name):
-                    method_name = re.sub(r'^Mix-.*_training-data_', '', method_name)
+            #if re.search(r'^Mix-.*_training-data_', method_name):
+            #        method_name = re.sub(r'^Mix-.*_training-data_', '', method_name)
             return method_name
         
         # Recursive cases:

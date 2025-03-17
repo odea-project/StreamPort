@@ -166,6 +166,7 @@ class DeviceAnalysis(Analysis):
         colors_list.insert(random.randint(0, num_labels-1), 'black')
         colors_list.insert(random.randint(0, num_labels-1), 'gray')
 
+        legend_colors = {}
         #populate dictionary with values to be plotted along with argument-related adaptations
         for sample in samples:
             if features == True:
@@ -238,6 +239,9 @@ class DeviceAnalysis(Analysis):
                 fig.update_yaxes(title_text= ytext[i], row=i + 1, col=1)
                 fig.update_xaxes(title_text=xtext, row=i + 1, col=1)
                 
+                legend_colors.update({labelname : colors_list[index]})
+
+        #print('Legend: ', legend_colors)
 
         # Update the overall layout
         fig.update_layout(
