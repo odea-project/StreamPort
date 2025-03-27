@@ -346,7 +346,7 @@ class DeviceEngine(CoreEngine):
                                     idle_time = first_run_of_batch - last_known_end_date
                                     # Get the total number of seconds from the absolute value of the timedelta
                                     idle_time = abs(idle_time).total_seconds()
-                                
+             
                             else:
                                 #cycle through end dates of all previous analyses. Last end date saved in variable will be the last run recorded before 001.
                                 # Confirm correct time stamp, 'postrun' or 'method completed'       
@@ -373,6 +373,10 @@ class DeviceEngine(CoreEngine):
                                 #sample runs indicated with sample name
                                 curve_header = "Sample - " + filename[-1]  
                             
+                            #skip to next file since current one is '001-blank'
+                            if '001-blank' in curve_header:
+                                continue
+
                             #sample name/header holds its start date and time
                             curve_header = curve_header + '|' + start_date_string
 
@@ -1257,7 +1261,7 @@ class DeviceEngine(CoreEngine):
                 train_feature_dfs.append(result_dict[key]['Features'])
             
             else:
-                if 'cell' in key:
+                if 'open-oven' in key:
                     test_feature_dfs.append(result_dict[key]['Features'])
 
         train_features = pd.concat(train_feature_dfs, axis=1)

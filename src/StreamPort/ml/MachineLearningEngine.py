@@ -1,15 +1,19 @@
 from src.StreamPort.core.CoreEngine import CoreEngine
 from src.StreamPort.ml.MachineLearningAnalysis import MachineLearningAnalysis
 from src.StreamPort.device.DeviceAnalysis import DeviceAnalysis
+
 import pandas as pd
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+
 from sklearn.decomposition import PCA
 #to run isolation forest and assign classes on its basis
 from sklearn.ensemble import IsolationForest as iso
 #to split data into training and testing sets
 from sklearn.model_selection import train_test_split as splitter
+from sklearn.metrics import mean_squared_error
+from sklearn.inspection import permutation_importance 
 
 import plotly.graph_objects as go
 import plotly.express as px
@@ -328,6 +332,9 @@ class MachineLearningEngine(CoreEngine):
             classifier = iso(contamination= 0.15, bootstrap= True, random_state=random_state)
             classifier.fit(train_data)
 
+            #find importance of features alongside running model
+            self.get_feature_importance(model = classifier, data = test_data)
+
             prediction = classifier.decision_function(test_data)
 
             #try better threshold than mean. Set as hyperparameter
@@ -421,7 +428,8 @@ class MachineLearningEngine(CoreEngine):
                     #there can only be one analysis with a unique timestamp
                     #analysis = analysis[0]
                     #if current run found to be an anomaly, its respective analysis object's class is set to indicate it.
-                    #if colors[i] == 'red' and analysis.classes != 'Deviant':    
+                    if colors[i] == 'red':
+                        print(dataset[i]) #and analysis.classes != 'Deviant':    
                     #    analysis.set_class_label('Deviant')
                     #else:
                     #    analysis.set_class_label('Normal')
@@ -452,6 +460,42 @@ class MachineLearningEngine(CoreEngine):
 
             return prediction  
 
+    def get_feature_importance(self, model, data):
+        """
+        Method to find the impact of features of the model on its performance.
+        
+        """
+        
+        # Define your custom scoring function using decision_function (anomaly scores)
+        def score_func(model, data, y):
+            # Use decision function to get anomaly scores (you could also use other metrics)
+            anomaly_scores = model.decision_function(data)
+            return -mean_squared_error(anomaly_scores, y)  # Example: minimize MSE
+
+        # Perform permutation importance on the trained model
+        result = permutation_importance(model, data, model.decision_function(data), n_repeats=10, random_state=42, scoring=score_func)
+
+        # Get the importance values
+        importances = result.importances_mean
+        deviation = result.importances_std
+
+        # Display the feature importance
+        feature_importance = pd.Series(importances, index=data.columns).sort_values(ascending=False)
+        feature_importance_std = pd.Series(deviation, index=data.columns).sort_values(ascending=False)
+        print('Mean importance of features :\n', feature_importance)
+        print('Deviation in importance of features :\n', feature_importance_std)
+
+        # Sort the features by importance
+        indices = importances.argsort()
+
+        # Plot the feature importances
+        plt.figure(figsize=(10, 6))
+        plt.barh(range(data.shape[1]), importances[indices], xerr=deviation[indices], align="center")
+        plt.yticks(range(data.shape[1]), data.columns[indices])
+        plt.xlabel('Permutation Importance')
+        plt.ylabel('Feature Index')
+        plt.title('Feature Importance via Permutation')
+        plt.show()
 
     def plot_data(self):
         """
