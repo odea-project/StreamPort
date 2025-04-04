@@ -408,7 +408,8 @@ class DeviceEngine(CoreEngine):
                                                                 header = None, 
                                                                 names = cols)
                             
-                            print(f'cleaning data if type is str. Type: {type(pressure_file['Time'].max())}')
+                            dtype = type(pressure_file['Time'].max())
+                            print(f'cleaning data if type is str. Type: {dtype}')
                             for col in pressure_file.select_dtypes(include=['object']):  # Iterate over object (string) columns
                                 # Check if the column looks like it contains numeric data (i.e., it has commas that need to be replaced)
                                 if pressure_file[col].str.contains(',').any():
