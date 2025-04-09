@@ -8,14 +8,14 @@ class Analysis:
     name (str): The name of the analysis.
     replicate (str): The name of the replicate.
     blank (str): The name of the blank.
-    data (dict): The data of the analysis, which is a dict of one dimension numpy arrays.
+    data (dict): The data of the analysis.
 
   Methods:
     validate(): Validates the analysis object.
     print(): Prints the analysis object.
   """
 
-  def __init__(self, name=None, replicate=None, blank=None, data=None):
+  def __init__(self, name: str=None, replicate: str=None, blank: str=None, data: dict=None):
     self.name = str(name) if name else None
     self.replicate = str(replicate) if replicate else None
     self.blank = str(blank) if blank else None

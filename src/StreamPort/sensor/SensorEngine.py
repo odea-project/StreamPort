@@ -2,7 +2,7 @@ import time
 from ..core.CoreEngine import CoreEngine
 
 # Added as lads_client.pth in site-packages folder of venv sp
-import lads_client as lc
+from lads_opcua_client import main as lc
 
 class SensorEngine(CoreEngine):
 

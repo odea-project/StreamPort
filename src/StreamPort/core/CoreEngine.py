@@ -6,14 +6,13 @@ from .ProcessingSettings import ProcessingSettings
 class CoreEngine:
   """
   The CoreEngine class represents the core engine of the StreamPort application.
-  It manages project headers, analyses, settings, results, and history.
+  It manages project headers, analyses, settings and results.
 
   Attributes:
     _headers (ProjectHeaders): The project headers.
     _analyses (list): The list of analyses.
     _settings (list): The list of settings.
     _results (dict): The dictionary of results.
-    _history (dict): The dictionary of history.
 
   Methods:
     __init__(self, headers=None, settings=None, analyses=None, results=None): Initializes the CoreEngine instance.
@@ -37,9 +36,8 @@ class CoreEngine:
   _analyses = []
   _settings = []
   _results = {}
-  _history = {}
 
-  def __init__(self, headers=None, settings=None, analyses=None, results=None):
+  def __init__(self, headers: dict=None, settings: list=None, analyses: list=None, results: dict=None):
     """
     Initializes the CoreEngine instance.
 
@@ -53,7 +51,6 @@ class CoreEngine:
     self._analyses = []
     self._settings = []
     self._results = {}
-    self._history = {}
 
     if headers is not None:
       self.add_headers(headers)
@@ -142,7 +139,6 @@ class CoreEngine:
     Raises:
       TypeError: If the analyses parameter is not an instance or a list of instances of the Analysis class.
              If any element in the list is not an instance of the Analysis class.
-
     """
     if self._analyses is None:
       self._analyses = []
@@ -157,7 +153,16 @@ class CoreEngine:
         raise TypeError("The analyses must be an instance or a list of instances of Analysis class")
       if analyses.name not in [a.name for a in self._analyses]:
         self._analyses.append(analyses)
-
+  
+  def get_analyses_names(self):
+    """
+    Returns an array of analysis names.
+    """
+    self.names = []
+    for analysis in self._analyses:
+        self.names.append(analysis.name)
+    return self.names
+  
   def get_analyses(self, analyses):
     """
     Retrieves the analysis object(s) based on the provided input.
@@ -289,11 +294,9 @@ class CoreEngine:
     Removes the specified settings from the internal settings list.
 
     Args:
-      settings: The settings to be removed. It can be either an integer index, a string representing the call name,
-            or a list of integers and/or strings.
-
-    Returns:
-      None
+      settings: The settings to be removed. It can be either an integer index, 
+      a string representing the call name, or a list of integers and/or strings 
+      of the call names.
     """
     if self._settings.__len__() == 0:
       return
@@ -316,7 +319,7 @@ class CoreEngine:
 
     Args:
       results (dict): A dictionary containing the results to be added.
-
+    
     """
     if self._results is None:
       self._results = {}
@@ -335,7 +338,6 @@ class CoreEngine:
              If `results` is a list, returns a dictionary with the key-value pairs
              of the requested results. If `results` is neither a string nor a list,
              returns all the results.
-
     """
     if isinstance(results, str):
       return self._results.get(results, None)
@@ -387,13 +389,3 @@ class CoreEngine:
         print(f"Running workflow with settings: {settings.call}")
         results = settings.run(self)
         self.add_results(results)
-
-  def get_analyses_names(self):
-    """
-    Returns an array of analysis names.
-    """
-    
-    self.names = []
-    for analysis in self._analyses:
-        self.names.append(analysis.name)
-    return self.names

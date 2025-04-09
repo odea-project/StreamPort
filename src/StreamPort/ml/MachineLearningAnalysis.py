@@ -7,7 +7,7 @@ class MachineLearningAnalysis(Analysis):
     Represents MachineLearningAnalysis class that inherits from Analysis class
 
     Attributes:
-        name (str): The name of the analysis. 
+        name (str): The name of the analysis.
         replicate (str): The name of the replicate.
         blank (str): The name of the blank.
         data (dict): The data of the analysis.
@@ -63,5 +63,3 @@ class MachineLearningAnalysis(Analysis):
         if not valid:
             print("Issue/s found with analysis", self.name)
         return valid
-            
-    
