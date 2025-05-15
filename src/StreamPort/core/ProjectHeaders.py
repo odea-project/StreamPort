@@ -59,8 +59,8 @@ class ProjectHeaders:
     Returns:
       str: A string representation of the project headers.
     """
-    return f"\nProjectHeaders\n  name: {self.headers['name']}\n  author: {self.headers['author']}\n  path: {self.headers['path']}\n  date: {self.headers['date']}\n"
-
+    return "\nProjectHeaders\n" + "\n".join([f"  {key}: {value}" for key, value in self.headers.items()])  
+    
   def print(self):
     """
     Prints the project headers.

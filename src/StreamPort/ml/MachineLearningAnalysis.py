@@ -28,11 +28,11 @@ class MachineLearningAnalysis(Analysis):
             replicate (str): The name of the replicate.
             blank (str): The name of the blank.
             data (dict): The data of the analysis, which is a dict of one dimension numpy arrays.
-            class (str): Soon!
+            classes (str): Analysis class label assigned at runtime based on IsoForest results.
         """
 
         super().__init__(name, replicate, blank, data)
-        self.classes = str(classes) if classes else None 
+        self.classes = str(classes) if classes else self.set_class_label() 
     
     def validate(self):
         """
@@ -64,4 +64,20 @@ class MachineLearningAnalysis(Analysis):
             print("Issue/s found with analysis", self.name)
         return valid
             
-    
+    def set_class_label(self, class_label=None):
+        """
+        Self_assign class labels input from DeviceEngine's get_feature_matrix() and MLEngine's make_iso_forest() functions.
+
+        """
+        if not isinstance(class_label, type(None)) and not '001-blank' in self.name:
+            self.classes = str(class_label)
+
+        elif isinstance(class_label, list) and isinstance(class_label[0], str):
+            self.classes = class_label[0]
+
+        else:
+            if self.data != {} and '001-blank' in self.name:
+                self.classes = 'First measurement'             
+            else:
+                self.classes = "Undefined"
+        

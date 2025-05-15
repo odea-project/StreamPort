@@ -17,6 +17,43 @@ class MakeModel(ProcessingSettings):
     def run(self):
         pass
 
+
+
+class MakeModelIsoForest(MakeModel):
+    """
+    Perform outlier analysis on scaled data using Isolation forest. 
+    This function calls the get_feature_matrix() function of its host MLEngine and retrieves data from the linked DeviceEngine object made to conform to MLEngine data structure.
+
+    """
+    def __init__(self, device, random_state=None):
+        super().__init__()
+        self.algorithm = "Isolation forest"
+        self.parameters = {
+          "random_state": random_state
+        }
+        self.version = "1.4.2"
+        self.software = "sklearn"
+        self._device = device
+        self._linked_objects = []
+
+    def run(self, engine):
+        #mods to pass MLEngine objects for each method_grouped set of results
+        #each feature_analysis in feature_analyses is a tuple of MLEngine object and curve_df
+        (feature_analyses, methods) = engine.get_device_data(device=self._device)
+        for obj, method in zip(feature_analyses, methods):
+            features_df = obj[0].get_data()
+            print('This engine: \n')
+            obj[0].print()
+            print('Anomaly detection - ' + method)
+            prediction_scores = obj[0].make_iso_forest(features_df, obj[1], random_state=self.parameters['random_state'])
+            print(prediction_scores)
+            self._linked_objects.append((obj[0], prediction_scores))
+
+        return self._linked_objects
+
+
+
+
 # Algorithm specific class
 class MakeModelPCASKL(MakeModel):
     def __init__(self, n_components = 2, center_data = True):
@@ -31,20 +68,22 @@ class MakeModelPCASKL(MakeModel):
 
     def run(self, engine):
         data = engine.get_data()
+        """
+        MOD to handle NA values in data
+        """
+        data.fillna(0, inplace=True)
 
         if (self.parameters.get("center_data", None)):
             # mean center the data before PCA
             mean = np.mean(data, axis=0)
             data = data - mean
-
-        scaled_data = StandardScaler().fit_transform(data)
-
+        
         # Perform PCA directly on uncentered data
         pca = PCA(n_components=self.parameters.get("n_components", None))
-        pca_results = pca.fit_transform(scaled_data)
+        pca_results = pca.fit_transform(data)
             
         # Show PCA characteristics
-        print('Shape before PCA: ', scaled_data.shape)
+        #print('Shape before PCA: ', scaled_data.shape)
         print('Shape after PCA: ', pca_results.shape)
 
         explained_variance_ratio = pca.explained_variance_ratio_
