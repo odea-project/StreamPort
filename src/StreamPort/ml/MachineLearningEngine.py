@@ -10,9 +10,9 @@ from sklearn.decomposition import PCA
 from sklearn.ensemble import IsolationForest as iso
 #to split data into training and testing sets
 from sklearn.model_selection import train_test_split as splitter
-
 import plotly.graph_objects as go
 import plotly.express as px
+#from sklearn.metrics import confusion_matrix, classification_report
 
 
 class MachineLearningEngine(CoreEngine):
@@ -98,7 +98,7 @@ class MachineLearningEngine(CoreEngine):
         else:
             print("Provided data is not sufficient or does not exist! Existing analyses will be returned.")
             
-        return ana_list        
+        return ana_list
 
     def add_analyses_from_csv(self, path=None):
         """
@@ -185,6 +185,7 @@ class MachineLearningEngine(CoreEngine):
                 self.add_classes(class_name[index])
             else:
                 print(f"Analysis {class_name[index]} did not pass validation.")
+
      
     def get_data(self):
         """
@@ -494,58 +495,61 @@ class MachineLearningEngine(CoreEngine):
         #save the control fault 
 
     def plot_pca(self):
-        # make a plot method in the ML engine for the PCA results and classes
         """
-        Method to plot the PCA results and classes
+        Method to plot the PCA results and classes, including explained variance percentages.
         """
         if not self._analyses:
             print("No analyses found")
             return None
-        
+
         feature_names = self._analyses[0].data['x']
         if feature_names is None:
             print("No feature names found")
             return None
-        
+
         pca_results, pca = self.get_results("pca_model")
-        # if pca_results.model_type not in "PCA":
-        #     return None
-        # pca_results.plot() 
         if pca_results is None:
-            print("No pca results found")
+            print("No PCA results found")
             return None
-        
+
         classes = self.get_classes()
         if classes is None:
             print("No classes found")
             return None
 
-        # for 2d plot pca scores
-        pca_df = pd.DataFrame(data=pca_results[:, :2], columns=['PC1', 'PC2'])
+
+        # PCA Scores DataFrame erstellen
+        pca_df = pd.DataFrame(data=pca_results[:2], columns=['PC1', 'PC2'])
         if len(classes) != len(pca_df):
-            classes = (classes* len(pca_df))[:len(pca_df)]
+            classes = (classes * len(pca_df))[:len(pca_df)]
 
         pca_df['class'] = classes
+
+        # Ensure 'classes' length matches 'pca_df' rows
+        if len(classes) != len(pca_df):
+            print("Warning: Number of classes does not match number of data points. Please check class file.")
+            classes = (classes * (len(pca_df) // len(classes) + 1))[:len(pca_df)]
+        pca_df['class'] = classes
+
+        # PCA Scores Plot
         fig = px.scatter(
             pca_df,
             x='PC1',
             y='PC2',
             color='class',
             title='PCA Scores',
-            labels={'PC1': 'Principal Component 1', 'PC2': 'Principal Component 2'},
             template='plotly'
         )
-        fig.write_html('pca_scores_plot.html')
+        fig.show()
 
-        # for plot pca loading
+        # PCA Loadings Plot
         loadings = pd.DataFrame(pca.components_[:2].T, columns=['PC1', 'PC2'], index=feature_names)
         fig = px.scatter(
-            loadings, 
-            x='PC1', 
+            loadings,
+            x='PC1',
             y='PC2',
             text=loadings.index,
             title='PCA Loadings',
-            labels={'PC1': 'Principal Component 1', 'PC2': 'Principal Component 2'},
             template='plotly'
         )
         fig.update_traces(
@@ -553,7 +557,11 @@ class MachineLearningEngine(CoreEngine):
             textfont=dict(size=12),
             marker=dict(size=10)
         )
-        fig.write_html('pca_loadings_plot.html')
+        fig.show()
+        
+        print("Unique classes in data:", pca_df['class'].unique())
+        print("Class distribution:", pca_df['class'].value_counts())
+
 
     def plot_dbscan(self):
 
@@ -626,3 +634,124 @@ class MachineLearningEngine(CoreEngine):
         # plt.title('DBSCAN Clustering')
         # plt.colorbar(label='Cluster Label')
         # plt.show()
+
+
+    def plot_umap(self):
+
+        if not self._analyses:
+            print("No analyses found")
+            return None
+
+        umap_results, umap = self.get_results("umap_model")
+        if umap_results is None:
+            print("No umap results found")
+            return None
+
+        classes = self.get_classes()
+        if classes is None:
+            print("No classes found")
+            return None
+            
+        # Create a DataFrame for the UMAP results
+        umap_df = pd.DataFrame(data=umap_results, columns=['UMAP1', 'UMAP2'])
+        if len(classes) != len(umap_df):
+            classes = (classes * len(umap_df))[:len(umap_df)]
+
+        umap_df['class'] = classes
+        fig = px.scatter(
+            umap_df,
+            x='UMAP1',
+            y='UMAP2',
+            color='class',
+            title='UMAP Projection',
+            labels={'UMAP1': 'UMAP Component 1', 'UMAP2': 'UMAP Component 2'},
+            template='plotly'
+        )
+        fig.show()
+
+    def add_month_classes(self, df, month):
+        """
+            Adds classes for a specific month to the engine.
+
+            Args:
+                df: DataFrame containing class data with a 'month' column.
+                month: String specifying the month to filter data by.
+        """
+        if isinstance(month, str): 
+            month = [month]
+
+        print("plot data for month:", ", ".join(month))
+
+        df_filtered = df[df['month'].isin(month)]
+        
+        for index, row in df_filtered.iterrows():
+            row_value = row.tolist()[1:] 
+            class_name = row['monthclass']
+            ana = MachineLearningAnalysis(name=str(class_name), 
+                                          data={"x": np.array(df_filtered.columns.tolist()[1:]), 
+                                                "y": np.array(row_value)})
+            if ana.validate():
+                self.add_classes(class_name)
+            else:
+                print(f"Analysis {class_name} did not pass validation.")
+
+
+    def add_polarity_classes(self, df, polarity):
+        """
+            Adds classes for a specific month to the engine.
+
+            Args:
+                df: DataFrame containing class data with a 'month' column.
+                polarity: String specifying the polarity to filter data by ('positive' or 'negative').
+        """
+        if isinstance(polarity, str): 
+            polarity = [polarity]
+
+        print(f"plot {polarity} polarity classes")
+
+        df_filtered = df[df['polarity'].isin(polarity)]
+        
+        for index, row in df_filtered.iterrows():
+            row_value = row.tolist()[1:]  
+            class_name = row['class']
+            ana = MachineLearningAnalysis(name=str(class_name), 
+                                          data={"x": np.array(df_filtered.columns.tolist()[1:]), 
+                                                "y": np.array(row_value)})
+            if ana.validate():
+                self.add_classes(class_name)
+            else:
+                print(f"Analysis {class_name} did not pass validation.")
+
+    # def plot_random_forest(self):
+
+    #     if not self._analyses:
+    #         print("No analyses found")
+    #         return None
+
+    #     rf_results, rf_model = self.get_results("random_forest_model")
+    #     if rf_results is None:
+    #         print("No random forest results found")
+    #         return None
+
+    #     classes = self.get_classes()
+    #     if classes is None:
+    #         print("No classes found")
+    #         return None
+
+    #     data = self.get_data()
+    #     target = self.get_target()
+
+    #     # Vorhersagen treffen
+    #     y_pred = rf_model.predict(data)
+
+    #     # Ergebnisse ausgeben
+    #     print("Classification Report:\n", classification_report(target, y_pred))
+    #     print("Confusion Matrix:\n", confusion_matrix(target, y_pred))
+
+    #     # Plotten der Ergebnisse
+    #     plt.figure(figsize=(10, 8))
+    #     plt.scatter(data[:, 0], data[:, 1], c=y_pred, cmap='viridis', edgecolor='k', s=20)
+    #     plt.title('Random Forest Classification Results')
+    #     plt.xlabel('Feature 1')
+    #     plt.ylabel('Feature 2')
+    #     plt.show()
