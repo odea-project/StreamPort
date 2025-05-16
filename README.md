@@ -6,7 +6,7 @@
 <img width="40%" src="sp_logo.png" alt="Logo" />
 </p>
 
-Platform for multivariate data analysis, sensor networks and pipelines and device condition monitoring and diagnostics.
+Platform for multivariate data Analyses, sensor networks and pipelines and device condition monitoring and diagnostics.
 
 # Setup
 The streamPort is an experimental project under development. Below, we instruct how to setup a development environment.

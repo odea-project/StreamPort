@@ -1,8 +1,8 @@
-from src.StreamPort.core.ProcessingSettings import ProcessingSettings
+from src.StreamPort.core.ProcessingMethod import ProcessingMethod
 
 
 # Processing method specific class
-class ExtractFeatures(ProcessingSettings):
+class ExtractFeatures(ProcessingMethod):
   def __init__(self):
     super().__init__()
     self.call = "extract_features"
@@ -32,8 +32,8 @@ class ExtractPressureFeatures(ExtractFeatures):
     else:
       results = {}
       analyses = engine.get_analyses([i for i in range(0,len(engine._analyses))])
-      for analysis in analyses:
-        results.update({analysis.name: analysis.data})
+      for Analyses in analyses:
+        results.update({Analyses.name: Analyses.data})
 
     for key in list(results):
       data = results[key]
@@ -63,8 +63,8 @@ class DecomposeCurves(ExtractFeatures):
     else:
       results = {}
       analyses = engine.get_analyses([i for i in range(0,len(engine._analyses))])
-      for analysis in analyses:
-        results.update({analysis.name: analysis.data})
+      for Analyses in analyses:
+        results.update({Analyses.name: Analyses.data})
 
     for key in list(results):
       data = results[key]
@@ -76,12 +76,12 @@ class DecomposeCurves(ExtractFeatures):
 
 class FourierTransform(ExtractFeatures):
   """
-  Perform Fourier Analysis on data.
+  Perform Fourier Analyses on data.
 
   """
   def __init__(self):
     super().__init__()
-    self.algorithm = "fourier_analysis"
+    self.algorithm = "fourier_Analyses"
 
   def run(self, engine):
     if engine._results.__len__() > 0:
@@ -89,8 +89,8 @@ class FourierTransform(ExtractFeatures):
     else:
       results = {}
       analyses = engine.get_analyses([i for i in range(0,len(engine._analyses))])
-      for analysis in analyses:
-        results.update({analysis.name: analysis.data})
+      for Analyses in analyses:
+        results.update({Analyses.name: Analyses.data})
     
     for key in list(results):
       data = results[key]
@@ -102,7 +102,7 @@ class FourierTransform(ExtractFeatures):
 
 
 
-class Scaler(ProcessingSettings):
+class Scaler(ProcessingMethod):
   """
   Scale data based on user input. Defaults to MinMaxScaler
 
@@ -119,8 +119,8 @@ class Scaler(ProcessingSettings):
     else:
       results = {}
       analyses = engine.get_analyses([i for i in range(0,len(engine._analyses))])
-      for analysis in analyses:
-        results.update({analysis.name: analysis.data})
+      for Analyses in analyses:
+        results.update({Analyses.name: Analyses.data})
 
     prepared_data = engine.group_analyses(results, 'method')
 

@@ -1,4 +1,4 @@
-from ..core.ProcessingSettings import ProcessingSettings
+from ..core.ProcessingMethod import ProcessingMethod
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import DBSCAN, HDBSCAN
@@ -9,7 +9,7 @@ import warnings
 
 
 # Processing method specific class
-class MakeModel(ProcessingSettings):
+class MakeModel(ProcessingMethod):
     def __init__(self):
         super().__init__()
         self.call = "MakeModel"
@@ -21,7 +21,7 @@ class MakeModel(ProcessingSettings):
 
 class MakeModelIsoForest(MakeModel):
     """
-    Perform outlier analysis on scaled data using Isolation forest. 
+    Perform outlier Analyses on scaled data using Isolation forest. 
     This function calls the get_feature_matrix() function of its host MLEngine and retrieves data from the linked DeviceEngine object made to conform to MLEngine data structure.
 
     """
@@ -38,7 +38,7 @@ class MakeModelIsoForest(MakeModel):
 
     def run(self, engine):
         #mods to pass MLEngine objects for each method_grouped set of results
-        #each feature_analysis in feature_analyses is a tuple of MLEngine object and curve_df
+        #each feature_Analyses in feature_analyses is a tuple of MLEngine object and curve_df
         (feature_analyses, methods) = engine.get_device_data(device=self._device)
         for obj, method in zip(feature_analyses, methods):
             features_df = obj[0].get_data()

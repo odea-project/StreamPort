@@ -54,7 +54,7 @@ Can also be done by running python chunks.
 
 <!-- ```{python} -->
 <!-- from src.StreamPort.device.DeviceEngine import DeviceEngine -->
-<!-- from src.StreamPort.device.DeviceAnalysis import DeviceAnalysis -->
+<!-- from src.StreamPort.device.DeviceAnalyses import DeviceAnalyses -->
 <!-- dev1 = DeviceEngine(source = r'C:\Users\PC0118\Desktop\ExtractedSignals') -->
 <!-- dev1.print() -->
 <!-- ``` -->
@@ -88,7 +88,7 @@ pressure_features <- settings$run(dev)
 dev$add_results(pressure_features)
 ```
 
-Seasonal Decomposition for signal component analysis
+Seasonal Decomposition for signal component Analyses
 
 <!-- ```{python} -->
 <!-- from src.StreamPort.device.DeviceProcSettings import DecomposeCurves -->
@@ -116,7 +116,7 @@ transformed <- fft$run(dev)
 dev$add_results(transformed)
 ```
 
-Add features engineered from DecomposeCurves and FourierTransform to features matrix and scale them as a final preprocessing step before ML operations. Scaler from ProcessingSettings does the above mentioned preparation and scaling.
+Add features engineered from DecomposeCurves and FourierTransform to features matrix and scale them as a final preprocessing step before ML operations. Scaler from ProcessingMethod does the above mentioned preparation and scaling.
 
 <!-- ```{python} -->
 <!-- from src.StreamPort.device.DeviceProcSettings import Scaler -->

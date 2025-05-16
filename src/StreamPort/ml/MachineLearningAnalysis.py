@@ -1,34 +1,34 @@
-from ..core.Analysis import Analysis
+from ..core.Analyses import Analyses
 import numpy as np
 
-class MachineLearningAnalysis(Analysis):
+class MachineLearningAnalyses(Analyses):
 
     """
-    Represents MachineLearningAnalysis class that inherits from Analysis class
+    Represents MachineLearningAnalyses class that inherits from Analyses class
 
     Attributes:
-        name (str): The name of the analysis. 
+        name (str): The name of the Analyses. 
         replicate (str): The name of the replicate.
         blank (str): The name of the blank.
-        data (dict): The data of the analysis.
+        data (dict): The data of the Analyses.
         classes (str): The name of the classes.
 
     Methods: 
-        validate (self): Validates the analysis object.
+        validate (self): Validates the Analyses object.
 
     """
 
     def __init__(self, name=None, replicate=None, blank=None, data=None, classes=None):
 
         """
-        Initializes the MachineLearningAnalysis instance
+        Initializes the MachineLearningAnalyses instance
 
         Args:
-            name (str): The name of the analysis.
+            name (str): The name of the Analyses.
             replicate (str): The name of the replicate.
             blank (str): The name of the blank.
-            data (dict): The data of the analysis, which is a dict of one dimension numpy arrays.
-            classes (str): Analysis class label assigned at runtime based on IsoForest results.
+            data (dict): The data of the Analyses, which is a dict of one dimension numpy arrays.
+            classes (str): Analyses class label assigned at runtime based on IsoForest results.
         """
 
         super().__init__(name, replicate, blank, data)
@@ -36,7 +36,7 @@ class MachineLearningAnalysis(Analysis):
     
     def validate(self):
         """
-        Validates the analysis object.
+        Validates the Analyses object.
 
         """
         valid = True  
@@ -47,21 +47,21 @@ class MachineLearningAnalysis(Analysis):
         if self.data != {}:
             for key in self.data:
                 if not isinstance(self.data[key], np.ndarray):
-                    print("Analysis data must be a numpy array!")
+                    print("Analyses data must be a numpy array!")
                     valid = False
             if len(set([self.data[key].ndim for key in self.data])) != 1:
-                print("Analysis data arrays must have only one dimension!")
+                print("Analyses data arrays must have only one dimension!")
                 valid = False
             if len(set([len(self.data[key]) for key in self.data])) != 1:
-                print("Analysis data arrays must have the same length!")
+                print("Analyses data arrays must have the same length!")
                 valid = False
         
         if not isinstance(self.classes, str) and self.classes is not None:
-            print("Analysis classes name not conform!")
+            print("Analyses classes name not conform!")
             valid = False
 
         if not valid:
-            print("Issue/s found with analysis", self.name)
+            print("Issue/s found with Analyses", self.name)
         return valid
             
     def set_class_label(self, class_label=None):

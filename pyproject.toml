@@ -8,7 +8,7 @@ version = "0.0.1"
 authors = [
   { name="Ricardo Cunha", email="apolicunha@gmail.com" },
 ]
-description = "Platform for multivariate data analysis, sensor networks and device diagnostics."
+description = "Platform for multivariate data Analyses, sensor networks and device diagnostics."
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [

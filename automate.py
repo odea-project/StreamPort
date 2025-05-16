@@ -17,7 +17,7 @@ else:
 dev = DeviceEngine(source = base_dir)
 
 #Add project headers as dict
-dev.add_headers(headers = {'name': 'Pressure Curve Analysis', 'author': 'Sandeep H.'})
+dev.add_headers(headers = {'name': 'Pressure Curve Analyses', 'author': 'Sandeep H.'})
 
 #find analyses present in 'source' attributed to current device
 analyses = dev.find_analyses()
@@ -47,7 +47,7 @@ from src.StreamPort.ml.MachineLearningEngine import MachineLearningEngine
 ml_engine = MachineLearningEngine()
 
 #isolation forest runs through all analyses grouped by method and scaled and creates new objects for post-iForest use.
-from src.StreamPort.ml.MachineLearningProcessingSettings import MakeModelIsoForest
+from src.StreamPort.ml.MachineLearningProcessingMethod import MakeModelIsoForest
 iso_forest = MakeModelIsoForest(dev, random_state=22)#22 seemed to pick better train sets
 
 #set ml engine for iForest implementation on dev analyses. This also plots results
