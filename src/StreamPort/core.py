@@ -493,10 +493,11 @@ class Engine:
             print("No methods in the workflow.")
             return
 
-        processed_methods = 0
+        processed_methods = 1
 
         for method in self.workflow:
             print(
-                f"Processing method {type(method).__name__} ({processed_methods + 1} / {number_of_methods})\n"
+                f"Processing method {type(method).__name__} ({processed_methods} / {number_of_methods})"
             )
+            processed_methods += 1
             self.analyses = method.run(self.analyses)

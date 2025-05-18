@@ -142,7 +142,32 @@ class PressureCurves(Analyses):
     Args:
         files (list): List of paths to pressure curve data files. Possible formats are .D.
 
+    Attributes:
+        data (list): List of dictionaries containing pressure curve data. Each dictionary contains the following
+            keys:
+            - index: Index of the pressure curve.
+            - name: Name of the pressure curve.
+            - path: Path to the pressure curve data file.
+            - batch: Batch name.
+            - batch_position: Position of the batch in the analysis.
+            - idle_time: Idle time of the pressure curve.
+            - sample: Sample name.
+            - method: Method name.
+            - timestamp: Timestamp of the pressure curve.
+            - detector: Detector name.
+            - pump: Pump name.
+            - start_time: Start time of the pressure curve.
+            - end_time: End time of the pressure curve.
+            - runtime: Runtime of the pressure curve in seconds.
+            - time_var: Time variable of the pressure curve.
+            - pressure_var: Pressure variable of the pressure curve.
 
+    Methods:
+        plot_pressure_curves: Plots the pressure curves for given indices.
+        plot_batches: Plots the batches of the pressure curves over the timestamps.
+        plot_methods: Plots the methods of the pressure curves over the timestamps.
+        plot_features_raw: Plots calculated raw data from features of the pressure curves over the time variable.
+        plot_features: Plots calculated features of the pressure curves.
     """
 
     def __init__(self, files: list = None):
@@ -151,6 +176,7 @@ class PressureCurves(Analyses):
         self.data = []
 
         pc_template = {
+            "index": None,
             "name": None,
             "path": None,
             "batch": None,
@@ -205,6 +231,10 @@ class PressureCurves(Analyses):
                 )
             )
 
+            for i, item in enumerate(self.data):
+                item["index"] = i
+                self.data[i] = item
+
     def __str__(self):
         """
         Return a string representation of the PressureCurves object.
@@ -222,6 +252,26 @@ class PressureCurves(Analyses):
             f"  data: {len(self.data)} \n"
             f"{str_data} \n"
         )
+
+    def get_methods(self):
+        """
+        Get the methods of the pressure curves.
+
+        Returns:
+            list: List of unique methods used in the pressure curves.
+        """
+        methods = [item["method"] for item in self.data if "method" in item]
+        return list(set(methods))
+
+    def get_batches(self):
+        """
+        Get the batches of the pressure curves.
+
+        Returns:
+            list: List of unique batches used in the pressure curves.
+        """
+        batches = [item["batch"] for item in self.data if "batch" in item]
+        return list(set(batches))
 
     def plot_pressure_curves(self, indices: list = None):
         """
@@ -248,6 +298,7 @@ class PressureCurves(Analyses):
                     y=pc["pressure_var"],
                     mode="lines",
                     name=f"{pc['name']} ({pc['sample']})",
+                    text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
                 )
             )
 
@@ -272,14 +323,21 @@ class PressureCurves(Analyses):
         fig = go.Figure()
         for batch in unique_batches:
             indices = [i for i, b in enumerate(batch_name) if b == batch]
+
+            str_text = []
+            for i in indices:
+                str_text.append("")
+                str_text[i] += f"{self.data[i]['index']}. ({self.data[i]['name']})<br>"
+                str_text[i] += f"Batch: {batch}<br>"
+
             fig.add_trace(
                 go.Scatter(
                     x=timestamp_var[indices],
                     y=batch_position_var[indices],
                     mode="markers",
                     name=batch,
-                    text=[batch] * len(indices),
-                    hovertemplate="Batch: %{text}<br>Timestamp: %{x}<br>Batch Position: %{y}<extra></extra>",
+                    text=str_text,
+                    hovertemplate="%{text}<br>Timestamp: %{x}<br>Batch Position: %{y}<extra></extra>",
                 )
             )
 
@@ -306,14 +364,21 @@ class PressureCurves(Analyses):
         fig = go.Figure()
         for method in unique_methods:
             indices = [i for i, m in enumerate(method_var) if m == method]
+
+            str_text = []
+            for i in indices:
+                str_text.append("")
+                str_text[i] += f"{self.data[i]['index']}. ({self.data[i]['name']})<br>"
+                str_text[i] += f"Method: {method}<br>"
+
             fig.add_trace(
                 go.Scatter(
                     x=timestamp_var[indices],
                     y=batch_position_var[indices],
                     mode="markers",
                     name=method,
-                    text=[method] * len(indices),
-                    hovertemplate="Method: %{text}<br>Timestamp: %{x}<br>Batch Position: %{y}<extra></extra>",
+                    text=str_text,
+                    hovertemplate="%{text}<br>Timestamp: %{x}<br>Batch Position: %{y}<extra></extra>",
                 )
             )
 
@@ -322,6 +387,143 @@ class PressureCurves(Analyses):
             yaxis_title="Batch Position",
             template="simple_white",
             legend_title="Methods",
+        )
+
+        return fig
+
+    def plot_features_raw(self, indices: list = None):
+        """
+        Plot calculated raw data from features of the pressure curves over the time variable.
+
+        Args:
+            indices (list): List of indices of the pressure curves to plot. If None, all curves are plotted.
+        """
+
+        if indices is None:
+            indices = list(range(len(self.data)))
+        else:
+            if not isinstance(indices, list):
+                raise TypeError("Indices should be a list of integers.")
+            if len(indices) == 0:
+                raise ValueError("No indices provided for plotting.")
+
+        fig = go.Figure()
+        for i in indices:
+            pc = self.data[i]
+            pc_feat = pc["features_raw"]
+            fig.add_trace(
+                go.Scatter(
+                    x=pc["time_var"],
+                    y=pc_feat["trend"],
+                    mode="lines",
+                    name=f"trend {pc['name']} ({pc['sample']})",
+                    text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
+                )
+            )
+
+            fig.add_trace(
+                go.Scatter(
+                    x=pc["time_var"],
+                    y=pc_feat["seasonal"],
+                    mode="lines",
+                    name=f"seasonal {pc['name']} ({pc['sample']})",
+                    text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
+                )
+            )
+
+            fig.add_trace(
+                go.Scatter(
+                    x=pc["time_var"],
+                    y=pc_feat["residual"],
+                    mode="lines",
+                    name=f"residual {pc['name']} ({pc['sample']})",
+                    text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
+                )
+            )
+
+            fig.add_trace(
+                go.Scatter(
+                    x=pc["time_var"],
+                    y=pc_feat["seasonal_fft"],
+                    mode="lines",
+                    name=f"ft_seasonal {pc['name']} ({pc['sample']})",
+                    text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
+                )
+            )
+
+            fig.add_trace(
+                go.Scatter(
+                    x=pc["time_var"],
+                    y=pc_feat["residual_fft"],
+                    mode="lines",
+                    name=f"ft_residual {pc['name']} ({pc['sample']})",
+                    text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
+                )
+            )
+
+            fig.add_trace(
+                go.Scatter(
+                    x=pc["time_var"],
+                    y=pc_feat["freq_bins"],
+                    mode="lines",
+                    name=f"freq_bins {pc['name']} ({pc['sample']})",
+                    text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
+                )
+            )
+
+            fig.add_trace(
+                go.Scatter(
+                    x=pc["time_var"],
+                    y=pc_feat["freq_bins_indices"],
+                    mode="lines",
+                    name=f"freq_bins_indices {pc['name']} ({pc['sample']})",
+                    text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
+                )
+            )
+
+        fig.update_layout(
+            xaxis_title="Time (s)",
+            yaxis_title="U.A.",
+            template="simple_white",
+        )
+
+        return fig
+
+    def plot_features(self, indices: list = None):
+        """
+        Plot calculated features of the pressure curves.
+
+        Args:
+            indices (list): List of indices of the pressure curves to plot. If None, all curves are plotted.
+        """
+
+        if indices is None:
+            indices = list(range(len(self.data)))
+        else:
+            if not isinstance(indices, list):
+                raise TypeError("Indices should be a list of integers.")
+            if len(indices) == 0:
+                raise ValueError("No indices provided for plotting.")
+
+        fig = go.Figure()
+        for i in indices:
+            pc = self.data[i]
+            pc_feat = pc["features"]
+
+            fig.add_trace(
+                go.Scatter(
+                    x=list(pc_feat.keys()),
+                    y=list(pc_feat.values()),
+                    mode="markers+lines",
+                    name=f"{pc['name']} ({pc['sample']})",
+                    text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
+                )
+            )
+
+        fig.update_layout(
+            xaxis_title=None,
+            yaxis_title="U.A.",
+            template="simple_white",
         )
 
         return fig
