@@ -7,7 +7,6 @@ import datetime
 import re
 import xml.etree.ElementTree as ET
 import pandas as pd
-import numpy as np
 import plotly.graph_objects as go
 from src.StreamPort.core import Analyses
 from src.StreamPort.utils import get_file_encoding
@@ -73,19 +72,10 @@ def _read_pressure_curve_angi(fl: str, pc_template: dict) -> dict:
     )
 
     for col in df.select_dtypes(include=["object"]):
-        # Iterate over object (string) columns
-        # Check if the column looks like it contains numeric data
-        # (i.e., it has commas that need to be replaced)
         if df[col].str.contains(",").any():
             df[col] = df[col].str.replace(",", ".")
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # curve_runtime = (
-    #     int(pressure_file["Time"].max())
-    #     - int(pressure_file["Time"].min())
-    # ) * 60  # convert to seconds
-
-    # df = pd.read_csv(pressure_curve, header=None, sep=";")
     if df.shape[1] < 2:
         raise ValueError(f"File {pressure_curve} does not have at least two columns.")
     pc_fl["time_var"] = df.iloc[:, 0].to_numpy()
@@ -108,7 +98,7 @@ def _read_pressure_curve_angi(fl: str, pc_template: dict) -> dict:
 
     with open(log_file, encoding=get_file_encoding(log_file)) as f:
         for line in f:
-            if "Method started:" in line and pc_fl["idle_time"] is None:
+            if "Method started:" in line and pc_fl["timestamp"] is None:
                 timestamp = datetime_pattern.search(line).group()
                 timestamp = datetime.datetime.strptime(timestamp, datetime_format)
                 pc_fl["timestamp"] = timestamp
@@ -131,7 +121,7 @@ def _read_pressure_curve_angi(fl: str, pc_template: dict) -> dict:
                 if match_key:
                     pc_fl["pump"] = match_key.group(1)
 
-    pc_fl["runtime"] = (pc_fl["end_time"] - pc_fl["start_time"]).total_seconds()
+    pc_fl["runtime"] = (max(pc_fl["time_var"]) - min(pc_fl["time_var"])) * 60
     return pc_fl
 
 
@@ -225,15 +215,32 @@ class PressureCurves(Analyses):
                 )
 
             self.data.append(pc_fl)
-            self.data.sort(
-                key=lambda x: (
-                    x["timestamp"] if x["timestamp"] else datetime.datetime.min
-                )
-            )
 
             for i, item in enumerate(self.data):
                 item["index"] = i
                 self.data[i] = item
+
+        self.data = sorted(self.data, key=lambda x: x["timestamp"])
+
+        for i, pc in enumerate(self.data):
+            if i == 0:
+                pc["idle_time"] = 0
+                pc["batch_position"] = 1
+                continue
+
+            pc["idle_time"] = (
+                pc["timestamp"] - self.data[i - 1]["timestamp"]
+            ).total_seconds()
+
+            if (
+                pc["method"] == self.data[i - 1]["method"]
+                and pc["batch"] == self.data[i - 1]["batch"]
+            ):
+                pc["batch_position"] = self.data[i - 1]["batch_position"] + 1
+            else:
+                pc["batch_position"] = 1
+
+            self.data[i] = pc
 
     def __str__(self):
         """
@@ -253,7 +260,7 @@ class PressureCurves(Analyses):
             f"{str_data} \n"
         )
 
-    def get_methods(self):
+    def get_methods(self) -> list[str]:
         """
         Get the methods of the pressure curves.
 
@@ -263,7 +270,7 @@ class PressureCurves(Analyses):
         methods = [item["method"] for item in self.data if "method" in item]
         return list(set(methods))
 
-    def get_batches(self):
+    def get_batches(self) -> list[str]:
         """
         Get the batches of the pressure curves.
 
@@ -273,7 +280,93 @@ class PressureCurves(Analyses):
         batches = [item["batch"] for item in self.data if "batch" in item]
         return list(set(batches))
 
-    def plot_pressure_curves(self, indices: list = None):
+    def get_method_indices(self, method: str) -> list[int]:
+        """
+        Get the indices of the pressure curves for a given method.
+
+        Args:
+            method (str): Method name to filter the pressure curves.
+
+        Returns:
+            list: List of indices of the pressure curves for the given method.
+        """
+        if not isinstance(method, str):
+            raise TypeError("Method should be a string.")
+
+        indices = [i for i, item in enumerate(self.data) if item["method"] == method]
+        return indices
+
+    def get_batch_indices(self, batch: str) -> list[int]:
+        """
+        Get the indices of the pressure curves for a given batch.
+
+        Args:
+            batch (str): Batch name to filter the pressure curves.
+
+        Returns:
+            list: List of indices of the pressure curves for the given batch.
+        """
+        if not isinstance(batch, str):
+            raise TypeError("Batch should be a string.")
+
+        indices = [i for i, item in enumerate(self.data) if item["batch"] == batch]
+        return indices
+
+    def get_metadata_dataframe(self, indices: list = None) -> pd.DataFrame:
+        """
+        Get a DataFrame of the metadata of the pressure curves.
+
+        Args:
+            indices (list): List of indices of the pressure curves to include in the DataFrame. If None, all curves are included.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the metadata of the pressure curves.
+        """
+
+        if indices is None:
+            indices = list(range(len(self.data)))
+        else:
+            if not isinstance(indices, list):
+                raise TypeError("Indices should be a list of integers.")
+            if len(indices) == 0:
+                raise ValueError("No indices provided for DataFrame creation.")
+
+        metadata = []
+        for i in indices:
+            pc = self.data[i].copy()
+            for key in ["time_var", "pressure_var", "features", "features_raw"]:
+                pc.pop(key, None)
+            metadata.append(pc)
+
+        return pd.DataFrame(metadata)
+
+    def get_features_dataframe(self, indices: list = None) -> pd.DataFrame:
+        """
+        Get a DataFrame of the features of the pressure curves.
+
+        Args:
+            indices (list): List of indices of the pressure curves to include in the DataFrame. If None, all curves are included.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the features of the pressure curves.
+        """
+
+        if indices is None:
+            indices = list(range(len(self.data)))
+        else:
+            if not isinstance(indices, list):
+                raise TypeError("Indices should be a list of integers.")
+            if len(indices) == 0:
+                raise ValueError("No indices provided for DataFrame creation.")
+
+        features = []
+        for i in indices:
+            pc = self.data[i]
+            features.append(pc["features"])
+
+        return pd.DataFrame(features)
+
+    def plot_pressure_curves(self, indices: list = None) -> go.Figure:
         """
         Plot the pressure curves for given indices.
 
@@ -310,37 +403,36 @@ class PressureCurves(Analyses):
 
         return fig
 
-    def plot_batches(self):
+    def plot_batches(self, indices: list = None) -> go.Figure:
         """
         Plot the batches of the pressure curves over the timestamps.
+
+        Args:
+            indices (list): List of indices of the pressure curves to plot. If None, all curves are plotted.
         """
 
-        timestamp_var = np.array([item["start_time"] for item in self.data])
-        batch_position_var = np.array([item["batch_position"] for item in self.data])
-        batch_name = [item.get("batch", "") for item in self.data]
-        unique_batches = list(set(batch_name))
-
+        df = self.get_metadata_dataframe(indices)
+        df = df.sort_values("timestamp")
+        batches_in_order = df["batch"].drop_duplicates().tolist()
         fig = go.Figure()
-        for batch in unique_batches:
-            indices = [i for i, b in enumerate(batch_name) if b == batch]
-
-            str_text = []
-            for i in indices:
-                str_text.append("")
-                str_text[i] += f"{self.data[i]['index']}. ({self.data[i]['name']})<br>"
-                str_text[i] += f"Batch: {batch}<br>"
-
+        for batch in batches_in_order:
+            mask = df["batch"] == batch
+            df_batch = df[mask]
+            text = [
+                f"{row['index']}. ({row['name']})<br>Batch: {row['batch']}<br>Method: {row['method']}"
+                for _, row in df_batch.iterrows()
+            ]
             fig.add_trace(
                 go.Scatter(
-                    x=timestamp_var[indices],
-                    y=batch_position_var[indices],
+                    x=df_batch["timestamp"],
+                    y=df_batch["batch_position"],
                     mode="markers",
                     name=batch,
-                    text=str_text,
+                    legendgroup=batch,
+                    text=text,
                     hovertemplate="%{text}<br>Timestamp: %{x}<br>Batch Position: %{y}<extra></extra>",
                 )
             )
-
         fig.update_layout(
             xaxis_title="Timestamp",
             yaxis_title="Batch Position",
@@ -350,34 +442,34 @@ class PressureCurves(Analyses):
 
         return fig
 
-    def plot_methods(self):
+    def plot_methods(self, indices: list = None) -> go.Figure:
         """
         Plot the methods of the pressure curves over the timestamps.
+
+        Args:
+            indices (list): List of indices of the pressure curves to plot. If None, all curves are plotted.
         """
 
-        timestamp_var = np.array([item["timestamp"] for item in self.data])
-        batch_position_var = np.array([item["batch_position"] for item in self.data])
-        method_var = [item.get("method", "") for item in self.data]
-
-        unique_methods = list(set(method_var))
+        df = self.get_metadata_dataframe(indices)
+        df = df.sort_values("timestamp")
+        methods_in_order = df["method"].drop_duplicates().tolist()
 
         fig = go.Figure()
-        for method in unique_methods:
-            indices = [i for i, m in enumerate(method_var) if m == method]
-
-            str_text = []
-            for i in indices:
-                str_text.append("")
-                str_text[i] += f"{self.data[i]['index']}. ({self.data[i]['name']})<br>"
-                str_text[i] += f"Method: {method}<br>"
-
+        for method in methods_in_order:
+            mask = df["method"] == method
+            df_method = df[mask]
+            text = [
+                f"{row['index']}. ({row['name']})<br>Batch: {row['batch']}<br>Method: {row['method']}"
+                for _, row in df_method.iterrows()
+            ]
             fig.add_trace(
                 go.Scatter(
-                    x=timestamp_var[indices],
-                    y=batch_position_var[indices],
+                    x=df_method["timestamp"],
+                    y=df_method["batch_position"],
                     mode="markers",
                     name=method,
-                    text=str_text,
+                    legendgroup=method,
+                    text=text,
                     hovertemplate="%{text}<br>Timestamp: %{x}<br>Batch Position: %{y}<extra></extra>",
                 )
             )
@@ -391,7 +483,7 @@ class PressureCurves(Analyses):
 
         return fig
 
-    def plot_features_raw(self, indices: list = None):
+    def plot_features_raw(self, indices: list = None) -> go.Figure:
         """
         Plot calculated raw data from features of the pressure curves over the time variable.
 
@@ -489,7 +581,7 @@ class PressureCurves(Analyses):
 
         return fig
 
-    def plot_features(self, indices: list = None):
+    def plot_features(self, indices: list = None) -> go.Figure:
         """
         Plot calculated features of the pressure curves.
 

@@ -2,10 +2,10 @@
 This module contains processing methods for device analyses data.
 """
 
-import datetime
 import pandas as pd
 import numpy as np
 from statsmodels.tsa.seasonal import seasonal_decompose
+from sklearn import preprocessing as scaler
 from src.StreamPort.core import ProcessingMethod
 from src.StreamPort.device.analyses import PressureCurves
 
@@ -25,15 +25,20 @@ class PressureCurvesMethodAssignBatchPositionNative(ProcessingMethod):
         self.number_permitted = 1
         self.parameters = {}
 
-    def run(self, analyses: PressureCurves):
+    def run(self, analyses: PressureCurves) -> PressureCurves:
+        """
+        Assigns batch position and calculated iddle time to pressure curves.
+        Args:
+            analyses (PressureCurves): The PressureCurves instance to process.
+        Returns:
+            PressureCurves: The processed PressureCurves instance with batch position and idle time assigned.
+        """
         data = analyses.data
         if len(data) == 0:
             print("No data to process.")
             return analyses
 
-        data.sort(
-            key=lambda x: (x["timestamp"] if x["timestamp"] else datetime.datetime.min)
-        )
+        data = sorted(data, key=lambda x: x["timestamp"])
 
         for i, pc in enumerate(data):
             if i == 0:
@@ -66,6 +71,39 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
     Args:
         period (int): The period for seasonal decomposition. Default is 10.
         bins (int): The number of bins for Fast Fourier Transformation (FFT). Default is 4.
+
+    Details:
+        The method extract features from pressure curves using seasonal decomposition and FFT, adding entries named "features" and "features_raw" to each dict in the data list of the PressureCurves instance.
+        The "features" include:
+            - method: The method used for the analysis.
+            - batch_position: The position of the batch in the analysis.
+            - run_type: The type of run (0 for Blank, 1 for Sample).
+            - idle_time: The time between the current and previous pressure curve.
+            - pressure_max: The maximum pressure value.
+            - pressure_min: The minimum pressure value.
+            - pressure_mean: The mean pressure value.
+            - pressure_std: The standard deviation of the pressure values.
+            - pressure_range: The range of the pressure values.
+            - runtime: The runtime of the analysis.
+            - residual_mean: The mean of the residuals from seasonal decomposition.
+            - residual_std: The standard deviation of the residuals from seasonal decomposition.
+            - residual_sum: The sum of the residuals from seasonal decomposition.
+            - residual_max: The maximum value of the residuals from seasonal decomposition.
+            - seasonal_fft_mean_{i}: The mean of the seasonal FFT for bin {i}.
+            - seasonal_fft_sum_{i}: The sum of the seasonal FFT for bin {i}.
+            - residual_fft_mean_{i}: The mean of the residual FFT for bin {i}.
+            - residual_fft_sum_{i}: The sum of the residual FFT for bin {i}.
+        The "features_raw" include:
+            - trend: The trend component from seasonal decomposition.
+            - seasonal: The seasonal component from seasonal decomposition.
+            - residual: The residual component from seasonal decomposition.
+            - seasonal_fft: The FFT of the seasonal component.
+            - residual_fft: The FFT of the residual component.
+            - sample_spacing: The sample spacing used for FFT.
+            - freq_bins: The frequency bins used for FFT.
+            - freq_bin_edges: The edges of the frequency bins.
+            - freq_bins_indices: The indices of the frequency bins.
+
     """
 
     def __init__(self, period: int = 10, bins: int = 4):
@@ -78,7 +116,14 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
         self.number_permitted = 1
         self.parameters = {"period": period, "bins": bins}
 
-    def run(self, analyses: PressureCurves):
+    def run(self, analyses: PressureCurves) -> PressureCurves:
+        """
+        Extracts features from pressure curves using seasonal decomposition and FFT.
+        Args:
+            analyses (PressureCurves): The PressureCurves instance to process.
+        Returns:
+            PressureCurves: The processed PressureCurves instance with features extracted.
+        """
         data = analyses.data
         if len(data) == 0:
             print("No data to process.")
@@ -95,7 +140,6 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             "pressure_std": 0,
             "pressure_range": 0,
             "runtime": 0,
-            "runtime_delta_percentage": 0,
             "residual_mean": 0,
             "residual_std": 0,
             "residual_sum": 0,
@@ -150,10 +194,7 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
                 / len(pc["pressure_var"])
             ) ** 0.5
             feati["pressure_range"] = feati["pressure_max"] - feati["pressure_min"]
-            feati["runtime"] = (max(pc["time_var"]) - min(pc["time_var"])) * 60
-            feati["runtime_delta_percentage"] = (
-                abs(feati["runtime"] - pc["runtime"]) / pc["runtime"] * 100
-            )
+            feati["runtime"] = pc["runtime"]
 
             decomp = seasonal_decompose(
                 pd.to_numeric(pc["pressure_var"]),
@@ -271,64 +312,71 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
         return analyses
 
 
-class PressureCurvesMethodScaleFeaturesNative(ProcessingMethod):
+class PressureCurvesMethodScaleFeaturesScalerSklearn(ProcessingMethod):
     """
-    Scales features of pressure curves using a native algorithm.
+    Scales features of pressure curves using a scaler from sklearn.
+
+    Args:
+        scaler_type (str): The type of scaler to use. Options are:
+            - "MinMaxScaler"
+            - "StandardScaler"
+            - "RobustScaler"
+            - "MaxAbsScaler"
+            - "Normalizer"
     """
 
-    def __init__(self):
+    def __init__(self, scaler_type: str = "MinMaxScaler"):
         super().__init__()
         self.data_type = "PressureCurves"
         self.method = "ScaleFeatures"
-        self.algorithm = "Native"
+        self.algorithm = "ScalerPandas"
         self.input_instance = dict
         self.output_instance = dict
         self.number_permitted = 1
-        self.parameters = {}
+        self.parameters = {"type": scaler_type}
 
-    def run(self, analyses: PressureCurves):
+    def run(self, analyses: PressureCurves) -> PressureCurves:
+        """
+        Scales features of pressure curves using a scaler from sklearn.
+        Args:
+            analyses (PressureCurves): The PressureCurves instance to process.
+        Returns:
+            PressureCurves: The processed PressureCurves instance with scaled features.
+        """
         data = analyses.data
         if len(data) == 0:
             print("No data to process.")
             return analyses
 
-        unique_methods = set()
-        for pc in data:
-            if pc["features"]["method"] not in unique_methods:
-                unique_methods.add(pc["features"]["method"])
+        df = analyses.get_features_dataframe()
 
-        feature_template = data[0]["features"].copy()
-        for key in feature_template.keys():
-            feature_template[key] = 0
+        feature_cols = df.columns[1:]  # or select only the columns you want to scale
+        df[feature_cols] = df[feature_cols].astype(float)
 
-        unique_methods_max = []
-        for i, method in enumerate(unique_methods):
-            unique_methods_max.append(feature_template.copy())
-            unique_methods_max[i]["method"] = method
+        scaler_type = self.parameters["type"]
+
+        # scale for each method int value in the dataframe
+        for method in df["method"].unique():
+            mask = df["method"] == method
+            features = df.loc[mask, df.columns[1:]]
+            if scaler_type == "MinMaxScaler":
+                scaler_model = scaler.MinMaxScaler()
+            elif scaler_type == "StandardScaler":
+                scaler_model = scaler.StandardScaler()
+            elif scaler_type == "RobustScaler":
+                scaler_model = scaler.RobustScaler()
+            elif scaler_type == "MaxAbsScaler":
+                scaler_model = scaler.MaxAbsScaler()
+            elif scaler_type == "Normalizer":
+                scaler_model = scaler.Normalizer()
+            else:
+                raise ValueError(f"Unknown scaler type: {scaler_type}")
+            df.loc[mask, df.columns[1:]] = scaler_model.fit_transform(features)
 
         for i, pc in enumerate(data):
             feat = pc["features"]
-            for j, method in enumerate(unique_methods):
-                if feat["method"] == method:
-                    for key, item in feat.items():
-                        if key == "method":
-                            continue
-                        if item > unique_methods_max[j][key]:
-                            unique_methods_max[j][key] = item
-
-        for i, pc in enumerate(data):
-            feat = pc["features"]
-            for j, method in enumerate(unique_methods):
-                if feat["method"] == method:
-                    for key, item in feat.items():
-                        if key == "method":
-                            continue
-                        if unique_methods_max[j][key] != 0:
-                            feat[key] = item / unique_methods_max[j][key]
-                        else:
-                            feat[key] = 0
-                    break
-
+            for key in df.columns[1:]:
+                feat[key] = df.loc[i, key]
             pc["features"] = feat
             data[i] = pc
 

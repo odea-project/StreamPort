@@ -3,7 +3,7 @@ Workflow automation script for AnomalyDetector package
 """
 
 #import device engine
-from src.StreamPort.device.DeviceEngine import DeviceEngine
+from dev.old_code.DeviceEngine import DeviceEngine
 
 #User input for path to data
 base_dir = input('Enter string path to Chemstation data: ')
@@ -30,7 +30,7 @@ print(dev._method_ids)
 dev.add_analyses(analyses)
 
 #import processing settings
-from src.StreamPort.device.DeviceProcSettings import ExtractPressureFeatures as features, DecomposeCurves as decompose, FourierTransform as fourier, Scaler 
+from dev.old_code.DeviceProcSettings import ExtractPressureFeatures as features, DecomposeCurves as decompose, FourierTransform as fourier, Scaler 
 settings = [features(), decompose(), fourier(), Scaler()]
 #add settings to device
 for set in settings:
