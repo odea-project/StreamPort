@@ -75,7 +75,6 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
     Details:
         The method extract features from pressure curves using seasonal decomposition and FFT, adding entries named "features" and "features_raw" to each dict in the data list of the PressureCurves instance.
         The "features" include:
-            - method: The method used for the analysis.
             - batch_position: The position of the batch in the analysis.
             - run_type: The type of run (0 for Blank, 1 for Sample).
             - idle_time: The time between the current and previous pressure curve.
@@ -130,7 +129,6 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             return analyses
 
         features_template = {
-            "method": "",
             "batch_position": 0,
             "run_type": "",
             "idle_time": 0,
@@ -164,19 +162,9 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             "freq_bins_indices": [],
         }
 
-        unique_methods = set()
-        for pc in data:
-            if pc["method"] not in unique_methods:
-                unique_methods.add(pc["method"])
-
         for i, pc in enumerate(data):
             feati = features_template.copy()
             featrawi = features_raw_transform.copy()
-
-            for i, method in enumerate(unique_methods):
-                if pc["method"] == method:
-                    feati["method"] = i
-                    break
 
             feati["batch_position"] = pc["batch_position"]
 
@@ -322,7 +310,7 @@ class PressureCurvesMethodScaleFeaturesScalerSklearn(ProcessingMethod):
             - "StandardScaler"
             - "RobustScaler"
             - "MaxAbsScaler"
-            - "Normalizer"
+            - "MaxNormalizer"
     """
 
     def __init__(self, scaler_type: str = "MinMaxScaler"):
@@ -348,36 +336,33 @@ class PressureCurvesMethodScaleFeaturesScalerSklearn(ProcessingMethod):
             print("No data to process.")
             return analyses
 
-        df = analyses.get_features_dataframe()
-
-        feature_cols = df.columns[1:]  # or select only the columns you want to scale
-        df[feature_cols] = df[feature_cols].astype(float)
-
         scaler_type = self.parameters["type"]
+        if scaler_type == "MinMaxScaler":
+            scaler_model = scaler.MinMaxScaler()
+        elif scaler_type == "StandardScaler":
+            scaler_model = scaler.StandardScaler()
+        elif scaler_type == "RobustScaler":
+            scaler_model = scaler.RobustScaler()
+        elif scaler_type == "MaxAbsScaler":
+            scaler_model = scaler.MaxAbsScaler()
+        elif scaler_type == "MaxNormalizer":
+            scaler_model = scaler.Normalizer(norm="max")
+        else:
+            raise ValueError(f"Unknown scaler type: {scaler_type}")
 
-        # scale for each method int value in the dataframe
-        for method in df["method"].unique():
-            mask = df["method"] == method
-            features = df.loc[mask, df.columns[1:]]
-            if scaler_type == "MinMaxScaler":
-                scaler_model = scaler.MinMaxScaler()
-            elif scaler_type == "StandardScaler":
-                scaler_model = scaler.StandardScaler()
-            elif scaler_type == "RobustScaler":
-                scaler_model = scaler.RobustScaler()
-            elif scaler_type == "MaxAbsScaler":
-                scaler_model = scaler.MaxAbsScaler()
-            elif scaler_type == "Normalizer":
-                scaler_model = scaler.Normalizer()
-            else:
-                raise ValueError(f"Unknown scaler type: {scaler_type}")
-            df.loc[mask, df.columns[1:]] = scaler_model.fit_transform(features)
+        methods_set = analyses.get_methods()
+        mt = analyses.get_metadata()
+        df = analyses.get_features()
+
+        for col in df.columns:
+            df[col] = df[col].astype(float)
+
+        for method in methods_set:
+            mask = mt["method"] == method
+            df.loc[mask, :] = scaler_model.fit_transform(df.loc[mask, :])
 
         for i, pc in enumerate(data):
-            feat = pc["features"]
-            for key in df.columns[1:]:
-                feat[key] = df.loc[i, key]
-            pc["features"] = feat
+            pc["features"] = df.iloc[i].to_dict()
             data[i] = pc
 
         analyses.data = data

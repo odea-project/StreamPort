@@ -1,4 +1,4 @@
-from ..core.Analyses import Analyses
+from ...src.StreamPort.core import Analyses
 import numpy as np
 
 class MachineLearningAnalyses(Analyses):

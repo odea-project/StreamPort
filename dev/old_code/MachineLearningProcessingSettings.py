@@ -1,4 +1,4 @@
-from ..core.ProcessingMethod import ProcessingMethod
+from ...src.StreamPort.core import ProcessingMethod
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import DBSCAN, HDBSCAN

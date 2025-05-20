@@ -312,7 +312,7 @@ class PressureCurves(Analyses):
         indices = [i for i, item in enumerate(self.data) if item["batch"] == batch]
         return indices
 
-    def get_metadata_dataframe(self, indices: list = None) -> pd.DataFrame:
+    def get_metadata(self, indices: list = None) -> pd.DataFrame:
         """
         Get a DataFrame of the metadata of the pressure curves.
 
@@ -325,11 +325,12 @@ class PressureCurves(Analyses):
 
         if indices is None:
             indices = list(range(len(self.data)))
-        else:
-            if not isinstance(indices, list):
-                raise TypeError("Indices should be a list of integers.")
-            if len(indices) == 0:
-                raise ValueError("No indices provided for DataFrame creation.")
+        elif isinstance(indices, int):
+            indices = [indices]
+        if not isinstance(indices, list):
+            raise TypeError("Indices should be a list of integers.")
+        if len(indices) == 0:
+            raise ValueError("No indices provided for DataFrame creation.")
 
         metadata = []
         for i in indices:
@@ -340,7 +341,7 @@ class PressureCurves(Analyses):
 
         return pd.DataFrame(metadata)
 
-    def get_features_dataframe(self, indices: list = None) -> pd.DataFrame:
+    def get_features(self, indices: list = None) -> pd.DataFrame:
         """
         Get a DataFrame of the features of the pressure curves.
 
@@ -353,11 +354,12 @@ class PressureCurves(Analyses):
 
         if indices is None:
             indices = list(range(len(self.data)))
-        else:
-            if not isinstance(indices, list):
-                raise TypeError("Indices should be a list of integers.")
-            if len(indices) == 0:
-                raise ValueError("No indices provided for DataFrame creation.")
+        elif isinstance(indices, int):
+            indices = [indices]
+        if not isinstance(indices, list):
+            raise TypeError("Indices should be a list of integers.")
+        if len(indices) == 0:
+            raise ValueError("No indices provided for DataFrame creation.")
 
         features = []
         for i in indices:
@@ -376,22 +378,28 @@ class PressureCurves(Analyses):
 
         if indices is None:
             indices = list(range(len(self.data)))
-        else:
-            if not isinstance(indices, list):
-                raise TypeError("Indices should be a list of integers.")
-            if len(indices) == 0:
-                raise ValueError("No indices provided for plotting.")
+        elif isinstance(indices, int):
+            indices = list(indices)
+        elif isinstance(indices, tuple):
+            indices = list(indices)
+        if not isinstance(indices, list):
+            raise TypeError("Indices should be a list of integers.")
+        if len(indices) == 0:
+            raise ValueError("No indices provided for DataFrame creation.")
 
         fig = go.Figure()
         for i in indices:
             pc = self.data[i]
+            mt = self.get_metadata([i]).to_dict(orient="records")[0]
+            text = "<br>".join(f"<b>{k}</b>: {v}" for k, v in mt.items())
             fig.add_trace(
                 go.Scatter(
                     x=pc["time_var"],
                     y=pc["pressure_var"],
                     mode="lines",
                     name=f"{pc['name']} ({pc['sample']})",
-                    text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
+                    text=text,
+                    hovertemplate=f"{text}<br><b>Time: </b>%{{x}}<br><b>Pressure: </b>%{{y}}<extra></extra>",
                 )
             )
 
@@ -411,7 +419,7 @@ class PressureCurves(Analyses):
             indices (list): List of indices of the pressure curves to plot. If None, all curves are plotted.
         """
 
-        df = self.get_metadata_dataframe(indices)
+        df = self.get_metadata(indices)
         df = df.sort_values("timestamp")
         batches_in_order = df["batch"].drop_duplicates().tolist()
         fig = go.Figure()
@@ -419,8 +427,8 @@ class PressureCurves(Analyses):
             mask = df["batch"] == batch
             df_batch = df[mask]
             text = [
-                f"{row['index']}. ({row['name']})<br>Batch: {row['batch']}<br>Method: {row['method']}"
-                for _, row in df_batch.iterrows()
+                "<br>".join(f"<b>{k}: </b>{v}" for k, v in row.items())
+                for row in df_batch.to_dict(orient="records")
             ]
             fig.add_trace(
                 go.Scatter(
@@ -430,7 +438,7 @@ class PressureCurves(Analyses):
                     name=batch,
                     legendgroup=batch,
                     text=text,
-                    hovertemplate="%{text}<br>Timestamp: %{x}<br>Batch Position: %{y}<extra></extra>",
+                    hovertemplate=text,
                 )
             )
         fig.update_layout(
@@ -450,7 +458,7 @@ class PressureCurves(Analyses):
             indices (list): List of indices of the pressure curves to plot. If None, all curves are plotted.
         """
 
-        df = self.get_metadata_dataframe(indices)
+        df = self.get_metadata(indices)
         df = df.sort_values("timestamp")
         methods_in_order = df["method"].drop_duplicates().tolist()
 
@@ -459,8 +467,8 @@ class PressureCurves(Analyses):
             mask = df["method"] == method
             df_method = df[mask]
             text = [
-                f"{row['index']}. ({row['name']})<br>Batch: {row['batch']}<br>Method: {row['method']}"
-                for _, row in df_method.iterrows()
+                "<br>".join(f"<b>{k}: </b>{v}" for k, v in row.items())
+                for row in df_method.to_dict(orient="records")
             ]
             fig.add_trace(
                 go.Scatter(
@@ -470,7 +478,7 @@ class PressureCurves(Analyses):
                     name=method,
                     legendgroup=method,
                     text=text,
-                    hovertemplate="%{text}<br>Timestamp: %{x}<br>Batch Position: %{y}<extra></extra>",
+                    hovertemplate=text,
                 )
             )
 
@@ -493,11 +501,12 @@ class PressureCurves(Analyses):
 
         if indices is None:
             indices = list(range(len(self.data)))
-        else:
-            if not isinstance(indices, list):
-                raise TypeError("Indices should be a list of integers.")
-            if len(indices) == 0:
-                raise ValueError("No indices provided for plotting.")
+        elif isinstance(indices, int):
+            indices = [indices]
+        if not isinstance(indices, list):
+            raise TypeError("Indices should be a list of integers.")
+        if len(indices) == 0:
+            raise ValueError("No indices provided for DataFrame creation.")
 
         fig = go.Figure()
         for i in indices:
@@ -588,27 +597,30 @@ class PressureCurves(Analyses):
         Args:
             indices (list): List of indices of the pressure curves to plot. If None, all curves are plotted.
         """
+        mt = self.get_metadata(indices).to_dict(orient="records")
+        ft = self.get_features(indices).to_dict(orient="records")
 
-        if indices is None:
-            indices = list(range(len(self.data)))
-        else:
-            if not isinstance(indices, list):
-                raise TypeError("Indices should be a list of integers.")
-            if len(indices) == 0:
-                raise ValueError("No indices provided for plotting.")
+        text = ["<br>".join(f"<b>{k}: </b>{v}" for k, v in row.items()) for row in mt]
 
         fig = go.Figure()
-        for i in indices:
-            pc = self.data[i]
-            pc_feat = pc["features"]
+        for i, fti in enumerate(ft):
+            fti = ft[i]
+            mti = mt[i]
 
             fig.add_trace(
                 go.Scatter(
-                    x=list(pc_feat.keys()),
-                    y=list(pc_feat.values()),
+                    x=list(fti.keys()),
+                    y=list(fti.values()),
                     mode="markers+lines",
-                    name=f"{pc['name']} ({pc['sample']})",
-                    text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
+                    name=f"{mti['name']} ({mti['sample']})",
+                    text=text[i],
+                    hovertemplate=(
+                        f"<b>{mti['name']} ({mti['sample']})</b><br>"
+                        + "%{{x}}<br>"
+                        + "%{{y}}<extra></extra>"
+                        if text is None
+                        else f"{text[i]}<br><b>x: </b>%{{x}}<br><b>y: </b>%{{y}}<extra></extra>"
+                    ),
                 )
             )
 
