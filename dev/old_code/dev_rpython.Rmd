@@ -1,0 +1,140 @@
+---
+title : "StreamPort python-to-r migration"
+output : html_document
+---
+
+FIX PATH ID
+
+
+Import reticulate to enable using python objects in R. py_run_string() statement here prints the current paths in the environment.
+
+```{r setup, include=FALSE}
+library(reticulate)
+```
+
+
+
+Adding current path to package so that related modules can be imported while handling relative imports.
+
+```{python}
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.getcwd()))
+```
+
+```{r}
+py_run_string("print(sys.path)")
+```
+
+
+
+Import python modules to be run in R environment. Can be done using source_python().
+
+```{r}
+reticulate::source_python('C:\\Users\\PC0118\\Desktop\\StreamPort\\src\\StreamPort\\device\\DeviceEngine.py')
+reticulate::source_python('C:\\Users\\PC0118\\Desktop\\StreamPort\\src\\StreamPort\\ml\\MachineLearningEngine.py')
+```
+
+```{r}
+ml <- py$MachineLearningEngine()
+ml$print()
+
+```
+
+
+```{r echo=FALSE}
+dev <- py$DeviceEngine(source = r'(C:\Users\PC0118\Desktop\ExtractedSignals)')
+analyses <- dev$find_analyses()
+dev$add_analyses(analyses)
+dev$print()
+```
+
+
+Can also be done by running python chunks. 
+
+<!-- ```{python} -->
+<!-- from src.StreamPort.device.DeviceEngine import DeviceEngine -->
+<!-- from src.StreamPort.device.DeviceAnalyses import DeviceAnalyses -->
+<!-- dev1 = DeviceEngine(source = r'C:\Users\PC0118\Desktop\ExtractedSignals') -->
+<!-- dev1.print() -->
+<!-- ``` -->
+
+<!-- Now we can use the functions that belong to reticulate's python object 'py' -->
+
+<!-- ```{r echo=FALSE} -->
+<!-- analyses <- py$dev1$find_analyses() -->
+<!-- py$dev1$add_analyses(analyses) -->
+<!-- py$dev1$print() -->
+<!-- ``` -->
+
+Plot analyses
+
+```{r}
+dev$plot_analyses(group_by = 'date')
+```
+
+Extract features
+
+<!-- ```{python} -->
+<!-- from src.StreamPort.device.DeviceProcSettings import ExtractPressureFeatures -->
+<!-- ``` -->
+
+```{r}
+source_python('C:\\Users\\PC0118\\Desktop\\StreamPort\\src\\StreamPort\\device\\DeviceProcSettings.py')
+settings <- py$ExtractPressureFeatures(weighted = FALSE)
+dev$add_settings(settings)
+dev$print()
+pressure_features <- settings$run(dev)
+dev$add_results(pressure_features)
+```
+
+Seasonal Decomposition for signal component Analyses
+
+<!-- ```{python} -->
+<!-- from src.StreamPort.device.DeviceProcSettings import DecomposeCurves -->
+<!-- ``` -->
+Problem here with conversion
+```{r}
+curve_decomposer <- py$DecomposeCurves(period = 30)
+dev$add_settings(curve_decomposer)
+components <- curve_decomposer$run(dev)
+dev$add_results(components)
+dev$get_results(-1)
+```
+
+Fourier transformation for visual identification of outlying frequencies
+
+<!-- ```{python} -->
+<!-- from src.StreamPort.device.DeviceProcSettings import FourierTransform -->
+<!-- ``` -->
+
+```{r}
+fft <- py$FourierTransform()
+dev$add_settings(fft)
+dev$print()
+transformed <- fft$run(dev)
+dev$add_results(transformed)
+```
+
+Add features engineered from DecomposeCurves and FourierTransform to features matrix and scale them as a final preprocessing step before ML operations. Scaler from ProcessingMethod does the above mentioned preparation and scaling.
+
+<!-- ```{python} -->
+<!-- from src.StreamPort.device.DeviceProcSettings import Scaler -->
+<!-- ``` -->
+
+scaler options are 'minmax', 'std', 'robust', 'maxabs', 'norm' to be specified in 'parameters' argument.
+
+```{r}
+scaler <- py$Scaler(parameters = 'std')
+dev$add_settings(scaler)
+dev$print()
+scaled <- scaler$run(dev)
+dev$add_results(scaled)
+```
+
+Plot results
+
+```{r}
+methods <- dev$trim_method_name()
+dev$plot_results(methods[1], features = 'base')
+```

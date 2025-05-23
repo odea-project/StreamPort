@@ -125,7 +125,7 @@ def _read_pressure_curve_angi(fl: str, pc_template: dict) -> dict:
     return pc_fl
 
 
-class PressureCurves(Analyses):
+class PressureCurvesAnalyses(Analyses):
     """
     Class for analyzing pressure curves.
 
@@ -161,7 +161,7 @@ class PressureCurves(Analyses):
     """
 
     def __init__(self, files: list = None):
-        super().__init__(data_type="PressureCurves", formats=[".D"])
+        super().__init__(data_type="PressureCurvesAnalyses", formats=[".D"])
 
         self.data = []
 
@@ -188,7 +188,7 @@ class PressureCurves(Analyses):
             return
 
         if len(files) == 0:
-            raise ValueError("No data provided for PressureCurves analysis.")
+            raise ValueError("No data provided for PressureCurvesAnalyses analysis.")
 
         if not isinstance(files, list):
             if isinstance(files, str):
@@ -244,7 +244,7 @@ class PressureCurves(Analyses):
 
     def __str__(self):
         """
-        Return a string representation of the PressureCurves object.
+        Return a string representation of the PressureCurvesAnalyses object.
         """
         str_data = ""
         if len(self.data) > 0:

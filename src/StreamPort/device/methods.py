@@ -7,7 +7,7 @@ import numpy as np
 from statsmodels.tsa.seasonal import seasonal_decompose
 from sklearn import preprocessing as scaler
 from src.StreamPort.core import ProcessingMethod
-from src.StreamPort.device.analyses import PressureCurves
+from src.StreamPort.device.analyses import PressureCurvesAnalyses
 
 
 class PressureCurvesMethodAssignBatchPositionNative(ProcessingMethod):
@@ -17,7 +17,7 @@ class PressureCurvesMethodAssignBatchPositionNative(ProcessingMethod):
 
     def __init__(self):
         super().__init__()
-        self.data_type = "PressureCurves"
+        self.data_type = "PressureCurvesAnalyses"
         self.method = "AssignBatchPosition"
         self.algorithm = "Native"
         self.input_instance = dict
@@ -25,13 +25,13 @@ class PressureCurvesMethodAssignBatchPositionNative(ProcessingMethod):
         self.number_permitted = 1
         self.parameters = {}
 
-    def run(self, analyses: PressureCurves) -> PressureCurves:
+    def run(self, analyses: PressureCurvesAnalyses) -> PressureCurvesAnalyses:
         """
         Assigns batch position and calculated iddle time to pressure curves.
         Args:
-            analyses (PressureCurves): The PressureCurves instance to process.
+            analyses (PressureCurvesAnalyses): The PressureCurvesAnalyses instance to process.
         Returns:
-            PressureCurves: The processed PressureCurves instance with batch position and idle time assigned.
+            PressureCurvesAnalyses: The processed PressureCurvesAnalyses instance with batch position and idle time assigned.
         """
         data = analyses.data
         if len(data) == 0:
@@ -73,7 +73,7 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
         bins (int): The number of bins for Fast Fourier Transformation (FFT). Default is 4.
 
     Details:
-        The method extract features from pressure curves using seasonal decomposition and FFT, adding entries named "features" and "features_raw" to each dict in the data list of the PressureCurves instance.
+        The method extract features from pressure curves using seasonal decomposition and FFT, adding entries named "features" and "features_raw" to each dict in the data list of the PressureCurvesAnalyses instance.
         The "features" include:
             - batch_position: The position of the batch in the analysis.
             - run_type: The type of run (0 for Blank, 1 for Sample).
@@ -107,7 +107,7 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
 
     def __init__(self, period: int = 10, bins: int = 4):
         super().__init__()
-        self.data_type = "PressureCurves"
+        self.data_type = "PressureCurvesAnalyses"
         self.method = "ExtractFeatures"
         self.algorithm = "Native"
         self.input_instance = dict
@@ -115,13 +115,13 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
         self.number_permitted = 1
         self.parameters = {"period": period, "bins": bins}
 
-    def run(self, analyses: PressureCurves) -> PressureCurves:
+    def run(self, analyses: PressureCurvesAnalyses) -> PressureCurvesAnalyses:
         """
         Extracts features from pressure curves using seasonal decomposition and FFT.
         Args:
-            analyses (PressureCurves): The PressureCurves instance to process.
+            analyses (PressureCurvesAnalyses): The PressureCurvesAnalyses instance to process.
         Returns:
-            PressureCurves: The processed PressureCurves instance with features extracted.
+            PressureCurvesAnalyses: The processed PressureCurvesAnalyses instance with features extracted.
         """
         data = analyses.data
         if len(data) == 0:
@@ -315,21 +315,21 @@ class PressureCurvesMethodScaleFeaturesScalerSklearn(ProcessingMethod):
 
     def __init__(self, scaler_type: str = "MinMaxScaler"):
         super().__init__()
-        self.data_type = "PressureCurves"
+        self.data_type = "PressureCurvesAnalyses"
         self.method = "ScaleFeatures"
-        self.algorithm = "ScalerPandas"
+        self.algorithm = "Sklearn"
         self.input_instance = dict
         self.output_instance = dict
         self.number_permitted = 1
         self.parameters = {"type": scaler_type}
 
-    def run(self, analyses: PressureCurves) -> PressureCurves:
+    def run(self, analyses: PressureCurvesAnalyses) -> PressureCurvesAnalyses:
         """
         Scales features of pressure curves using a scaler from sklearn.
         Args:
-            analyses (PressureCurves): The PressureCurves instance to process.
+            analyses (PressureCurvesAnalyses): The PressureCurvesAnalyses instance to process.
         Returns:
-            PressureCurves: The processed PressureCurves instance with scaled features.
+            PressureCurvesAnalyses: The processed PressureCurvesAnalyses instance with scaled features.
         """
         data = analyses.data
         if len(data) == 0:
