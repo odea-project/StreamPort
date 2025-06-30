@@ -5,6 +5,7 @@ This module contains processing methods for device analyses data.
 import pandas as pd
 import numpy as np
 from statsmodels.tsa.seasonal import seasonal_decompose
+from scipy.stats import skew, kurtosis
 from sklearn import preprocessing as scaler
 from src.StreamPort.core import ProcessingMethod
 from src.StreamPort.device.analyses import PressureCurvesAnalyses
@@ -129,26 +130,31 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             return analyses
 
         features_template = {
-            "batch_position": 0,
-            "run_type": "",
-            "idle_time": 0,
+            # "batch_position": 0,
+            # "run_type": "",
+            # "idle_time": 0,
+            "area": 0,
             "pressure_max": 0,
             "pressure_min": 0,
             "pressure_mean": 0,
             "pressure_std": 0,
             "pressure_range": 0,
             "runtime": 0,
-            "residual_mean": 0,
+            # "residual_median": 0,
+            "residual_noise": 0,
             "residual_std": 0,
-            "residual_sum": 0,
-            "residual_max": 0,
+            # "residual_sum": 0,
+            # "residual_max": 0,
+            # "seasonal_amplitude": 0,
+            # "skewness": 0,
+            # "kurtosis": 0,
         }
 
         for i in range(self.parameters["bins"] + 1):
-            features_template[f"seasonal_fft_mean_{i}"] = 0
-            features_template[f"seasonal_fft_sum_{i}"] = 0
-            features_template[f"residual_fft_mean_{i}"] = 0
-            features_template[f"residual_fft_sum_{i}"] = 0
+            if i == 0:
+                continue
+            # features_template[f"seasonal_fft_max_{i}"] = 0
+            features_template[f"residual_fft_max_{i}"] = 0
 
         features_raw_transform = {
             "trend": [],
@@ -166,14 +172,14 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             feati = features_template.copy()
             featrawi = features_raw_transform.copy()
 
-            feati["batch_position"] = pc["batch_position"]
+            # feati["batch_position"] = pc["batch_position"]
 
-            if pc["sample"] == "Blank":
-                feati["run_type"] = 0
-            else:
-                feati["run_type"] = 1
+            # if pc["sample"] == "Blank":
+            #     feati["run_type"] = 0
+            # else:
+            #     feati["run_type"] = 1
 
-            feati["idle_time"] = pc["idle_time"]
+            # feati["idle_time"] = pc["idle_time"]
             feati["pressure_max"] = max(pc["pressure_var"])
             feati["pressure_min"] = min(pc["pressure_var"])
             feati["pressure_mean"] = sum(pc["pressure_var"]) / len(pc["pressure_var"])
@@ -182,13 +188,28 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
                 / len(pc["pressure_var"])
             ) ** 0.5
             feati["pressure_range"] = feati["pressure_max"] - feati["pressure_min"]
-            feati["runtime"] = pc["runtime"]
+
+            feati["runtime"] = pc.get("runtime", 0)
+
+            pressure_vector = np.array(pc["pressure_var"])
+            pressure_vector = pressure_vector[1:-1]
+
+            time_var = np.array(pc["time_var"])
+            time_var = time_var[1:-1]
+
+            feati["area"] = np.trapz(pressure_vector, x=pc["time_var"][1:-1])
+
+            # feati["skewness"] = skew(pressure_vector)
+            # feati["skewness"] = feati["skewness"] + abs(feati["skewness"]) + 1
+
+            # feati["kurtosis"] = kurtosis(pressure_vector)
+            # feati["kurtosis"] = feati["kurtosis"] + abs(feati["kurtosis"]) + 1
 
             decomp = seasonal_decompose(
-                pd.to_numeric(pc["pressure_var"]),
+                pd.to_numeric(pressure_vector),
                 model="additive",
                 period=self.parameters["period"],
-                extrapolate_trend=10,
+                extrapolate_trend="freq",
             )
 
             featrawi["trend"] = decomp.trend
@@ -197,17 +218,31 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
 
             transformed_seasonal = np.fft.fft(decomp.seasonal)
             transformed_seasonal = abs(transformed_seasonal)
-
             transformed_residual = np.fft.fft(decomp.resid)
             transformed_residual = abs(transformed_residual)
 
-            time_var = np.array(pc["time_var"])
+            residual = decomp.resid
+            # raise residual to all positive values
+            # transformed_residual = np.abs(transformed_residual)
+            valid_mask = ~np.isnan(residual) & ~np.isnan(time_var)
+            residual_derivative = np.gradient(residual[valid_mask])
+            time_var_derivative = np.gradient(time_var[valid_mask])
+
+            feati["residual_noise"] = np.std(residual_derivative / time_var_derivative)
+            # feati["residual_median"] = np.mean(residual[valid_mask])
+            feati["residual_std"] = np.std(residual[valid_mask])
+            # feati["residual_sum"] = np.sum(transformed_residual)
+            # feati["residual_max"] = np.max(residual[valid_mask])
+
+            # seasonal = decomp.seasonal
+            # feati["seasonal_amplitude"] = np.max(seasonal) - np.min(seasonal)
+
             if len(time_var) > 1:
                 sample_spacing = np.mean(np.diff(time_var))
             else:
                 sample_spacing = 1.0
 
-            freq_bins = np.fft.fftfreq(len(decomp.seasonal), d=sample_spacing)
+            freq_bins = np.fft.fftfreq(len(decomp.resid))  # d=sample_spacing
 
             positive_freqs = freq_bins > 0
             freq_bins = freq_bins[positive_freqs]
@@ -216,13 +251,9 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
 
             featrawi["seasonal_fft"] = transformed_seasonal
             featrawi["residual_fft"] = transformed_residual
+
             featrawi["sample_spacing"] = sample_spacing
             featrawi["freq_bins"] = freq_bins
-
-            feati["residual_mean"] = np.mean(transformed_residual)
-            feati["residual_std"] = np.std(transformed_residual)
-            feati["residual_sum"] = np.sum(transformed_residual)
-            feati["residual_max"] = np.max(transformed_residual)
 
             num_bins = 4
             freq_bin_edges = np.histogram_bin_edges(freq_bins, bins=num_bins)
@@ -230,66 +261,80 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
 
             freq_bins_indices = np.digitize(freq_bins, freq_bin_edges, right=True)
             unique_bins_indices = np.unique(freq_bins_indices)
-
             featrawi["freq_bins_indices"] = freq_bins_indices
 
-            mean_binned_seasonal_magnitudes = np.array(
-                [
-                    (
-                        np.mean(transformed_seasonal[freq_bins_indices == i])
-                        if np.any(freq_bins_indices == i)
-                        else 0
-                    )
-                    for i in unique_bins_indices
-                ]
-            )
+            for bin_index in unique_bins_indices:
+                if bin_index == 0:
+                    continue
+                # transformed_seasonal_bin = transformed_seasonal[
+                #     freq_bins_indices == bin_index
+                # ]
+                # max_seasonal_bin = np.max(transformed_seasonal_bin)
+                # feati[f"seasonal_fft_max_{bin_index}"] = max_seasonal_bin
 
-            sum_binned_seasonal_magnitudes = np.array(
-                [
-                    (
-                        np.sum(transformed_seasonal[freq_bins_indices == i])
-                        if np.any(freq_bins_indices == i)
-                        else 0
-                    )
-                    for i in unique_bins_indices
+                transformed_residual_bin = transformed_residual[
+                    freq_bins_indices == bin_index
                 ]
-            )
+                max_residual_bin = np.max(transformed_residual_bin)
+                feati[f"residual_fft_max_{bin_index}"] = max_residual_bin
 
-            mean_binned_residual_magnitudes = np.array(
-                [
-                    (
-                        np.mean(transformed_residual[freq_bins_indices == i])
-                        if np.any(freq_bins_indices == i)
-                        else 0
-                    )
-                    for i in unique_bins_indices
-                ]
-            )
+            # mean_binned_seasonal_magnitudes = np.array(
+            #     [
+            #         (
+            #             np.max(transformed_seasonal[freq_bins_indices == i])
+            #             if np.any(freq_bins_indices == i)
+            #             else 0
+            #         )
+            #         for i in unique_bins_indices
+            #     ]
+            # )
 
-            sum_binned_residual_magnitudes = np.array(
-                [
-                    (
-                        np.sum(transformed_residual[freq_bins_indices == i])
-                        if np.any(freq_bins_indices == i)
-                        else 0
-                    )
-                    for i in unique_bins_indices
-                ]
-            )
+            # # sum_binned_seasonal_magnitudes = np.array(
+            # #     [
+            # #         (
+            # #             np.sum(transformed_seasonal[freq_bins_indices == i])
+            # #             if np.any(freq_bins_indices == i)
+            # #             else 0
+            # #         )
+            # #         for i in unique_bins_indices
+            # #     ]
+            # # )
 
-            for j, bin_index in enumerate(unique_bins_indices):
-                feati[f"seasonal_fft_mean_{bin_index}"] = (
-                    mean_binned_seasonal_magnitudes[j]
-                )
-                feati[f"seasonal_fft_sum_{bin_index}"] = sum_binned_seasonal_magnitudes[
-                    j
-                ]
-                feati[f"residual_fft_mean_{bin_index}"] = (
-                    mean_binned_residual_magnitudes[j]
-                )
-                feati[f"residual_fft_sum_{bin_index}"] = sum_binned_residual_magnitudes[
-                    j
-                ]
+            # mean_binned_residual_magnitudes = np.array(
+            #     [
+            #         (
+            #             np.max(transformed_residual[freq_bins_indices == i])
+            #             if np.any(freq_bins_indices == i)
+            #             else 0
+            #         )
+            #         for i in unique_bins_indices
+            #     ]
+            # )
+
+            # # sum_binned_residual_magnitudes = np.array(
+            # #     [
+            # #         (
+            # #             np.sum(transformed_residual[freq_bins_indices == i])
+            # #             if np.any(freq_bins_indices == i)
+            # #             else 0
+            # #         )
+            # #         for i in unique_bins_indices
+            # #     ]
+            # # )
+
+            # for bin_index in unique_bins_indices:
+            #     feati[f"seasonal_fft_max_{bin_index}"] = (
+            #         mean_binned_seasonal_magnitudes[bin_index]
+            #     )
+            #     # feati[f"seasonal_fft_sum_{bin_index}"] = sum_binned_seasonal_magnitudes[
+            #     #     bin_index
+            #     # ]
+            #     feati[f"residual_fft_max_{bin_index}"] = (
+            #         mean_binned_residual_magnitudes[bin_index]
+            #     )
+            #     # feati[f"residual_fft_sum_{bin_index}"] = sum_binned_residual_magnitudes[
+            #     #     bin_index
+            #     # ]
 
             pc["features"] = feati
             pc["features_raw"] = featrawi

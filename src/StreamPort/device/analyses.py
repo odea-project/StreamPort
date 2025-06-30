@@ -216,20 +216,18 @@ class PressureCurvesAnalyses(Analyses):
 
             self.data.append(pc_fl)
 
-            for i, item in enumerate(self.data):
-                item["index"] = i
-                self.data[i] = item
-
-        self.data = sorted(self.data, key=lambda x: x["timestamp"])
+        self.data = sorted(self.data, key=lambda x: x["start_time"])
 
         for i, pc in enumerate(self.data):
+            pc["index"] = i
+
             if i == 0:
                 pc["idle_time"] = 0
                 pc["batch_position"] = 1
                 continue
 
             pc["idle_time"] = (
-                pc["timestamp"] - self.data[i - 1]["timestamp"]
+                pc["start_time"] - self.data[i - 1]["end_time"]
             ).total_seconds()
 
             if (
@@ -590,7 +588,7 @@ class PressureCurvesAnalyses(Analyses):
 
         return fig
 
-    def plot_features(self, indices: list = None) -> go.Figure:
+    def plot_features(self, indices: list = None, normalize: bool = True) -> go.Figure:
         """
         Plot calculated features of the pressure curves.
 
@@ -598,7 +596,16 @@ class PressureCurvesAnalyses(Analyses):
             indices (list): List of indices of the pressure curves to plot. If None, all curves are plotted.
         """
         mt = self.get_metadata(indices).to_dict(orient="records")
-        ft = self.get_features(indices).to_dict(orient="records")
+
+        ft = self.get_features(indices)
+        if normalize:
+            # normalize each column of the DataFrame
+            for col in ft.columns:
+                if ft[col].dtype in [int, float]:
+                    ft[col] = ft[col] / ft[col].max()
+                    #ft[col] = (ft[col] - ft[col].min()) / (ft[col].max() - ft[col].min())
+
+        ft = ft.to_dict(orient="records")
 
         text = ["<br>".join(f"<b>{k}: </b>{v}" for k, v in row.items()) for row in mt]
 

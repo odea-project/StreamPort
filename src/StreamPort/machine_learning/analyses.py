@@ -5,6 +5,7 @@ This module contains analyses child classes for machine learning data processing
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import plotly.colors
 from src.StreamPort.core import Analyses
 
 
@@ -18,7 +19,7 @@ class MachineLearningAnalyses(Analyses):
         Initializes the MachineLearningAnalyses class with the given data.
 
         Args:
-            features (pd.DataFrame): DataFrame containing the features for machine learning.
+            variables (pd.DataFrame): DataFrame containing the features for machine learning.
             metadata (pd.DataFrame): DataFrame containing the metadata of .
         """
         super().__init__(data_type="MachineLearning", formats=[])
@@ -55,6 +56,11 @@ class MachineLearningAnalyses(Analyses):
         if indices is None:
             indices = data.index
 
+        scaler_model = self.data.get("scaler_model")
+        if scaler_model is not None:
+            scaled_data = scaler_model.transform(data)
+            data = pd.DataFrame(scaled_data, columns=data.columns, index=data.index)
+
         metadata = self.data["metadata"]
         if metadata is not None:
             text = [
@@ -64,14 +70,23 @@ class MachineLearningAnalyses(Analyses):
         else:
             text = None
 
+        color_sequence = plotly.colors.qualitative.Plotly
+        color_map = {
+            col: color_sequence[i % len(color_sequence)]
+            for i, col in enumerate(data.columns)
+        }
+
         fig = go.Figure()
         for col in data.columns:
             fig.add_trace(
                 go.Scatter(
                     x=indices,
                     y=data[col][indices],
-                    mode="lines",
+                    mode="lines+markers",
                     name=col,
+                    legendgroup=col,
+                    marker=dict(color=color_map[col]),
+                    line=dict(color=color_map[col]),
                     text=text,
                     hovertemplate=(
                         f"<b>{col}</b><br>" + "%{{x}}<br>" + "%{{y}}<extra></extra>"
@@ -80,6 +95,56 @@ class MachineLearningAnalyses(Analyses):
                     ),
                 )
             )
+
+        prediction_variables = self.data.get("prediction_variables")
+        if prediction_variables is not None:
+
+            scaler_model = self.data.get("scaler_model")
+            if scaler_model is not None:
+                scaled_prediction_variables = scaler_model.transform(
+                    prediction_variables
+                )
+                prediction_variables = pd.DataFrame(
+                    scaled_prediction_variables,
+                    columns=prediction_variables.columns,
+                    index=prediction_variables.index,
+                )
+
+            fig.add_vline(
+                x=indices.max(),
+                line={"color": "red", "dash": "dash"},
+                annotation_text="Prediction",
+                annotation_position="top left",
+            )
+
+            metadata_prediction = self.data.get("prediction_metadata")
+            if metadata_prediction is not None:
+                text = [
+                    "<br>".join(f"{k}: {v}" for k, v in row.items())
+                    for row in metadata_prediction.to_dict(orient="records")
+                ]
+            else:
+                text = None
+
+            for col in prediction_variables.columns:
+                fig.add_trace(
+                    go.Scatter(
+                        x=metadata_prediction.index + len(data),
+                        y=prediction_variables[col],
+                        mode="lines+markers",
+                        name=col,
+                        legendgroup=col,
+                        showlegend=False,
+                        marker=dict(color=color_map[col]),
+                        line=dict(color=color_map[col]),
+                        text=text,
+                        hovertemplate=(
+                            f"<b>{col}</b><br>" + "%{{x}}<br>" + "%{{y}}<extra></extra>"
+                            if text is None
+                            else f"<b>%{{text}}</b><br><b>x: </b>%{{x}}<br><b>{col}: </b>%{{y}}<extra></extra>"
+                        ),
+                    )
+                )
 
         fig.update_layout(
             xaxis_title="Analysis index",
@@ -124,10 +189,17 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             raise ValueError("Parameters must be a dictionary.")
 
         self.data["variables"] = data
+
+        scaler_model = self.data.get("scaler_model")
+        if scaler_model is not None:
+            scaled_data = scaler_model.fit_transform(data)
+            self.data["scaler_model"] = scaler_model
+            data = pd.DataFrame(scaled_data, columns=data.columns, index=data.index)
+
         # Not needed?? As the model restarts from scratch
         # self.data["model"] = IsolationForest(**parameters)
         self.data["model"].fit(data)
-        self.data["model_scores"] = self.data["model"].decision_function(data)
+        # self.data["model_scores"] = self.data["model"].decision_function(data)
 
     def get_training_scores(self):
         """
@@ -137,7 +209,17 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             np.ndarray: The training scores of the model.
         """
 
-        return self.data.get("model_scores")
+        if self.data.get("model") is None:
+            return None
+        if self.data.get("variables") is None:
+            return None
+        data = self.data.get("variables")
+        scaler_model = self.data.get("scaler_model")
+        if scaler_model is not None:
+            scaled_data = scaler_model.transform(data)
+            data = pd.DataFrame(scaled_data, columns=data.columns, index=data.index)
+        scores = self.data["model"].decision_function(data)
+        return scores
 
     def predict(self, data: pd.DataFrame = None, metadata: pd.DataFrame = None):
         """
@@ -169,7 +251,18 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             self.data["prediction_metadata"] = metadata
 
         self.data["prediction_variables"] = data
-        self.data["prediction"] = self.data["model"].decision_function(data)
+
+        # scaler_model = self.data.get("scaler_model")
+        # if scaler_model is not None:
+        #     scaled_data = scaler_model.transform(data)
+        #     data = pd.DataFrame(scaled_data, columns=data.columns, index=data.index)
+        #     variables = self.data.get("variables")
+        #     scaled_train_data = scaler_model.transform(variables)
+        #     self.data["variables"] = pd.DataFrame(
+        #         scaled_train_data, columns=variables.columns, index=variables.index
+        #     )
+
+        # self.data["prediction"] = self.data["model"].decision_function(data)
 
     def get_prediction_scores(self):
         """
@@ -179,7 +272,17 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             np.ndarray: The prediction scores of the model.
         """
 
-        return self.data.get("prediction")
+        if self.data.get("prediction_variables") is None:
+            return None
+        if self.data.get("model") is None:
+            return None
+        data = self.data.get("prediction_variables")
+        scaler_model = self.data.get("scaler_model")
+        if scaler_model is not None:
+            scaled_data = scaler_model.transform(data)
+            data = pd.DataFrame(scaled_data, columns=data.columns, index=data.index)
+        scores = self.data["model"].decision_function(data)
+        return scores
 
     def test_prediction_outliers(self, threshold: float | str = "auto") -> pd.DataFrame:
         """
@@ -351,18 +454,6 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             )
         )
 
-        if threshold is not None:
-            fig.add_trace(
-                go.Scatter(
-                    x=[0, len(training_scores) - 1],
-                    y=[threshold, threshold],
-                    mode="lines",
-                    line=dict(color="red", dash="dash"),
-                    name="Threshold",
-                    legendgroup="Threshold",
-                )
-            )
-
         if prediction_scores is not None:
             mt_prediction = self.data.get("prediction_metadata")
             str_text_prediction = None
@@ -377,12 +468,26 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
                     x=np.arange(len(prediction_scores)) + len(training_scores),
                     y=prediction_scores,
                     mode="lines+markers",
-                    line=dict(color="red"),
-                    marker=dict(color="red", size=10),
+                    line=dict(color="blue"),
+                    marker=dict(color="blue", size=10),
                     name="Prediction Scores",
                     legendgroup="Prediction",
                     text=str_text_prediction,
                     hovertemplate=str_text_prediction,
+                )
+            )
+        else:
+            prediction_scores = np.array([])
+
+        if threshold is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=[0, len(training_scores) + len(prediction_scores) - 1],
+                    y=[threshold, threshold],
+                    mode="lines",
+                    line=dict(color="red", dash="dash"),
+                    name="Threshold",
+                    legendgroup="Threshold",
                 )
             )
 
