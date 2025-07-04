@@ -390,7 +390,7 @@ class Analyses:
 
 class Engine:
     """
-    Engine class to manage the a data processing project for a defined type analyses data.
+    Engine class to manage a data processing project for a defined type of analyses data.
     """
 
     _metadata = None

@@ -543,42 +543,52 @@ class PressureCurvesAnalyses(Analyses):
             fig.add_trace(
                 go.Scatter(
                     x=pc["time_var"],
-                    y=pc_feat["seasonal_fft"],
+                    y=pc_feat["pressure_baseline_corrected"],
                     mode="lines",
-                    name=f"ft_seasonal {pc['name']} ({pc['sample']})",
+                    name=f"pressure_baseline_corrected {pc['name']} ({pc['sample']})",
                     text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
                 )
             )
 
-            fig.add_trace(
-                go.Scatter(
-                    x=pc["time_var"],
-                    y=pc_feat["residual_fft"],
-                    mode="lines",
-                    name=f"ft_residual {pc['name']} ({pc['sample']})",
-                    text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
-                )
-            )
+            # fig.add_trace(
+            #     go.Scatter(
+            #         x=pc["time_var"],
+            #         y=pc_feat["seasonal_fft"],
+            #         mode="lines",
+            #         name=f"ft_seasonal {pc['name']} ({pc['sample']})",
+            #         text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
+            #     )
+            # )
 
-            fig.add_trace(
-                go.Scatter(
-                    x=pc["time_var"],
-                    y=pc_feat["freq_bins"],
-                    mode="lines",
-                    name=f"freq_bins {pc['name']} ({pc['sample']})",
-                    text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
-                )
-            )
+            # fig.add_trace(
+            #     go.Scatter(
+            #         x=pc["time_var"],
+            #         y=pc_feat["residual_fft"],
+            #         mode="lines",
+            #         name=f"ft_residual {pc['name']} ({pc['sample']})",
+            #         text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
+            #     )
+            # )
 
-            fig.add_trace(
-                go.Scatter(
-                    x=pc["time_var"],
-                    y=pc_feat["freq_bins_indices"],
-                    mode="lines",
-                    name=f"freq_bins_indices {pc['name']} ({pc['sample']})",
-                    text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
-                )
-            )
+            # fig.add_trace(
+            #     go.Scatter(
+            #         x=pc["time_var"],
+            #         y=pc_feat["freq_bins"],
+            #         mode="lines",
+            #         name=f"freq_bins {pc['name']} ({pc['sample']})",
+            #         text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
+            #     )
+            # )
+
+            # fig.add_trace(
+            #     go.Scatter(
+            #         x=pc["time_var"],
+            #         y=pc_feat["freq_bins_indices"],
+            #         mode="lines",
+            #         name=f"freq_bins_indices {pc['name']} ({pc['sample']})",
+            #         text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
+            #     )
+            # )
 
         fig.update_layout(
             xaxis_title="Time (s)",

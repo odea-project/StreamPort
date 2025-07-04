@@ -5,7 +5,7 @@ This module contains processing methods for device analyses data.
 import pandas as pd
 import numpy as np
 from statsmodels.tsa.seasonal import seasonal_decompose
-from scipy.stats import skew, kurtosis
+#from scipy.stats import skew, kurtosis
 from sklearn import preprocessing as scaler
 from src.StreamPort.core import ProcessingMethod
 from src.StreamPort.device.analyses import PressureCurvesAnalyses
@@ -71,10 +71,10 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
 
     Args:
         period (int): The period for seasonal decomposition. Default is 10.
-        bins (int): The number of bins for Fast Fourier Transformation (FFT). Default is 4.
+        #bins (int): The number of bins for Fast Fourier Transformation (FFT). Default is 4.
 
     Details:
-        The method extract features from pressure curves using seasonal decomposition and FFT, adding entries named "features" and "features_raw" to each dict in the data list of the PressureCurvesAnalyses instance.
+        The method extracts features from pressure curves using seasonal decomposition and FFT, adding entries named "features" and "features_raw" to each dict in the data list of the PressureCurvesAnalyses instance.
         The "features" include:
             - batch_position: The position of the batch in the analysis.
             - run_type: The type of run (0 for Blank, 1 for Sample).
@@ -89,24 +89,25 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             - residual_std: The standard deviation of the residuals from seasonal decomposition.
             - residual_sum: The sum of the residuals from seasonal decomposition.
             - residual_max: The maximum value of the residuals from seasonal decomposition.
-            - seasonal_fft_mean_{i}: The mean of the seasonal FFT for bin {i}.
-            - seasonal_fft_sum_{i}: The sum of the seasonal FFT for bin {i}.
-            - residual_fft_mean_{i}: The mean of the residual FFT for bin {i}.
-            - residual_fft_sum_{i}: The sum of the residual FFT for bin {i}.
+            #- seasonal_fft_mean_{i}: The mean of the seasonal FFT for bin {i}.
+            #- seasonal_fft_sum_{i}: The sum of the seasonal FFT for bin {i}.
+            #- residual_fft_mean_{i}: The mean of the residual FFT for bin {i}.
+            #- residual_fft_sum_{i}: The sum of the residual FFT for bin {i}.
         The "features_raw" include:
             - trend: The trend component from seasonal decomposition.
             - seasonal: The seasonal component from seasonal decomposition.
             - residual: The residual component from seasonal decomposition.
-            - seasonal_fft: The FFT of the seasonal component.
-            - residual_fft: The FFT of the residual component.
-            - sample_spacing: The sample spacing used for FFT.
-            - freq_bins: The frequency bins used for FFT.
-            - freq_bin_edges: The edges of the frequency bins.
-            - freq_bins_indices: The indices of the frequency bins.
+            #- seasonal_fft: The FFT of the seasonal component.
+            #- residual_fft: The FFT of the residual component.
+            #- sample_spacing: The sample spacing used for FFT.
+            #- freq_bins: The frequency bins used for FFT.
+            #- freq_bin_edges: The edges of the frequency bins.
+            #- freq_bins_indices: The indices of the frequency bins.
 
     """
-
-    def __init__(self, period: int = 10, bins: int = 4):
+    
+    #def __init__(self, period: int = 10, bins: int = 4):
+    def __init__(self, period: int = 10):
         super().__init__()
         self.data_type = "PressureCurvesAnalyses"
         self.method = "ExtractFeatures"
@@ -114,8 +115,9 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
         self.input_instance = dict
         self.output_instance = dict
         self.number_permitted = 1
-        self.parameters = {"period": period, "bins": bins}
-
+        #self.parameters = {"period": period, "bins": bins}
+        self.parameters = {"period": period}
+        
     def run(self, analyses: PressureCurvesAnalyses) -> PressureCurvesAnalyses:
         """
         Extracts features from pressure curves using seasonal decomposition and FFT.
@@ -150,22 +152,23 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             # "kurtosis": 0,
         }
 
-        for i in range(self.parameters["bins"] + 1):
-            if i == 0:
-                continue
+        #for i in range(self.parameters["bins"] + 1):
+        #    if i == 0:
+        #        continue
             # features_template[f"seasonal_fft_max_{i}"] = 0
-            features_template[f"residual_fft_max_{i}"] = 0
+        #    features_template[f"residual_fft_max_{i}"] = 0
 
         features_raw_transform = {
             "trend": [],
             "seasonal": [],
             "residual": [],
-            "seasonal_fft": [],
-            "residual_fft": [],
-            "sample_spacing": 0,
-            "freq_bins": [],
-            "freq_bin_edges": [],
-            "freq_bins_indices": [],
+            "pressure_baseline_corrected": [],
+            #"seasonal_fft": [],
+            #"residual_fft": [],
+            #"sample_spacing": 0,
+            #"freq_bins": [],
+            #"freq_bin_edges": [],
+            #"freq_bins_indices": [],
         }
 
         for i, pc in enumerate(data):
@@ -192,6 +195,75 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             feati["runtime"] = pc.get("runtime", 0)
 
             pressure_vector = np.array(pc["pressure_var"])
+
+            # Apply baseline correction. Comparing multiple algorithms to choose the best one.
+            # """
+            # 1. Simple Moving Average
+            # - smoothed version of the original signal, with each point replaced by the average of itself and its <window_size - 1> nearest neighbors
+            # - this smoothed vector is then subtracted from the original pressure vector to obtain the baseline corrected vector while retaining noise
+            # """
+            # window_size = self.parameters["period"] if self.parameters["period"] % 2 != 0 else self.parameters["period"] - 1
+            # edges = window_size // 2
+            # smoothed_vector = np.convolve(pressure_vector, np.ones(window_size) / window_size, mode='same')
+            # # baseline correction by subtracting the smoothed vector from the original pressure vector
+            # baseline_corrected_vector = pressure_vector - smoothed_vector
+            # # Remove the elements from the beginning and end to avoid edge effects. Typically <window_size // 2>
+            # baseline_corrected_vector = baseline_corrected_vector[edges:-edges]
+            # featrawi["pressure_baseline_corrected"] = baseline_corrected_vector
+            
+            # """
+            # 2. Polynomial Least Squares Fitting
+            # - fit a polynomial of degree <degree> to the original signal, to simulate a blank chromatogram and subtract it from the original signal 
+            # """
+            # window_size = self.parameters["period"]
+            # smoothed_vector = np.convolve(pressure_vector, np.ones(window_size) / window_size, mode='same')
+            # # baseline correction by subtracting the smoothed vector from the original pressure vector
+            # baseline_corrected_vector = pressure_vector - smoothed_vector
+            # # Remove the elements from the beginning and end to avoid edge effects. Typically <window_size // 2>
+            # baseline_corrected_vector = baseline_corrected_vector[1:-1]
+
+            """
+            3. Asymmetric Least Squares Smoothing
+            - estimate a baseline in data by minimizing the sum of squared differences between the data and a smooth curve
+            - does this by applying different penalties to deviations above and below the curve.
+            - This asymmetry allows the smoother to better fit the baseline while accommodating peaks or other features in the data
+            """
+            from scipy import sparse
+            from scipy.sparse.linalg import spsolve
+            #def baseline_als(pressure_vector, smoothness, asymmetry, n_iterations=10):
+            smoothness = 1e5 
+            asymmetry = 0.1
+            n_iterations=10
+            L = len(pressure_vector)
+            D = sparse.csc_matrix(np.diff(np.eye(L), 2))
+            w = np.ones(L)
+            for i in range(n_iterations):
+                W = sparse.spdiags(w, 0, L, L)
+                Z = W + smoothness * D.dot(D.transpose())
+                smoothed_vector = spsolve(Z, w*pressure_vector)
+                w = asymmetry * (pressure_vector > smoothed_vector) + (1-asymmetry) * (pressure_vector < smoothed_vector)
+        
+            baseline_corrected_vector = pressure_vector - smoothed_vector
+            # Remove the elements from the beginning and end to avoid edge effects. Typically <window_size // 2>
+            baseline_corrected_vector = baseline_corrected_vector[1:-1]
+            featrawi["pressure_baseline_corrected"] = baseline_corrected_vector
+
+            # """
+            # 4. airPLS (adaptive iteratively reweighted Penalized Least Squares)
+            # - fit a polynomial of degree <degree> to the original signal, to simulate a blank chromatogram and subtract it from the original signal 
+            # """
+            # window_size = self.parameters["period"]
+            # smoothed_vector = np.convolve(pressure_vector, np.ones(window_size) / window_size, mode='same')
+            # # baseline correction by subtracting the smoothed vector from the original pressure vector
+            # baseline_corrected_vector = pressure_vector - smoothed_vector
+            # # Remove the elements from the beginning and end to avoid edge effects. Typically <window_size // 2>
+            # baseline_corrected_vector = baseline_corrected_vector[1:-1]
+
+            # """
+            # 5. Rolling Ball
+            # - fit a polynomial of degree <degree> to the original signal, to simulate a blank chromatogram and subtract it from the original signal 
+            # """
+
             pressure_vector = pressure_vector[1:-1]
 
             time_var = np.array(pc["time_var"])
@@ -216,10 +288,10 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             featrawi["seasonal"] = decomp.seasonal
             featrawi["residual"] = decomp.resid
 
-            transformed_seasonal = np.fft.fft(decomp.seasonal)
-            transformed_seasonal = abs(transformed_seasonal)
-            transformed_residual = np.fft.fft(decomp.resid)
-            transformed_residual = abs(transformed_residual)
+            #transformed_seasonal = np.fft.fft(decomp.seasonal)
+            #transformed_seasonal = abs(transformed_seasonal)
+            #transformed_residual = np.fft.fft(decomp.resid)
+            #transformed_residual = abs(transformed_residual)
 
             residual = decomp.resid
             # raise residual to all positive values
@@ -237,46 +309,46 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             # seasonal = decomp.seasonal
             # feati["seasonal_amplitude"] = np.max(seasonal) - np.min(seasonal)
 
-            if len(time_var) > 1:
-                sample_spacing = np.mean(np.diff(time_var))
-            else:
-                sample_spacing = 1.0
+            #if len(time_var) > 1:
+            #    sample_spacing = np.mean(np.diff(time_var))
+            #else:
+            #    sample_spacing = 1.0
 
-            freq_bins = np.fft.fftfreq(len(decomp.resid))  # d=sample_spacing
+            #freq_bins = np.fft.fftfreq(len(decomp.resid))  # d=sample_spacing
 
-            positive_freqs = freq_bins > 0
-            freq_bins = freq_bins[positive_freqs]
-            transformed_seasonal = transformed_seasonal[positive_freqs]
-            transformed_residual = transformed_residual[positive_freqs]
+            #positive_freqs = freq_bins > 0
+            #freq_bins = freq_bins[positive_freqs]
+            #transformed_seasonal = transformed_seasonal[positive_freqs]
+            #transformed_residual = transformed_residual[positive_freqs]
 
-            featrawi["seasonal_fft"] = transformed_seasonal
-            featrawi["residual_fft"] = transformed_residual
+            #featrawi["seasonal_fft"] = transformed_seasonal
+            #featrawi["residual_fft"] = transformed_residual
 
-            featrawi["sample_spacing"] = sample_spacing
-            featrawi["freq_bins"] = freq_bins
+            #featrawi["sample_spacing"] = sample_spacing
+            #featrawi["freq_bins"] = freq_bins
 
-            num_bins = 4
-            freq_bin_edges = np.histogram_bin_edges(freq_bins, bins=num_bins)
-            featrawi["freq_bin_edges"] = freq_bin_edges
+            #num_bins = 4
+            #freq_bin_edges = np.histogram_bin_edges(freq_bins, bins=num_bins)
+            #featrawi["freq_bin_edges"] = freq_bin_edges
 
-            freq_bins_indices = np.digitize(freq_bins, freq_bin_edges, right=True)
-            unique_bins_indices = np.unique(freq_bins_indices)
-            featrawi["freq_bins_indices"] = freq_bins_indices
+            #freq_bins_indices = np.digitize(freq_bins, freq_bin_edges, right=True)
+            #unique_bins_indices = np.unique(freq_bins_indices)
+            #featrawi["freq_bins_indices"] = freq_bins_indices
 
-            for bin_index in unique_bins_indices:
-                if bin_index == 0:
-                    continue
+            #for bin_index in unique_bins_indices:
+            #    if bin_index == 0:
+            #        continue
                 # transformed_seasonal_bin = transformed_seasonal[
                 #     freq_bins_indices == bin_index
                 # ]
                 # max_seasonal_bin = np.max(transformed_seasonal_bin)
                 # feati[f"seasonal_fft_max_{bin_index}"] = max_seasonal_bin
 
-                transformed_residual_bin = transformed_residual[
-                    freq_bins_indices == bin_index
-                ]
-                max_residual_bin = np.max(transformed_residual_bin)
-                feati[f"residual_fft_max_{bin_index}"] = max_residual_bin
+                #transformed_residual_bin = transformed_residual[
+                #    freq_bins_indices == bin_index
+                #]
+                #max_residual_bin = np.max(transformed_residual_bin)
+                #feati[f"residual_fft_max_{bin_index}"] = max_residual_bin
 
             # mean_binned_seasonal_magnitudes = np.array(
             #     [
