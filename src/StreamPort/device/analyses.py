@@ -540,15 +540,15 @@ class PressureCurvesAnalyses(Analyses):
                 )
             )
 
-            fig.add_trace(
-                go.Scatter(
-                    x=pc["time_var"],
-                    y=pc_feat["pressure_baseline_corrected"],
-                    mode="lines",
-                    name=f"pressure_baseline_corrected {pc['name']} ({pc['sample']})",
-                    text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
-                )
-            )
+            # fig.add_trace(
+            #     go.Scatter(
+            #         x=pc["time_var"],
+            #         y=pc_feat["pressure_baseline_corrected"],
+            #         mode="lines",
+            #         name=f"pressure_baseline_corrected {pc['name']} ({pc['sample']})",
+            #         text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
+            #     )
+            # )
 
             # fig.add_trace(
             #     go.Scatter(

@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 from statsmodels.tsa.seasonal import seasonal_decompose
 #from scipy.stats import skew, kurtosis
+from scipy.signal import savgol_filter 
 from sklearn import preprocessing as scaler
 from src.StreamPort.core import ProcessingMethod
 from src.StreamPort.device.analyses import PressureCurvesAnalyses
@@ -106,8 +107,8 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
 
     """
     
-    #def __init__(self, period: int = 10, bins: int = 4):
-    def __init__(self, period: int = 10):
+    def __init__(self, period: int = 10, bins: int = 4):
+    #def __init__(self, period: int = 10):
         super().__init__()
         self.data_type = "PressureCurvesAnalyses"
         self.method = "ExtractFeatures"
@@ -115,8 +116,8 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
         self.input_instance = dict
         self.output_instance = dict
         self.number_permitted = 1
-        #self.parameters = {"period": period, "bins": bins}
-        self.parameters = {"period": period}
+        self.parameters = {"period": period, "bins": bins}
+        #self.parameters = {"period": period}
         
     def run(self, analyses: PressureCurvesAnalyses) -> PressureCurvesAnalyses:
         """
@@ -158,11 +159,16 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             # features_template[f"seasonal_fft_max_{i}"] = 0
         #    features_template[f"residual_fft_max_{i}"] = 0
 
+        for i in range(1, self.parameters["bins"] + 1):
+            features_template[f"max_amplitude_bin_{i}"] = 0
+            features_template[f"min_amplitude_bin_{i}"] = 0
+            features_template[f"amplitude_range_bin_{i}"] = 0
+
         features_raw_transform = {
             "trend": [],
             "seasonal": [],
             "residual": [],
-            "pressure_baseline_corrected": [],
+            #"pressure_baseline_corrected": [],
             #"seasonal_fft": [],
             #"residual_fft": [],
             #"sample_spacing": 0,
@@ -209,61 +215,36 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             # baseline_corrected_vector = pressure_vector - smoothed_vector
             # # Remove the elements from the beginning and end to avoid edge effects. Typically <window_size // 2>
             # baseline_corrected_vector = baseline_corrected_vector[edges:-edges]
-            # featrawi["pressure_baseline_corrected"] = baseline_corrected_vector
-            
-            # """
-            # 2. Polynomial Least Squares Fitting
-            # - fit a polynomial of degree <degree> to the original signal, to simulate a blank chromatogram and subtract it from the original signal 
-            # """
-            # window_size = self.parameters["period"]
-            # smoothed_vector = np.convolve(pressure_vector, np.ones(window_size) / window_size, mode='same')
-            # # baseline correction by subtracting the smoothed vector from the original pressure vector
-            # baseline_corrected_vector = pressure_vector - smoothed_vector
-            # # Remove the elements from the beginning and end to avoid edge effects. Typically <window_size // 2>
-            # baseline_corrected_vector = baseline_corrected_vector[1:-1]
 
             """
-            3. Asymmetric Least Squares Smoothing
-            - estimate a baseline in data by minimizing the sum of squared differences between the data and a smooth curve
-            - does this by applying different penalties to deviations above and below the curve.
-            - This asymmetry allows the smoother to better fit the baseline while accommodating peaks or other features in the data
+            2. Savitzky-Golay Filter
+            - applies a polynomial smoothing filter to the data, which is particularly effective for preserving features of the data while reducing noise
+            - uses a sliding window to fit a polynomial to the data points within the window, and then replaces the central point with the value of the polynomial at that point
             """
-            from scipy import sparse
-            from scipy.sparse.linalg import spsolve
-            #def baseline_als(pressure_vector, smoothness, asymmetry, n_iterations=10):
-            smoothness = 1e5 
-            asymmetry = 0.1
-            n_iterations=10
-            L = len(pressure_vector)
-            D = sparse.csc_matrix(np.diff(np.eye(L), 2))
-            w = np.ones(L)
-            for i in range(n_iterations):
-                W = sparse.spdiags(w, 0, L, L)
-                Z = W + smoothness * D.dot(D.transpose())
-                smoothed_vector = spsolve(Z, w*pressure_vector)
-                w = asymmetry * (pressure_vector > smoothed_vector) + (1-asymmetry) * (pressure_vector < smoothed_vector)
-        
+            #from scipy.signal import savgol_filter - to be manually implemented
+            window_size = self.parameters["period"] if self.parameters["period"] % 2 != 0 else self.parameters["period"] + 1  # Must be odd
+            poly_order = 2  # Polynomial order
+            smoothed_vector = savgol_filter(pressure_vector, window_size, poly_order)
             baseline_corrected_vector = pressure_vector - smoothed_vector
             # Remove the elements from the beginning and end to avoid edge effects. Typically <window_size // 2>
-            baseline_corrected_vector = baseline_corrected_vector[1:-1]
-            featrawi["pressure_baseline_corrected"] = baseline_corrected_vector
-
-            # """
-            # 4. airPLS (adaptive iteratively reweighted Penalized Least Squares)
-            # - fit a polynomial of degree <degree> to the original signal, to simulate a blank chromatogram and subtract it from the original signal 
-            # """
-            # window_size = self.parameters["period"]
-            # smoothed_vector = np.convolve(pressure_vector, np.ones(window_size) / window_size, mode='same')
-            # # baseline correction by subtracting the smoothed vector from the original pressure vector
-            # baseline_corrected_vector = pressure_vector - smoothed_vector
-            # # Remove the elements from the beginning and end to avoid edge effects. Typically <window_size // 2>
             # baseline_corrected_vector = baseline_corrected_vector[1:-1]
 
-            # """
-            # 5. Rolling Ball
-            # - fit a polynomial of degree <degree> to the original signal, to simulate a blank chromatogram and subtract it from the original signal 
-            # """
+            # featrawi["pressure_baseline_corrected"] = baseline_corrected_vector
 
+            # np.array_split puts extra elements in the first bin if the length of the vector is not divisible by the number of bins
+            num_bins = np.array_split(baseline_corrected_vector, self.parameters["bins"])
+            for i, vector_bin in enumerate(num_bins):
+                if len(vector_bin) == 0:
+                    continue
+                max_amplitude = np.max(vector_bin)
+                min_amplitude = np.min(vector_bin)
+                amplitude_range = max_amplitude - min_amplitude
+                #print(f"Method: {pc['method']}, Sample: {pc['sample']}, Bin {i + 1}: Max: {max_amplitude}, Min: {min_amplitude}, Range: {amplitude_range}")
+                feati[f"max_amplitude_bin_{i + 1}"] = max_amplitude
+                feati[f"min_amplitude_bin_{i + 1}"] = min_amplitude
+                feati[f"amplitude_range_bin_{i + 1}"] = amplitude_range
+            
+            # Confirm whether pressure vector is clipped after baseline correction and amplitude binning
             pressure_vector = pressure_vector[1:-1]
 
             time_var = np.array(pc["time_var"])
