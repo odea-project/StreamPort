@@ -20,7 +20,7 @@ class MachineLearningAnalyses(Analyses):
 
         Args:
             variables (pd.DataFrame): DataFrame containing the features for machine learning.
-            metadata (pd.DataFrame): DataFrame containing the metadata of .
+            metadata (pd.DataFrame): DataFrame containing the metadata of machine learning analyses.
         """
         super().__init__(data_type="MachineLearning", formats=[])
         self.data = {
@@ -341,6 +341,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
                 self.data["variables"] = pd.concat(
                     [self.data["variables"], variables], ignore_index=True
                 )
+                self.data["variables"].drop_duplicates(inplace=True)
         else:
             raise ValueError("No variables to add.")
 
@@ -361,6 +362,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
                 self.data["metadata"] = pd.concat(
                     [self.data["metadata"], metadata], ignore_index=True
                 )
+                self.data["metadata"].drop_duplicates(inplace=True)
         elif self.data["metadata"] is not None:
             raise ValueError("No metadata to add but required.")
 
@@ -397,7 +399,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             raise ValueError("No prediction metadata to add.")
 
         for i in range(len(outliers)):
-            if outliers.iloc[i, 0] == 0 or add_outliers:
+            if outliers.iloc[i, 0] == 0 or add_outliers: 
                 self.add_data(
                     prediction_variables.iloc[[i], :], prediction_metadata.iloc[[i], :]
                 )
@@ -408,7 +410,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
                 self.data["prediction_variables"] = self.data[
                     "prediction_variables"
                 ].drop(idx)
-                self.data["prediction"] = np.delete(self.data["prediction"], i)
+                #self.data["prediction"] = np.delete(self.data["prediction"], i)
                 if prediction_metadata is not None:
                     idx_meta = prediction_metadata.index[i]
                     self.data["prediction_metadata"] = self.data[
@@ -438,6 +440,19 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             threshold = np.mean(training_scores) - 3 * np.std(training_scores)
         elif not isinstance(threshold, (int, float)):
             raise ValueError("Threshold must be a number.")
+
+        threshold_record = self.data.get("threshold_adjustment")
+        new_row = pd.DataFrame({
+            "training set": [len(training_scores)],
+            "threshold": [threshold]
+        })
+        if threshold_record is not None:
+            threshold_adjustment = pd.concat([threshold_record, new_row], ignore_index=True)
+        else:
+            threshold_adjustment = new_row
+        self.data["threshold_adjustment"] = threshold_adjustment
+
+        self.data["threshold_adjustment"].to_csv("dev/threshold_change.csv", index=False)
 
         fig = go.Figure()
         fig.add_trace(
