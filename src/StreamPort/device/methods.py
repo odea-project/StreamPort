@@ -72,14 +72,14 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
 
     Args:
         period (int): The period for seasonal decomposition. Default is 10.
-        #bins (int): The number of bins for Fast Fourier Transformation (FFT). Default is 4.
+        window_size (int): The window size/resolution for baseline correction. Default is period + 1.
+        bins (int): The number of bins for Fast Fourier Transformation (FFT). Default is 4.
+        crop (int): The number of elements to crop from the beginning and end of the pressure vector to remove unwanted artifacts. Default is 2.
 
     Details:
         The method extracts features from pressure curves using seasonal decomposition and FFT, adding entries named "features" and "features_raw" to each dict in the data list of the PressureCurvesAnalyses instance.
         The "features" include:
-            - batch_position: The position of the batch in the analysis.
-            - run_type: The type of run (0 for Blank, 1 for Sample).
-            - idle_time: The time between the current and previous pressure curve.
+            - area: The area under the pressure curve.
             - pressure_max: The maximum pressure value.
             - pressure_min: The minimum pressure value.
             - pressure_mean: The mean pressure value.
@@ -90,25 +90,14 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             - residual_std: The standard deviation of the residuals from seasonal decomposition.
             - residual_sum: The sum of the residuals from seasonal decomposition.
             - residual_max: The maximum value of the residuals from seasonal decomposition.
-            #- seasonal_fft_mean_{i}: The mean of the seasonal FFT for bin {i}.
-            #- seasonal_fft_sum_{i}: The sum of the seasonal FFT for bin {i}.
-            #- residual_fft_mean_{i}: The mean of the residual FFT for bin {i}.
-            #- residual_fft_sum_{i}: The sum of the residual FFT for bin {i}.
+            - abs_deviation: The absolute deviation of the pressure values in each bin.
         The "features_raw" include:
             - trend: The trend component from seasonal decomposition.
             - seasonal: The seasonal component from seasonal decomposition.
             - residual: The residual component from seasonal decomposition.
-            #- seasonal_fft: The FFT of the seasonal component.
-            #- residual_fft: The FFT of the residual component.
-            #- sample_spacing: The sample spacing used for FFT.
-            #- freq_bins: The frequency bins used for FFT.
-            #- freq_bin_edges: The edges of the frequency bins.
-            #- freq_bins_indices: The indices of the frequency bins.
-
     """
-    
-    def __init__(self, period: int = 10, bins: int = 4):
-    #def __init__(self, period: int = 10):
+
+    def __init__(self, period: int = 10, window_size: None = None, bins: int = 4, crop: int = 2):
         super().__init__()
         self.data_type = "PressureCurvesAnalyses"
         self.method = "ExtractFeatures"
@@ -116,8 +105,7 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
         self.input_instance = dict
         self.output_instance = dict
         self.number_permitted = 1
-        self.parameters = {"period": period, "bins": bins}
-        #self.parameters = {"period": period}
+        self.parameters = {"period": period, "window_size": window_size, "bins": bins, "crop": crop}
         
     def run(self, analyses: PressureCurvesAnalyses) -> PressureCurvesAnalyses:
         """
@@ -127,15 +115,15 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
         Returns:
             PressureCurvesAnalyses: The processed PressureCurvesAnalyses instance with features extracted.
         """
+        window_size = self.parameters["window_size"] if self.parameters["window_size"] is not None else self.parameters["period"]
+        crop = self.parameters["crop"] 
+
         data = analyses.data
         if len(data) == 0:
             print("No data to process.")
             return analyses
 
         features_template = {
-            # "batch_position": 0,
-            # "run_type": "",
-            # "idle_time": 0,
             "area": 0,
             "pressure_max": 0,
             "pressure_min": 0,
@@ -153,42 +141,19 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             # "kurtosis": 0,
         }
 
-        #for i in range(self.parameters["bins"] + 1):
-        #    if i == 0:
-        #        continue
-            # features_template[f"seasonal_fft_max_{i}"] = 0
-        #    features_template[f"residual_fft_max_{i}"] = 0
-
-        for i in range(1, self.parameters["bins"] + 1):
-            features_template[f"max_amplitude_bin_{i}"] = 0
-            features_template[f"min_amplitude_bin_{i}"] = 0
-            features_template[f"amplitude_range_bin_{i}"] = 0
-
         features_raw_transform = {
             "trend": [],
             "seasonal": [],
             "residual": [],
-            #"pressure_baseline_corrected": [],
-            #"seasonal_fft": [],
-            #"residual_fft": [],
-            #"sample_spacing": 0,
-            #"freq_bins": [],
-            #"freq_bin_edges": [],
-            #"freq_bins_indices": [],
+            "pressure_baseline_corrected": [],
+
         }
 
         for i, pc in enumerate(data):
+            
             feati = features_template.copy()
             featrawi = features_raw_transform.copy()
 
-            # feati["batch_position"] = pc["batch_position"]
-
-            # if pc["sample"] == "Blank":
-            #     feati["run_type"] = 0
-            # else:
-            #     feati["run_type"] = 1
-
-            # feati["idle_time"] = pc["idle_time"]
             feati["pressure_max"] = max(pc["pressure_var"])
             feati["pressure_min"] = min(pc["pressure_var"])
             feati["pressure_mean"] = sum(pc["pressure_var"]) / len(pc["pressure_var"])
@@ -200,21 +165,24 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
 
             feati["runtime"] = pc.get("runtime", 0)
 
+            # Crop the pressure vector to remove unwanted artifacts before processing
             pressure_vector = np.array(pc["pressure_var"])
+            pressure_vector = pressure_vector[crop:-crop]
 
-            # Apply baseline correction. Comparing multiple algorithms to choose the best one.
+            time_var = np.array(pc["time_var"])
+            time_var = time_var[crop:-crop]
+
+            # Apply baseline correction
             # """
             # 1. Simple Moving Average
             # - smoothed version of the original signal, with each point replaced by the average of itself and its <window_size - 1> nearest neighbors
             # - this smoothed vector is then subtracted from the original pressure vector to obtain the baseline corrected vector while retaining noise
             # """
-            # window_size = self.parameters["period"] if self.parameters["period"] % 2 != 0 else self.parameters["period"] - 1
-            # edges = window_size // 2
             # smoothed_vector = np.convolve(pressure_vector, np.ones(window_size) / window_size, mode='same')
             # # baseline correction by subtracting the smoothed vector from the original pressure vector
             # baseline_corrected_vector = pressure_vector - smoothed_vector
             # # Remove the elements from the beginning and end to avoid edge effects. Typically <window_size // 2>
-            # baseline_corrected_vector = baseline_corrected_vector[edges:-edges]
+            # baseline_corrected_vector = baseline_corrected_vector[crop:-crop]
 
             """
             2. Savitzky-Golay Filter
@@ -222,35 +190,26 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             - uses a sliding window to fit a polynomial to the data points within the window, and then replaces the central point with the value of the polynomial at that point
             """
             #from scipy.signal import savgol_filter - to be manually implemented
-            window_size = self.parameters["period"] if self.parameters["period"] % 2 != 0 else self.parameters["period"] + 1  # Must be odd
+            window_size = window_size if window_size % 2 != 0 else window_size + 1  # Must be odd
             poly_order = 2  # Polynomial order
             smoothed_vector = savgol_filter(pressure_vector, window_size, poly_order)
             baseline_corrected_vector = pressure_vector - smoothed_vector
-            # Remove the elements from the beginning and end to avoid edge effects. Typically <window_size // 2>
-            # baseline_corrected_vector = baseline_corrected_vector[1:-1]
+            # Remove the elements from the beginning and end to avoid edge effects. Typically <window_size // 2> 
 
-            # featrawi["pressure_baseline_corrected"] = baseline_corrected_vector
+            featrawi["pressure_baseline_corrected"] = baseline_corrected_vector
 
             # np.array_split puts extra elements in the first bin if the length of the vector is not divisible by the number of bins
-            num_bins = np.array_split(baseline_corrected_vector, self.parameters["bins"])
-            for i, vector_bin in enumerate(num_bins):
-                if len(vector_bin) == 0:
-                    continue
-                max_amplitude = np.max(vector_bin)
-                min_amplitude = np.min(vector_bin)
-                amplitude_range = max_amplitude - min_amplitude
-                #print(f"Method: {pc['method']}, Sample: {pc['sample']}, Bin {i + 1}: Max: {max_amplitude}, Min: {min_amplitude}, Range: {amplitude_range}")
-                feati[f"max_amplitude_bin_{i + 1}"] = max_amplitude
-                feati[f"min_amplitude_bin_{i + 1}"] = min_amplitude
-                feati[f"amplitude_range_bin_{i + 1}"] = amplitude_range
-            
-            # Confirm whether pressure vector is clipped after baseline correction and amplitude binning
-            pressure_vector = pressure_vector[1:-1]
+            vector_bins = np.array_split(baseline_corrected_vector, self.parameters["bins"])
+            bin_edges = []
+            start_edge = 0
+            for bin in vector_bins:
+                end_edge = start_edge + len(bin) - 1
+                bin_edges.append([start_edge, end_edge])
+                feati[f"abs_deviation_{time_var[start_edge].round(3)}_{time_var[end_edge].round(3)}"] = np.max(bin) - np.min(bin)
+                start_edge = end_edge + 1
+            featrawi["bin_edges"] = bin_edges
 
-            time_var = np.array(pc["time_var"])
-            time_var = time_var[1:-1]
-
-            feati["area"] = np.trapz(pressure_vector, x=pc["time_var"][1:-1])
+            feati["area"] = np.trapz(pressure_vector, x=time_var)
 
             # feati["skewness"] = skew(pressure_vector)
             # feati["skewness"] = feati["skewness"] + abs(feati["skewness"]) + 1
@@ -269,11 +228,6 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             featrawi["seasonal"] = decomp.seasonal
             featrawi["residual"] = decomp.resid
 
-            #transformed_seasonal = np.fft.fft(decomp.seasonal)
-            #transformed_seasonal = abs(transformed_seasonal)
-            #transformed_residual = np.fft.fft(decomp.resid)
-            #transformed_residual = abs(transformed_residual)
-
             residual = decomp.resid
             # raise residual to all positive values
             # transformed_residual = np.abs(transformed_residual)
@@ -286,109 +240,7 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             feati["residual_std"] = np.std(residual[valid_mask])
             # feati["residual_sum"] = np.sum(transformed_residual)
             # feati["residual_max"] = np.max(residual[valid_mask])
-
-            # seasonal = decomp.seasonal
-            # feati["seasonal_amplitude"] = np.max(seasonal) - np.min(seasonal)
-
-            #if len(time_var) > 1:
-            #    sample_spacing = np.mean(np.diff(time_var))
-            #else:
-            #    sample_spacing = 1.0
-
-            #freq_bins = np.fft.fftfreq(len(decomp.resid))  # d=sample_spacing
-
-            #positive_freqs = freq_bins > 0
-            #freq_bins = freq_bins[positive_freqs]
-            #transformed_seasonal = transformed_seasonal[positive_freqs]
-            #transformed_residual = transformed_residual[positive_freqs]
-
-            #featrawi["seasonal_fft"] = transformed_seasonal
-            #featrawi["residual_fft"] = transformed_residual
-
-            #featrawi["sample_spacing"] = sample_spacing
-            #featrawi["freq_bins"] = freq_bins
-
-            #num_bins = 4
-            #freq_bin_edges = np.histogram_bin_edges(freq_bins, bins=num_bins)
-            #featrawi["freq_bin_edges"] = freq_bin_edges
-
-            #freq_bins_indices = np.digitize(freq_bins, freq_bin_edges, right=True)
-            #unique_bins_indices = np.unique(freq_bins_indices)
-            #featrawi["freq_bins_indices"] = freq_bins_indices
-
-            #for bin_index in unique_bins_indices:
-            #    if bin_index == 0:
-            #        continue
-                # transformed_seasonal_bin = transformed_seasonal[
-                #     freq_bins_indices == bin_index
-                # ]
-                # max_seasonal_bin = np.max(transformed_seasonal_bin)
-                # feati[f"seasonal_fft_max_{bin_index}"] = max_seasonal_bin
-
-                #transformed_residual_bin = transformed_residual[
-                #    freq_bins_indices == bin_index
-                #]
-                #max_residual_bin = np.max(transformed_residual_bin)
-                #feati[f"residual_fft_max_{bin_index}"] = max_residual_bin
-
-            # mean_binned_seasonal_magnitudes = np.array(
-            #     [
-            #         (
-            #             np.max(transformed_seasonal[freq_bins_indices == i])
-            #             if np.any(freq_bins_indices == i)
-            #             else 0
-            #         )
-            #         for i in unique_bins_indices
-            #     ]
-            # )
-
-            # # sum_binned_seasonal_magnitudes = np.array(
-            # #     [
-            # #         (
-            # #             np.sum(transformed_seasonal[freq_bins_indices == i])
-            # #             if np.any(freq_bins_indices == i)
-            # #             else 0
-            # #         )
-            # #         for i in unique_bins_indices
-            # #     ]
-            # # )
-
-            # mean_binned_residual_magnitudes = np.array(
-            #     [
-            #         (
-            #             np.max(transformed_residual[freq_bins_indices == i])
-            #             if np.any(freq_bins_indices == i)
-            #             else 0
-            #         )
-            #         for i in unique_bins_indices
-            #     ]
-            # )
-
-            # # sum_binned_residual_magnitudes = np.array(
-            # #     [
-            # #         (
-            # #             np.sum(transformed_residual[freq_bins_indices == i])
-            # #             if np.any(freq_bins_indices == i)
-            # #             else 0
-            # #         )
-            # #         for i in unique_bins_indices
-            # #     ]
-            # # )
-
-            # for bin_index in unique_bins_indices:
-            #     feati[f"seasonal_fft_max_{bin_index}"] = (
-            #         mean_binned_seasonal_magnitudes[bin_index]
-            #     )
-            #     # feati[f"seasonal_fft_sum_{bin_index}"] = sum_binned_seasonal_magnitudes[
-            #     #     bin_index
-            #     # ]
-            #     feati[f"residual_fft_max_{bin_index}"] = (
-            #         mean_binned_residual_magnitudes[bin_index]
-            #     )
-            #     # feati[f"residual_fft_sum_{bin_index}"] = sum_binned_residual_magnitudes[
-            #     #     bin_index
-            #     # ]
-
+      
             pc["features"] = feati
             pc["features_raw"] = featrawi
 

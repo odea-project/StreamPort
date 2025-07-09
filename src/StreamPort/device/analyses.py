@@ -520,81 +520,66 @@ class PressureCurvesAnalyses(Analyses):
                 )
             )
 
+            # fig.add_trace(
+            #     go.Scatter(
+            #         x=pc["time_var"],
+            #         y=pc_feat["seasonal"],
+            #         mode="lines",
+            #         name=f"seasonal {pc['name']} ({pc['sample']})",
+            #         text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
+            #     )
+            # )
+
+            # fig.add_trace(
+            #     go.Scatter(
+            #         x=pc["time_var"],
+            #         y=pc_feat["residual"],
+            #         mode="lines",
+            #         name=f"residual {pc['name']} ({pc['sample']})",
+            #         text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
+            #     )
+            # )
+
             fig.add_trace(
                 go.Scatter(
                     x=pc["time_var"],
-                    y=pc_feat["seasonal"],
+                    y=pc_feat["pressure_baseline_corrected"],
                     mode="lines",
-                    name=f"seasonal {pc['name']} ({pc['sample']})",
+                    name=f"pressure_baseline_corrected {pc['name']} ({pc['sample']})",
                     text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
                 )
             )
-
-            fig.add_trace(
-                go.Scatter(
-                    x=pc["time_var"],
-                    y=pc_feat["residual"],
-                    mode="lines",
-                    name=f"residual {pc['name']} ({pc['sample']})",
-                    text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
-                )
-            )
-
-            # fig.add_trace(
-            #     go.Scatter(
-            #         x=pc["time_var"],
-            #         y=pc_feat["pressure_baseline_corrected"],
-            #         mode="lines",
-            #         name=f"pressure_baseline_corrected {pc['name']} ({pc['sample']})",
-            #         text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
-            #     )
-            # )
-
-            # fig.add_trace(
-            #     go.Scatter(
-            #         x=pc["time_var"],
-            #         y=pc_feat["seasonal_fft"],
-            #         mode="lines",
-            #         name=f"ft_seasonal {pc['name']} ({pc['sample']})",
-            #         text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
-            #     )
-            # )
-
-            # fig.add_trace(
-            #     go.Scatter(
-            #         x=pc["time_var"],
-            #         y=pc_feat["residual_fft"],
-            #         mode="lines",
-            #         name=f"ft_residual {pc['name']} ({pc['sample']})",
-            #         text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
-            #     )
-            # )
-
-            # fig.add_trace(
-            #     go.Scatter(
-            #         x=pc["time_var"],
-            #         y=pc_feat["freq_bins"],
-            #         mode="lines",
-            #         name=f"freq_bins {pc['name']} ({pc['sample']})",
-            #         text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
-            #     )
-            # )
-
-            # fig.add_trace(
-            #     go.Scatter(
-            #         x=pc["time_var"],
-            #         y=pc_feat["freq_bins_indices"],
-            #         mode="lines",
-            #         name=f"freq_bins_indices {pc['name']} ({pc['sample']})",
-            #         text=f"{pc['index']}. {pc['name']} ({pc['sample']})<br>Batch: {pc['batch']}<br>Method: {pc['method']}",
-            #     )
-            # )
 
         fig.update_layout(
             xaxis_title="Time (s)",
             yaxis_title="U.A.",
             template="simple_white",
         )
+
+        for i in range(len(pc_feat["bin_edges"])):
+            x0 = pc["time_var"][pc_feat["bin_edges"][i][0]].round(3)
+            x1 = pc["time_var"][pc_feat["bin_edges"][i][1]].round(3) 
+            y1 = max(pc_feat["trend"])
+            fig.add_shape(
+                type="rect",
+                x0=x0, x1=x1,
+                y0=0, y1=y1,  
+                fillcolor="rgba(200,200,255,0.4)", 
+                line=dict(width=1),
+                layer="below"
+            )
+
+            fig.add_annotation(
+                x=(x0 + x1) / 2,  
+                y=y1 * 0.5, 
+                text =f"<br>Bin {i+1}<br>",      
+                hovertext=f"Entry at time: {x0} to {x1}",
+                showarrow=False,
+                font=dict(size=12, color="black"),
+                align="center",
+                #bgcolor="rgba(255,255,255,0.5)",  
+                opacity=0.8
+            )   
 
         return fig
 
@@ -609,12 +594,13 @@ class PressureCurvesAnalyses(Analyses):
 
         ft = self.get_features(indices)
         if normalize:
-            # normalize each column of the DataFrame
+            # normalize each column of the DataFrame while handling NaN values
+            ft = ft.fillna(0)  # Replace NaN with 0 
             for col in ft.columns:
-                if ft[col].dtype in [int, float]:
+                if ft[col].dtype in [int, float] and ft[col].max() != 0:
                     ft[col] = ft[col] / ft[col].max()
                     #ft[col] = (ft[col] - ft[col].min()) / (ft[col].max() - ft[col].min())
-
+    
         ft = ft.to_dict(orient="records")
 
         text = ["<br>".join(f"<b>{k}: </b>{v}" for k, v in row.items()) for row in mt]

@@ -4,6 +4,7 @@ This module contains analyses child classes for machine learning data processing
 
 import pandas as pd
 import numpy as np
+from datetime import date
 import plotly.graph_objects as go
 import plotly.colors
 from src.StreamPort.core import Analyses
@@ -228,6 +229,8 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         Args:
             data (pd.DataFrame): The input data for prediction.
         """
+        train_metadata = self.data.get("metadata")
+
         if self.data["model"] is None:
             raise ValueError("Model not trained yet.")
         if data is None:
@@ -248,7 +251,14 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
                 raise ValueError(
                     "Metadata must have the same number of rows as the data."
                 )
+            if train_metadata is not None:
+                in_train_set = metadata["index"].isin(train_metadata["index"])
+                matching_indices = metadata.index[in_train_set].tolist()
+                metadata = metadata[~in_train_set]
+                
             self.data["prediction_metadata"] = metadata
+
+        data = data.drop(index=matching_indices)
 
         self.data["prediction_variables"] = data
 
@@ -296,17 +306,33 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             pd.DataFrame: A two row DataFrame containing the outlier and score columns for each prediction.
         """
 
+        training_scores = self.get_training_scores()
         prediction_scores = self.get_prediction_scores()
 
         if prediction_scores is None:
             raise ValueError("No prediction scores to test.")
 
         if threshold == "auto":
-            threshold = np.mean(self.get_training_scores()) - 3 * np.std(
-                self.get_training_scores()
+            threshold = np.mean(training_scores) - 3 * np.std(
+                training_scores
             )
         elif not isinstance(threshold, (int, float)):
             raise ValueError("Threshold must be a number.")
+        
+        threshold_record = self.data.get("threshold_record")
+        new_row = pd.DataFrame({
+            "training set": [len(training_scores)],
+            "threshold": [threshold],
+            "outliers": [np.sum(prediction_scores < threshold)],
+            "outliers %": [np.sum(prediction_scores < threshold) / len(prediction_scores) * 100],
+        }, index=[date.today().strftime("%Y-%m-%d")])
+        if threshold_record is not None:
+            threshold_record = pd.concat([threshold_record, new_row], ignore_index=False)
+        else:
+            threshold_record = new_row
+        self.data["threshold_record"] = threshold_record
+
+        self.data["threshold_record"].to_csv("dev/threshold_record.csv", index=True)
 
         outliers = pd.DataFrame(
             {
@@ -440,19 +466,6 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             threshold = np.mean(training_scores) - 3 * np.std(training_scores)
         elif not isinstance(threshold, (int, float)):
             raise ValueError("Threshold must be a number.")
-
-        threshold_record = self.data.get("threshold_adjustment")
-        new_row = pd.DataFrame({
-            "training set": [len(training_scores)],
-            "threshold": [threshold]
-        })
-        if threshold_record is not None:
-            threshold_adjustment = pd.concat([threshold_record, new_row], ignore_index=True)
-        else:
-            threshold_adjustment = new_row
-        self.data["threshold_adjustment"] = threshold_adjustment
-
-        self.data["threshold_adjustment"].to_csv("dev/threshold_change.csv", index=False)
 
         fig = go.Figure()
         fig.add_trace(
