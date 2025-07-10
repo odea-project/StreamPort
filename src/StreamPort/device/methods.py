@@ -149,6 +149,9 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
 
         }
 
+        # method = None
+        # curves_this_batch = 0
+        # seen_last_entry = None
         for i, pc in enumerate(data):
             
             feati = features_template.copy()
@@ -165,12 +168,50 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
 
             feati["runtime"] = pc.get("runtime", 0)
 
-            # Crop the pressure vector to remove unwanted artifacts before processing
             pressure_vector = np.array(pc["pressure_var"])
-            pressure_vector = pressure_vector[crop:-crop]
-
             time_var = np.array(pc["time_var"])
+            # this_method = pc["method"]
+            # time_var_last_entry = time_var[-1]
+
+            # # A small subset of curves from each method is missing a datapoint. 
+            # # This is a workaround to ensure that the last entry is not skipped.
+            # if method is not None or seen_last_entry is not None:
+            #     if this_method == method:
+            #         curves_this_batch += 1
+            #         if time_var_last_entry < seen_last_entry:
+            #             time_var_last_entry = seen_last_entry
+
+            #             #if the current time_axis ends before seen curves from the same method, append a new entry as padding
+            #             time_var = time_var.tolist().append(time_var_last_entry)
+            #             time_var = np.array(time_var)
+
+            #             #pad pressure curve accordingly with a zero to indicate the run ended uncharacteristically
+            #             pressure_vector = pressure_vector.tolist().append(0)
+            #             pressure_vector = np.array(pressure_vector)
+
+            #         elif time_var_last_entry > seen_last_entry:
+            #             seen_last_entry = time_var_last_entry
+            #             i = i - curves_this_batch
+            #             pc = data[i]
+            #             curves_this_batch = 0
+            #             continue 
+            #     else:
+            #         curves_this_batch = 1
+            #         seen_last_entry = time_var_last_entry
+            #         method = this_method
+            # else:
+            #     seen_last_entry = time_var_last_entry
+            #     method = this_method
+            #     curves_this_batch += 1
+            
+            # Crop the pressure vector to remove unwanted artifacts before processing
+            pressure_vector = pressure_vector[crop:-crop] 
             time_var = time_var[crop:-crop]
+
+            if len(pressure_vector) != len(time_var):
+                raise ValueError(
+                    "Pressure vector and time variable must have the same length!"
+                )
 
             # Apply baseline correction
             # """
@@ -194,7 +235,11 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             poly_order = 2  # Polynomial order
             smoothed_vector = savgol_filter(pressure_vector, window_size, poly_order)
             baseline_corrected_vector = pressure_vector - smoothed_vector
-            # Remove the elements from the beginning and end to avoid edge effects. Typically <window_size // 2> 
+            
+            #baseline_correction or any such operation may introduce NaN values, so we need to handle them
+            baseline_corrected_vector = np.nan_to_num(baseline_corrected_vector, 
+                                                      posinf = np.max(baseline_corrected_vector), 
+                                                      neginf = np.min(baseline_corrected_vector))
 
             featrawi["pressure_baseline_corrected"] = baseline_corrected_vector
 
@@ -202,11 +247,19 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             vector_bins = np.array_split(baseline_corrected_vector, self.parameters["bins"])
             bin_edges = []
             start_edge = 0
-            for bin in vector_bins:
+            for ind, bin in enumerate(vector_bins):
                 end_edge = start_edge + len(bin) - 1
+
+                #key = f"abs_deviation_{time_var[start_edge].round(3)}_{time_var[end_edge].round(3)}" 
+                key = f"abs_deviation_{time_var[start_edge].round(3)}_{time_var[end_edge].round(3)}" if ind != len(vector_bins) - 1 else f"abs_deviation_{time_var[start_edge].round(3)}_end"
+                feati[key] = np.max(bin) - np.min(bin)
+                
                 bin_edges.append([start_edge, end_edge])
-                feati[f"abs_deviation_{time_var[start_edge].round(3)}_{time_var[end_edge].round(3)}"] = np.max(bin) - np.min(bin)
+
                 start_edge = end_edge + 1
+
+                
+
             featrawi["bin_edges"] = bin_edges
 
             feati["area"] = np.trapz(pressure_vector, x=time_var)

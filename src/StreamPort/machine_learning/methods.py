@@ -5,6 +5,7 @@ This module contains processing methods for machine learning data analysis.
 import pandas as pd
 from typing import Literal
 from numpy.random import Generator as NpRandomState
+import shap
 from sklearn.ensemble import IsolationForest
 from sklearn import preprocessing as scaler
 from src.StreamPort.core import ProcessingMethod
@@ -134,5 +135,65 @@ class MachineLearningScaleFeaturesScalerSklearn(ProcessingMethod):
         #     )
         data["scaler_model"] = scaler_model
         # data["variables"] = scaled_variables
+        analyses.data = data
+        return analyses
+
+
+class MachineLearningExplainModelShap(ProcessingMethod):
+    """
+    Explains the predictions of a machine learning model using SHAP (SHapley Additive exPlanations).
+    """
+
+    def __init__(self, model: Literal["classification", "regression"] = "regression", model_type: Literal["tree", "linear", "deep"] = "tree"):
+        super().__init__()
+        self.data_type = "MachineLearning"
+        self.method = "ExplainModel"
+        self.algorithm = "SHAP"
+        self.input_instance = dict
+        self.output_instance = dict
+        self.number_permitted = 1
+        self.parameters = {"type": model_type, "model": model}
+
+    def run(self, analyses: MachineLearningAnalyses) -> MachineLearningAnalyses:
+        """
+        Runs the SHAP explanation on the provided data from a MachineLearning instance.
+        Args:
+            analyses (MachineLearning): The MachineLearning instance containing the data to be processed.
+        Returns:
+            MachineLearning: The processed MachineLearning instance with SHAP explanations.
+        """
+        data = analyses.data
+        if len(data) == 0:
+            print("No data to process.")
+            return analyses
+
+        model = data.get("model")
+        if model is None:
+            raise ValueError("No model found for explanation.")
+
+        #tree-based models (RandomForest, XGBoost, LightGBM, CatBoost)
+        if self.parameters["type"] == "tree":
+            explainer = shap.TreeExplainer(model)
+
+        #linear models
+        #elif self.parameters["type"] == "linear":
+        #    explainer = shap.LinearExplainer(model, X_train)
+        
+        # for deep learning models (Keras, PyTorch)
+        #elif self.parameters["type"] == "deep":
+        #    explainer = shap.DeepExplainer(model, X_train)
+
+        test_variables = data.get("prediction variables")
+        if test_variables is None:
+            raise ValueError("Pass test data to algorithm for explanation.")
+        
+        if self.parameters["model"] == "classification":
+            shap_values = explainer.shap_values(test_variables)
+        elif self.parameters["model"] == "regression":
+            shap_values = explainer.expected_value(test_variables)
+
+        print("SHAP values calculated. Run shap.summary_plot(shap_values, test_data) to visualize them.")
+
+        data["shap_values"] = shap_values
         analyses.data = data
         return analyses

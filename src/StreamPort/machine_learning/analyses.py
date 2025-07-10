@@ -342,7 +342,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         )
 
         return outliers
-
+    
     def add_data(self, variables: pd.DataFrame = None, metadata: pd.DataFrame = None):
         """
         Adds or increments data to the Isolation Forest.

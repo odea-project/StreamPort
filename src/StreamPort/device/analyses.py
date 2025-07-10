@@ -507,9 +507,16 @@ class PressureCurvesAnalyses(Analyses):
             raise ValueError("No indices provided for DataFrame creation.")
 
         fig = go.Figure()
+        max_trend = None
         for i in indices:
             pc = self.data[i]
             pc_feat = pc["features_raw"]
+
+            if max_trend is None:
+                max_trend = max(pc_feat["trend"])
+            elif max_trend < max(pc_feat["trend"]):
+                max_trend = max(pc_feat["trend"])
+
             fig.add_trace(
                 go.Scatter(
                     x=pc["time_var"],
@@ -559,7 +566,7 @@ class PressureCurvesAnalyses(Analyses):
         for i in range(len(pc_feat["bin_edges"])):
             x0 = pc["time_var"][pc_feat["bin_edges"][i][0]].round(3)
             x1 = pc["time_var"][pc_feat["bin_edges"][i][1]].round(3) 
-            y1 = max(pc_feat["trend"])
+            y1 = max_trend
             fig.add_shape(
                 type="rect",
                 x0=x0, x1=x1,
@@ -571,13 +578,12 @@ class PressureCurvesAnalyses(Analyses):
 
             fig.add_annotation(
                 x=(x0 + x1) / 2,  
-                y=y1 * 0.5, 
+                y=y1 + 2.0, 
                 text =f"<br>Bin {i+1}<br>",      
-                hovertext=f"Entry at time: {x0} to {x1}",
+                hovertext=f"Entries between time: {x0} and {x1}",
                 showarrow=False,
                 font=dict(size=12, color="black"),
-                align="center",
-                #bgcolor="rgba(255,255,255,0.5)",  
+                align="center",  
                 opacity=0.8
             )   
 
