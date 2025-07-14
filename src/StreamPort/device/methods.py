@@ -72,7 +72,7 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
 
     Args:
         period (int): The period for seasonal decomposition. Default is 10.
-        window_size (int): The window size/resolution for baseline correction. Default is period + 1.
+        window_size (int): The window size/resolution for baseline correction. Default is 7.
         bins (int): The number of bins for Fast Fourier Transformation (FFT). Default is 4.
         crop (int): The number of elements to crop from the beginning and end of the pressure vector to remove unwanted artifacts. Default is 2.
 
@@ -97,7 +97,7 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             - residual: The residual component from seasonal decomposition.
     """
 
-    def __init__(self, period: int = 10, window_size: None = None, bins: int = 4, crop: int = 2):
+    def __init__(self, period: int = 10, window_size: int = 7, bins: int = 4, crop: int = 2):
         super().__init__()
         self.data_type = "PressureCurvesAnalyses"
         self.method = "ExtractFeatures"
@@ -115,8 +115,6 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
         Returns:
             PressureCurvesAnalyses: The processed PressureCurvesAnalyses instance with features extracted.
         """
-        window_size = self.parameters["window_size"] if self.parameters["window_size"] is not None else self.parameters["period"]
-        crop = self.parameters["crop"] 
 
         data = analyses.data
         if len(data) == 0:
@@ -146,13 +144,37 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             "seasonal": [],
             "residual": [],
             "pressure_baseline_corrected": [],
-
         }
 
-        # method = None
-        # curves_this_batch = 0
-        # seen_last_entry = None
+        # A small subset of curves from each method is missing a datapoint. Could indicate an anomaly, may also be reflected in the true runtimes. 
+        # This is a workaround to ensure that missing entries are not skipped. 
+        # Solution is to pad all curves for each unique method with zeros to indicate the run ended uncharacteristically and handle missing values to enforce a unified time axis.
+        method_time_vars = {}
+
+        # Find correct length per method
+        for pc in data:
+            method = pc["method"]
+            time_var = np.array(pc["time_var"])
+
+            if method not in method_time_vars:
+                method_time_vars[method] = time_var
+            elif len(time_var) > len(method_time_vars[method]):
+                method_time_vars[method] = time_var
+
         for i, pc in enumerate(data):
+
+            # Zeros in place of actual values in these anomalous curves would set them apart in the bin amplitude values calculated below.
+            method = pc["method"]
+            time_var = np.array(pc["time_var"])
+            pressure_vector = np.array(pc["pressure_var"])
+            target_time_var = method_time_vars[method]
+
+            if len(time_var) < len(target_time_var):
+                pc["pressure_var"] = np.concatenate([
+                    pressure_vector,
+                    np.zeros(len(target_time_var) - len(pressure_vector))
+                ])
+                pc["time_var"] = target_time_var
             
             feati = features_template.copy()
             featrawi = features_raw_transform.copy()
@@ -170,43 +192,13 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
 
             pressure_vector = np.array(pc["pressure_var"])
             time_var = np.array(pc["time_var"])
-            # this_method = pc["method"]
-            # time_var_last_entry = time_var[-1]
-
-            # # A small subset of curves from each method is missing a datapoint. 
-            # # This is a workaround to ensure that the last entry is not skipped.
-            # if method is not None or seen_last_entry is not None:
-            #     if this_method == method:
-            #         curves_this_batch += 1
-            #         if time_var_last_entry < seen_last_entry:
-            #             time_var_last_entry = seen_last_entry
-
-            #             #if the current time_axis ends before seen curves from the same method, append a new entry as padding
-            #             time_var = time_var.tolist().append(time_var_last_entry)
-            #             time_var = np.array(time_var)
-
-            #             #pad pressure curve accordingly with a zero to indicate the run ended uncharacteristically
-            #             pressure_vector = pressure_vector.tolist().append(0)
-            #             pressure_vector = np.array(pressure_vector)
-
-            #         elif time_var_last_entry > seen_last_entry:
-            #             seen_last_entry = time_var_last_entry
-            #             i = i - curves_this_batch
-            #             pc = data[i]
-            #             curves_this_batch = 0
-            #             continue 
-            #     else:
-            #         curves_this_batch = 1
-            #         seen_last_entry = time_var_last_entry
-            #         method = this_method
-            # else:
-            #     seen_last_entry = time_var_last_entry
-            #     method = this_method
-            #     curves_this_batch += 1
             
             # Crop the pressure vector to remove unwanted artifacts before processing
-            pressure_vector = pressure_vector[crop:-crop] 
-            time_var = time_var[crop:-crop]
+            pressure_vector = pressure_vector[self.parameters["crop"]:-self.parameters["crop"]] 
+            time_var = time_var[self.parameters["crop"]:-self.parameters["crop"]]
+
+            pc["pressure_var"] = pressure_vector
+            pc["time_var"] = time_var
 
             if len(pressure_vector) != len(time_var):
                 raise ValueError(
@@ -231,12 +223,14 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             - uses a sliding window to fit a polynomial to the data points within the window, and then replaces the central point with the value of the polynomial at that point
             """
             #from scipy.signal import savgol_filter - to be manually implemented
-            window_size = window_size if window_size % 2 != 0 else window_size + 1  # Must be odd
+            if self.parameters["window_size"] % 2 == 0:
+                self.parameters["window_size"] + 1  # Must be odd
+
             poly_order = 2  # Polynomial order
-            smoothed_vector = savgol_filter(pressure_vector, window_size, poly_order)
+            smoothed_vector = savgol_filter(pressure_vector, self.parameters["window_size"], poly_order)
             baseline_corrected_vector = pressure_vector - smoothed_vector
             
-            #baseline_correction or any such operation may introduce NaN values, so we need to handle them
+            #baseline_correction or any such operation may introduce NaN values
             baseline_corrected_vector = np.nan_to_num(baseline_corrected_vector, 
                                                       posinf = np.max(baseline_corrected_vector), 
                                                       neginf = np.min(baseline_corrected_vector))
@@ -247,18 +241,15 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             vector_bins = np.array_split(baseline_corrected_vector, self.parameters["bins"])
             bin_edges = []
             start_edge = 0
-            for ind, bin in enumerate(vector_bins):
+            for bin in vector_bins:
                 end_edge = start_edge + len(bin) - 1
 
-                #key = f"abs_deviation_{time_var[start_edge].round(3)}_{time_var[end_edge].round(3)}" 
-                key = f"abs_deviation_{time_var[start_edge].round(3)}_{time_var[end_edge].round(3)}" if ind != len(vector_bins) - 1 else f"abs_deviation_{time_var[start_edge].round(3)}_end"
+                key = f"abs_deviation_{time_var[start_edge].round(3)}_{time_var[end_edge].round(3)}" 
                 feati[key] = np.max(bin) - np.min(bin)
                 
                 bin_edges.append([start_edge, end_edge])
 
-                start_edge = end_edge + 1
-
-                
+                start_edge = end_edge + 1  
 
             featrawi["bin_edges"] = bin_edges
 

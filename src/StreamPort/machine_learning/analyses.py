@@ -251,6 +251,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
                 raise ValueError(
                     "Metadata must have the same number of rows as the data."
                 )
+            # safety to remove samples from test set if they already exist in train set
             if train_metadata is not None:
                 in_train_set = metadata["index"].isin(train_metadata["index"])
                 matching_indices = metadata.index[in_train_set].tolist()
@@ -337,6 +338,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         outliers = pd.DataFrame(
             {
                 "outlier": prediction_scores < threshold,
+                "threshold" : threshold,
                 "score": prediction_scores,
             }
         )
@@ -405,9 +407,6 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             add_outliers (bool): Whether to add the outliers to the data.
             threshold (float | str): The threshold for outlier detection. If "auto", the threshold is set to the mean
             of the training scores minus 3 times the standard deviation of the training scores.
-
-        Returns:
-            pd.DataFrame: A two row DataFrame containing the outlier and score columns for each prediction.
         """
 
         outliers = self.test_prediction_outliers(threshold)

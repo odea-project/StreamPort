@@ -77,6 +77,70 @@ class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
         return analyses
 
 
+# class MachineLearningMethodKNearestNeighboursSklearn(ProcessingMethod):
+#     """
+#     This class implements the K-Nearest Neighbours algorithm for anomaly detection using the sklearn library.
+#     """
+
+#     def __init__(
+#         self,
+#         n_estimators: int = 100,
+#         max_samples: float | Literal["auto"] = "auto",
+#         contamination: float | str = "auto",
+#         max_features: float = 1,
+#         bootstrap: bool = False,
+#         n_jobs: int | None = None,
+#         random_state: int | NpRandomState | None = None,
+#         verbose: int = 0,
+#         warm_start: bool = False,
+#     ):
+#         super().__init__()
+#         self.data_type = "MachineLearning"
+#         self.method = "IsolationForest"
+#         self.algorithm = "Sklearn"
+#         self.input_instance = dict
+#         self.output_instance = dict
+#         self.number_permitted = 1
+#         self.parameters = {
+#             "n_estimators": n_estimators,
+#             "max_samples": max_samples,
+#             "contamination": contamination,
+#             "max_features": max_features,
+#             "bootstrap": bootstrap,
+#             "n_jobs": n_jobs,
+#             "random_state": random_state,
+#             "verbose": verbose,
+#             "warm_start": warm_start,
+#         }
+
+#     def run(self, analyses: MachineLearningAnalyses) -> MachineLearningAnalyses:
+#         """
+#         Runs the K-Nearest Neighbours algorithm on the provided data from a MachineLearning instance.
+#         Args:
+#             analyses (MachineLearning): The MachineLearning instance containing the data to be processed.
+#         Returns:
+#             analyses (KNNAnalyses): Child class of Analyses containing the processed data.
+#         """
+#         data = analyses.data
+#         variables = data.get("variables")
+
+#         scaler_model = data.get("scaler_model")
+#         if scaler_model is not None:
+#             scaled_variables = scaler_model.transform(variables)
+#             variables = pd.DataFrame(
+#                 scaled_variables, columns=variables.columns, index=variables.index
+#             )
+
+#         model = IsolationForest(**self.parameters)
+#         model.fit(variables)
+#         data["model"] = model
+#         # data["model_scores"] = model.decision_function(variables)
+#         data["parameters"] = self.parameters
+#         analyses = IsolationForestAnalyses()
+#         analyses.data = data
+#         return analyses
+
+
 class MachineLearningScaleFeaturesScalerSklearn(ProcessingMethod):
     """
     Adds a scalling
