@@ -319,27 +319,13 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             )
         elif not isinstance(threshold, (int, float)):
             raise ValueError("Threshold must be a number.")
-        
-        threshold_record = self.data.get("threshold_record")
-        new_row = pd.DataFrame({
-            "training set": [len(training_scores)],
-            "threshold": [threshold],
-            "outliers": [np.sum(prediction_scores < threshold)],
-            "outliers %": [np.sum(prediction_scores < threshold) / len(prediction_scores) * 100],
-        }, index=[date.today().strftime("%Y-%m-%d")])
-        if threshold_record is not None:
-            threshold_record = pd.concat([threshold_record, new_row], ignore_index=False)
-        else:
-            threshold_record = new_row
-        self.data["threshold_record"] = threshold_record
-
-        self.data["threshold_record"].to_csv("dev/threshold_record.csv", index=True)
 
         outliers = pd.DataFrame(
             {
                 "outlier": prediction_scores < threshold,
                 "threshold" : threshold,
                 "score": prediction_scores,
+                "confidence %" : ((prediction_scores / threshold) * 100).round(2),
             }
         )
 

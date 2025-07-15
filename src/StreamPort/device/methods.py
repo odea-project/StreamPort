@@ -147,8 +147,7 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
         }
 
         # A small subset of curves from each method is missing a datapoint. Could indicate an anomaly, may also be reflected in the true runtimes. 
-        # This is a workaround to ensure that missing entries are not skipped. 
-        # Solution is to pad all curves for each unique method with zeros to indicate the run ended uncharacteristically and handle missing values to enforce a unified time axis.
+        # Solution is to pad all shorter curves for each unique method with zeros to indicate the run ended uncharacteristically and handle missing values to enforce a unified time axis.
         method_time_vars = {}
 
         # Find correct length per method

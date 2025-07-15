@@ -79,7 +79,7 @@ class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
 
 # class MachineLearningMethodKNearestNeighboursSklearn(ProcessingMethod):
 #     """
-#     This class implements the K-Nearest Neighbours algorithm for anomaly detection using the sklearn library.
+#     This class implements the K-Nearest Neighbours algorithm for classification using the sklearn library.
 #     """
 
 #     def __init__(

@@ -1,0 +1,4 @@
+period,window_size,bins,crop,type,n_estimators,max_samples,contamination,max_features,bootstrap,n_jobs,random_state,verbose,warm_start,test_batch,train_set,threshold,outliers,outliers %
+10,7,4,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,3,20,-0.10428508687159435,3,37.5
+10,7,4,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,4,25,-0.12889727725989752,1,20.0
+10,7,4,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,5,29,-0.1127219814286286,1,12.5
