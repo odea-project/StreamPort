@@ -208,7 +208,10 @@ class PressureCurvesAnalyses(Analyses):
                 )
 
             if fl_ext == ".D":
-                pc_fl = _read_pressure_curve_angi(fl, pc_template)
+                try: 
+                    pc_fl = _read_pressure_curve_angi(fl, pc_template)
+                except ValueError:
+                    continue
             else:
                 raise ValueError(
                     f"Unsupported file format: {fl_ext}. Supported formats are: {self.formats}"
@@ -640,3 +643,15 @@ class PressureCurvesAnalyses(Analyses):
         )
 
         return fig
+
+
+class TemperatureAnalyses(Analyses):
+    """
+    Class for analyzing device thermostat readings.
+    """
+
+
+class ActualsAnalyses(Analyses):
+    """
+    Class 
+    """

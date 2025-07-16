@@ -512,3 +512,12 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         )
 
         return fig
+
+
+class NearestNeighboursAnalyses(MachineLearningAnalyses):
+    """
+    This class extends the MachineLearningAnalyses class and is used to perform Isolation Forest analysis.
+    """
+
+    def __init__(self):
+        super().__init__()

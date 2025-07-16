@@ -5,12 +5,17 @@ This module contains processing methods for machine learning data analysis.
 import pandas as pd
 from typing import Literal
 from numpy.random import Generator as NpRandomState
+
 import shap
+
 from sklearn.ensemble import IsolationForest
+from sklearn.neighbors import NearestNeighbors
 from sklearn import preprocessing as scaler
+
 from src.StreamPort.core import ProcessingMethod
 from src.StreamPort.machine_learning.analyses import MachineLearningAnalyses
 from src.StreamPort.machine_learning.analyses import IsolationForestAnalyses
+from src.StreamPort.machine_learning.analyses import NearestNeighboursAnalyses
 
 
 class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
@@ -77,66 +82,74 @@ class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
         return analyses
 
 
-# class MachineLearningMethodKNearestNeighboursSklearn(ProcessingMethod):
+# class MachineLearningMethodNearestNeighboursAnomalySklearn(ProcessingMethod):
 #     """
-#     This class implements the K-Nearest Neighbours algorithm for classification using the sklearn library.
+#     This class implements a K-Nearest Neighbors (KNN)-based anomaly detection algorithm using the sklearn library.
+#     It estimates outlier scores based on the average distance to the k-nearest neighbors.
 #     """
 
 #     def __init__(
 #         self,
-#         n_estimators: int = 100,
-#         max_samples: float | Literal["auto"] = "auto",
-#         contamination: float | str = "auto",
-#         max_features: float = 1,
-#         bootstrap: bool = False,
-#         n_jobs: int | None = None,
-#         random_state: int | NpRandomState | None = None,
-#         verbose: int = 0,
-#         warm_start: bool = False,
+#         n_neighbors: int = 5,
+#         contamination: float = 0.1,
+#         scale_data: bool = True,
 #     ):
 #         super().__init__()
 #         self.data_type = "MachineLearning"
-#         self.method = "IsolationForest"
+#         self.method = "KNearestNeighbours"
 #         self.algorithm = "Sklearn"
 #         self.input_instance = dict
 #         self.output_instance = dict
 #         self.number_permitted = 1
 #         self.parameters = {
-#             "n_estimators": n_estimators,
-#             "max_samples": max_samples,
+#             "n_neighbors": n_neighbors,
 #             "contamination": contamination,
-#             "max_features": max_features,
-#             "bootstrap": bootstrap,
-#             "n_jobs": n_jobs,
-#             "random_state": random_state,
-#             "verbose": verbose,
-#             "warm_start": warm_start,
+#             "scale_data": scale_data,
 #         }
 
 #     def run(self, analyses: MachineLearningAnalyses) -> MachineLearningAnalyses:
 #         """
-#         Runs the K-Nearest Neighbours algorithm on the provided data from a MachineLearning instance.
+#         Runs KNN-based anomaly detection on the provided data.
+        
 #         Args:
-#             analyses (MachineLearning): The MachineLearning instance containing the data to be processed.
+#             analyses (MachineLearningAnalyses): The instance containing the data to be processed.
+        
 #         Returns:
-#             analyses (KNNAnalyses): Child class of Analyses containing the processed data.
+#             NearestNeighboursAnalyses: Child class of Analyses containing processed model and outlier results.
 #         """
 #         data = analyses.data
 #         variables = data.get("variables")
 
 #         scaler_model = data.get("scaler_model")
-#         if scaler_model is not None:
-#             scaled_variables = scaler_model.transform(variables)
+#         if self.parameters["scale_data"] and scaler_model is not None:
 #             variables = pd.DataFrame(
-#                 scaled_variables, columns=variables.columns, index=variables.index
+#                 scaler_model.transform(variables),
+#                 columns=variables.columns,
+#                 index=variables.index,
 #             )
 
-#         model = IsolationForest(**self.parameters)
+#         # Fit Nearest Neighbors
+#         model = NearestNeighbors(n_neighbors=self.parameters["n_neighbors"])
 #         model.fit(variables)
+
+#         # Compute average distance to k neighbors
+#         distances, _ = model.kneighbors(variables)
+#         mean_distances = distances.mean(axis=1)
+#         data["model_scores"] = mean_distances
+
+#         # Threshold based on contamination
+#         contamination = self.parameters["contamination"]
+#         threshold = np.percentile(mean_distances, 100 * (1 - contamination))
+#         labels = np.where(mean_distances > threshold, "outlier", "normal")
+
+#         # Store results
 #         data["model"] = model
-#         # data["model_scores"] = model.decision_function(variables)
+#         data["outlier_labels"] = labels
+#         data["threshold"] = threshold
 #         data["parameters"] = self.parameters
-#         analyses = IsolationForestAnalyses()
+
+#         # Return new analysis object with data
+#         analyses = NearestNeighboursAnalyses()
 #         analyses.data = data
 #         return analyses
 
