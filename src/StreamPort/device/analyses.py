@@ -125,6 +125,37 @@ def _read_pressure_curve_angi(fl: str, pc_template: dict) -> dict:
     return pc_fl
 
 
+def _read_actuals_angi(fl: str) -> dict:
+    """
+    Reads actuals from a file
+    """
+    return_object = {
+        "actuals" : None,
+        "ac_types" : None
+    }
+    actuals = None
+    ac_types = None
+
+    actuals_file = pd.read_csv(
+        fl,
+        low_memory=False,
+        sep=";",
+        decimal="."
+    )
+    #INCOMPLETE
+    actuals = actuals_file.dropna(axis=1, how="all")
+
+    ac_type = actuals["ModuleId"][0]
+    ac_keys = actuals.columns.tolist()
+    
+    ac_types = {ac_type : ac_keys}
+
+    return_object["actuals"] = actuals
+    return_object["ac_types"] = ac_types
+
+    return return_object
+
+
 class PressureCurvesAnalyses(Analyses):
     """
     Class for analyzing pressure curves.
@@ -200,6 +231,10 @@ class PressureCurvesAnalyses(Analyses):
             if not os.path.exists(fl):
                 raise FileNotFoundError(f"File not found: {fl}")
 
+            filename = os.path.basename(fl)
+            batch = os.path.basename(os.path.dirname(fl))
+            run = os.path.join(batch, filename)
+
             fl_ext = os.path.splitext(fl)[1]
 
             if fl_ext not in self.formats:
@@ -208,9 +243,10 @@ class PressureCurvesAnalyses(Analyses):
                 )
 
             if fl_ext == ".D":
-                try: 
+                try:
                     pc_fl = _read_pressure_curve_angi(fl, pc_template)
                 except ValueError:
+                    print("No data for this run: ", run)
                     continue
             else:
                 raise ValueError(
@@ -645,13 +681,82 @@ class PressureCurvesAnalyses(Analyses):
         return fig
 
 
-class TemperatureAnalyses(Analyses):
-    """
-    Class for analyzing device thermostat readings.
-    """
-
-
 class ActualsAnalyses(Analyses):
     """
-    Class 
+    Class for analyzing device Actuals to be used in combination with signal readings
+    
+    Args:
+        files (list): List of paths to actuals data files. Possible formats are .csv.
+
+    Attributes:
+        data (list): List of dictionaries containing actuals data. Each dictionary contains the following
+            keys:
+
+    Methods:
     """
+    #INCOMPLETE
+    def __init__(self, files: list = None, types: dict = None):
+        super().__init__(data_type = "ActualsAnalyses", formats = [".csv"])
+
+        self.data = []
+        self.actual_types = {}
+
+        if files is None:
+            return
+
+        if len(files) == 0:
+            raise ValueError("No data provided for ActualsAnalyses analysis.")
+        
+        if not isinstance(files, list):
+            if isinstance(files, str):
+                files = [files]
+            else:
+                raise TypeError("Files should be a list of file paths.")        
+
+        for fl in files:
+            if not os.path.exists(fl):
+                raise FileNotFoundError(f"File not found: {fl}")
+
+            filename = os.path.basename(fl)
+            batch = os.path.basename(os.path.dirname(fl))
+            run = os.path.join(batch, filename)
+
+            fl_ext = os.path.splitext(fl)[1]
+
+            if fl_ext not in self.formats:
+                raise ValueError(
+                    f"Unsupported file format: {fl_ext}. Supported formats are: {self.formats}"
+                )
+
+            if fl_ext == ".csv":
+                try:
+                    ac_fl = _read_actuals_angi(fl)
+                except ValueError:
+                    print("No data for this run: ", run)
+                    continue
+            else:
+                raise ValueError(
+                    f"Unsupported file format: {fl_ext}. Supported formats are: {self.formats}"
+                )
+
+            self.data.append(ac_fl["actuals"])
+            self.actual_types.update(ac_fl["ac_types"])
+
+    def __str__(self):
+        """
+        Return a string representation of the PressureCurvesAnalyses object.
+        """
+        str_data = ""
+        if len(self.data) > 0:
+            for i, item in enumerate(self.data):
+                if isinstance(item, dict):
+                    str_data += f"    {i + 1}. {item["name"]} ({item["path"]})\n"
+        else:
+            str_data += "  No actuals data available."
+
+        return (
+            f"\n{type(self).__name__} \n"
+            f"  data: {len(self.data)} \n"
+            f"{str_data} \n"
+        )
+    

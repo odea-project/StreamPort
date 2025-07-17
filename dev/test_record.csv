@@ -1,4 +1,4 @@
 period,window_size,bins,crop,type,n_estimators,max_samples,contamination,max_features,bootstrap,n_jobs,random_state,verbose,warm_start,test_batch,train_set,threshold,outliers,outliers %,test_set
-10,7,4,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,3,20,-0.08952933776844993,3,50.0,6.0
-10,7,4,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,4,23,-0.11116364314481114,4,50.0,8.0
-10,7,4,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,5,27,-0.11089669496271834,2,40.0,5.0
+10,7,4,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,3,20,-0.08792381003968974,3,42.857142857142854,7.0
+10,7,4,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,4,24,-0.09882536015480096,4,80.0,5.0
+10,7,4,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,5,25,-0.10413052504545724,0,0.0,5.0

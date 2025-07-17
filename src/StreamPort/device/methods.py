@@ -120,6 +120,9 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
         if len(data) == 0:
             print("No data to process.")
             return analyses
+        
+        #remove StandBy samples in case of error-lc
+        data = [pc for pc in data if pc["sample"] != "StandBy"]
 
         features_template = {
             "area": 0,
