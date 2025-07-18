@@ -325,7 +325,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
                 "outlier": prediction_scores < threshold,
                 "threshold" : threshold,
                 "score": prediction_scores,
-                "confidence %" : ((prediction_scores / threshold) * 100).round(2),
+                "confidence" : ((prediction_scores / threshold) * 100).round(2),
             }
         )
 

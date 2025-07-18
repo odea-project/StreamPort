@@ -257,6 +257,9 @@ class PressureCurvesAnalyses(Analyses):
 
         self.data = sorted(self.data, key=lambda x: x["start_time"])
 
+        #remove StandBy samples in case of error-lc data
+        self.data = [pc for pc in self.data if pc["sample"] != "StandBy"]
+
         for i, pc in enumerate(self.data):
             pc["index"] = i
 
