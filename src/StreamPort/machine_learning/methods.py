@@ -82,10 +82,10 @@ class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
         return analyses
 
 
-# class MachineLearningMethodNearestNeighboursAnomalySklearn(ProcessingMethod):
+# class MachineLearningMethodNearestNeighboursClassifierSklearn(ProcessingMethod):###----INCOMPLETE!!---###
 #     """
-#     This class implements a K-Nearest Neighbors (KNN)-based anomaly detection algorithm using the sklearn library.
-#     It estimates outlier scores based on the average distance to the k-nearest neighbors.
+#     This class implements a K-Nearest Neighbors (KNN)-based classification algorithm using the sklearn library.
+#     It estimates classes based on the average distance to the k-nearest neighbors.
 #     """
 
 #     def __init__(
@@ -216,7 +216,117 @@ class MachineLearningScaleFeaturesScalerSklearn(ProcessingMethod):
         return analyses
 
 
-# class MachineLearningExplainModelShap(ProcessingMethod):
+class MachineLearningEvaluateModelStability(ProcessingMethod):###----INCOMPLETE!!---###
+    def __init__(self, 
+                 test_record_path: str = None, 
+                 log_folder="dev", 
+                 confidence_buffer=0.1, 
+                 times_classified=2, 
+                 rest_indices=None,
+                 test_indices=None):
+        self.test_record_path = test_record_path
+        self.log_folder = log_folder
+        self.confidence_buffer = confidence_buffer
+        self.times_classified = times_classified
+        self.rest_indices = rest_indices
+        self.test_indices = test_indices
+
+    def _load_test_record(self):
+        df = pd.read_csv(self.test_record_path)
+        return df.sort_values("date")
+
+    def _load_test_logs(self, test_record):
+        if self.rest_indices is not None and self.test_indices is not None:
+            min_required = len(self.rest_indices) // len(self.test_indices)
+        else:
+            min_required = 0
+
+        if len(test_record) <= min_required:
+            print("Not enough evidence of true inliers! Please run more tests for more data.")
+            return None
+
+        logs = []
+        for date in test_record["date"]:
+            log_path = f"{self.log_folder}/error_lc_test_{date}_classified_samples.csv"
+            if os.path.exists(log_path):
+                logs.append(pd.read_csv(log_path))
+            else:
+                print(f"No records for {date}")
+        return logs
+
+    def _get_true_class(self, group):
+        outlier_count = ((group['class'] == 'outlier') & (group['confidence'] > 1 + self.confidence_buffer)).sum()
+        inlier_count  = ((group['class'] == 'normal')  & (group['confidence'] < 1 - self.confidence_buffer)).sum()
+
+        if outlier_count > self.times_classified and outlier_count > inlier_count:
+            return "outlier"
+        elif inlier_count > self.times_classified and inlier_count > outlier_count:
+            return "normal"
+        else:
+            return "not set"
+
+    def _get_confidence_variation(self, group, majority_class_series):
+        majority = majority_class_series.loc[group.name]
+        confidence_values = group.loc[group['class'] == majority, 'confidence']
+        if len(confidence_values) == 0:
+            return np.nan
+        mean_conf = confidence_values.mean()
+        std_conf = confidence_values.std()
+        return np.nan if mean_conf == 0 or pd.isna(mean_conf) else std_conf / mean_conf
+
+    def run(self):
+        test_record = self._load_test_record()
+        if test_record is None:
+            return None, None
+
+        logs = self._load_test_logs(test_record)
+        if logs is None or len(logs) == 0:
+            return None, None
+
+        summary = pd.concat(logs, ignore_index=True).sort_values("index")
+
+        # True class assignment
+        class_results = summary.groupby('index').apply(self._get_true_class, include_groups=False).reset_index(name='class_true')
+        summary = summary.merge(class_results, on='index', how='left')
+
+        # Keep class_true only on first occurrence per index
+        first_occurrence = ~summary.duplicated(subset='index')
+        summary.loc[~first_occurrence, 'class_true'] = ""
+
+        # Agreement analysis
+        label_counts = summary.groupby(['index', 'class']).size().unstack(fill_value=0)
+        max_counts = label_counts.max(axis=1)
+        total_counts = label_counts.sum(axis=1)
+        agreement_ratio = max_counts / total_counts
+
+        majority_class = label_counts.idxmax(axis=1)
+
+        # Confidence variation per index
+        confidence_variation = summary.groupby('index').apply(
+            lambda g: self._get_confidence_variation(g, majority_class), 
+            include_groups=False
+        ).fillna(10)
+
+        confidence_consistency = 1 / (1 + confidence_variation)
+        combined_stability = (agreement_ratio + confidence_consistency) / 2
+
+        # Optional: Print diagnostic table
+        true_classes = pd.concat([
+            class_results.set_index("index"),
+            majority_class.rename("majority_class"),
+            confidence_consistency.rename("confidence_consistency")
+        ], axis=1)
+
+        print("True classes:\n", true_classes)
+
+        # Merge stability scores into summary
+        stability_df = combined_stability.reset_index(name='stability_score')
+        summary = summary.merge(stability_df, on='index', how='left')
+
+        return summary, combined_stability.mean()
+
+
+# class MachineLearningMethodShapExplainer(ProcessingMethod):###----INCOMPLETE!!---###
 #     """
 #     Explains the predictions of a machine learning model using SHAP (SHapley Additive exPlanations).
 #     """

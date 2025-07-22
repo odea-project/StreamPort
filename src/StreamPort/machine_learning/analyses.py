@@ -4,7 +4,7 @@ This module contains analyses child classes for machine learning data processing
 
 import pandas as pd
 import numpy as np
-from datetime import date
+from datetime import datetime
 import plotly.graph_objects as go
 import plotly.colors
 from src.StreamPort.core import Analyses
@@ -222,7 +222,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         scores = self.data["model"].decision_function(data)
         return scores
 
-    def predict(self, data: pd.DataFrame = None, metadata: pd.DataFrame = None):
+    def predict(self, data: pd.DataFrame = None, metadata: pd.DataFrame = None, test_date: str | datetime = None):
         """
         Predicts the output using the Isolation Forest model and adds the prediction to the data.
 
@@ -230,6 +230,15 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             data (pd.DataFrame): The input data for prediction.
         """
         train_metadata = self.data.get("metadata")
+
+        if test_date is None:
+            test_date = datetime.now().isoformat().replace(":", "-").replace(".", "-").replace("T", " ") 
+        elif isinstance(test_date, str):
+            pass
+        elif isinstance(test_date, datetime):
+            microseconds = f"{test_date.microsecond:06d}"
+            test_date = test_date.strftime('%Y-%m-%d %H-%M-%S')
+            test_date = f"{test_date}-{microseconds}"
 
         if self.data["model"] is None:
             raise ValueError("Model not trained yet.")
@@ -262,6 +271,8 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         data = data.drop(index=matching_indices)
 
         self.data["prediction_variables"] = data
+
+        self.date["test_date"] = test_date
 
         # scaler_model = self.data.get("scaler_model")
         # if scaler_model is not None:
@@ -319,17 +330,54 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             )
         elif not isinstance(threshold, (int, float)):
             raise ValueError("Threshold must be a number.")
-
+        
         outliers = pd.DataFrame(
             {
                 "outlier": prediction_scores < threshold,
                 "threshold" : threshold,
                 "score": prediction_scores,
-                "confidence" : ((prediction_scores / threshold) * 100).round(2),
+                "confidence" : ((prediction_scores / threshold)).round(2),
             }
         )
 
         return outliers
+    
+    def _assign_class_labels(self, prediction_variables: pd.DataFrame = None, prediction_metadata: pd.DataFrame = None, outliers: pd.DataFrame = None, true_classes_known: bool = False, test_date: str = None):         
+        #can run again after finding true classes to reassign classes and export to supervised learning
+
+        #user can add selber by providing variables and metadata. If None, internal data is used. 
+        ready_to_add = "not_verified"
+        if test_date is not None and isinstance(test_date, str):
+            pass
+        # if true_classes_known:
+        #     ready_to_add = "ready"
+        #     if self.data.get("test_history") is not None:
+        #         prediction_metadata = true_classes 
+        #         prediction_variables = classified_variables
+
+        #     else:
+        #         prediction_metadata = self.data.get("prediction_metadata")
+        #         prediction_variables = self.data.get("prediction_variables")
+        #         outliers = self.data.get("outliers")
+
+        temp_outliers_test = outliers
+        temp_outliers_test["outlier"] = temp_outliers_test["outlier"].map({True: "outlier", False: "normal"})
+        temp_outliers_test["class"] = temp_outliers_test["outlier"]
+        temp_outliers_test.drop(columns=["outlier"], inplace = True)
+
+        classified_metadata = pd.concat([prediction_metadata["index"], temp_outliers_test], axis=1)
+        # self.data["classified_metadata"] = classified_metadata 
+        # self.data["classified_variables"] = prediction_variables
+        if self.data.get("test_history") is None:    
+            raise ValueError("No tests have been recorded yet. Adding currently available test data.")
+        elif self.data.get("test_history").get("test_date")[2] == "not_verified":
+            self.data["test_history"].update({self.data.get("test_date") : (self.data.get("prediction_variables"), self.data.get("prediction_metadata", ready_to_add))})
+        else:
+            print("Verified normal curves can be added to the train set! Add them with add_prediction()")
+
+        self.data["test_history"].update({self.data.get("test_date") : (self.data.get("prediction_variables"), self.data.get("prediction_metadata", ready_to_add))})
+
+        # return ready_to_add
     
     def add_data(self, variables: pd.DataFrame = None, metadata: pd.DataFrame = None):
         """
