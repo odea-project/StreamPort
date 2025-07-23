@@ -222,7 +222,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         scores = self.data["model"].decision_function(data)
         return scores
 
-    def predict(self, data: pd.DataFrame = None, metadata: pd.DataFrame = None, test_date: str | datetime = None):
+    def predict(self, data: pd.DataFrame = None, metadata: pd.DataFrame = None):
         """
         Predicts the output using the Isolation Forest model and adds the prediction to the data.
 
@@ -230,15 +230,6 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             data (pd.DataFrame): The input data for prediction.
         """
         train_metadata = self.data.get("metadata")
-
-        if test_date is None:
-            test_date = datetime.now().isoformat().replace(":", "-").replace(".", "-").replace("T", " ") 
-        elif isinstance(test_date, str):
-            pass
-        elif isinstance(test_date, datetime):
-            microseconds = f"{test_date.microsecond:06d}"
-            test_date = test_date.strftime('%Y-%m-%d %H-%M-%S')
-            test_date = f"{test_date}-{microseconds}"
 
         if self.data["model"] is None:
             raise ValueError("Model not trained yet.")
@@ -271,8 +262,6 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         data = data.drop(index=matching_indices)
 
         self.data["prediction_variables"] = data
-
-        self.date["test_date"] = test_date
 
         # scaler_model = self.data.get("scaler_model")
         # if scaler_model is not None:
@@ -317,7 +306,6 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         Returns:
             pd.DataFrame: A two row DataFrame containing the outlier and score columns for each prediction.
         """
-
         training_scores = self.get_training_scores()
         prediction_scores = self.get_prediction_scores()
 
@@ -331,53 +319,98 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         elif not isinstance(threshold, (int, float)):
             raise ValueError("Threshold must be a number.")
         
+        prediction_metadata = self.data.get("prediction_metadata")
         outliers = pd.DataFrame(
             {
+                "index": prediction_metadata["index"],
                 "outlier": prediction_scores < threshold,
                 "threshold" : threshold,
                 "score": prediction_scores,
                 "confidence" : ((prediction_scores / threshold)).round(2),
             }
         )
+        outliers = self._assign_class_labels(outliers)
 
         return outliers
     
-    def _assign_class_labels(self, prediction_variables: pd.DataFrame = None, prediction_metadata: pd.DataFrame = None, outliers: pd.DataFrame = None, true_classes_known: bool = False, test_date: str = None):         
-        #can run again after finding true classes to reassign classes and export to supervised learning
+    def _assign_class_labels(self, 
+                             outliers: pd.DataFrame = None, 
+                             ):         
+        """
+        Assigns class labels to the current variables of the isolation forest.
+        
+        Args:
+            outliers (pd.DateFrame): The result of test_prediction_outliers()
 
-        #user can add selber by providing variables and metadata. If None, internal data is used. 
-        ready_to_add = "not_verified"
-        if test_date is not None and isinstance(test_date, str):
-            pass
-        # if true_classes_known:
-        #     ready_to_add = "ready"
-        #     if self.data.get("test_history") is not None:
-        #         prediction_metadata = true_classes 
-        #         prediction_variables = classified_variables
+        Returns:
+            outliers (pd.DataFrame): A dataframe of classified samples, including the confidence level of the classification
+        """
+        ###set classes
+        if outliers is not None and isinstance(outliers, pd.DataFrame):
+            prediction_metadata = self.data.get("prediction_metadata")  
+            if not outliers["index"].equals(prediction_metadata["index"]):
+                raise ValueError("False set of prediction results were provided. Outliers should belong to the latest prediction performed.")
+            
+        else:    
+            outliers = self.test_prediction_outliers()
+            prediction_metadata = self.data.get("prediction_metadata")  
 
-        #     else:
-        #         prediction_metadata = self.data.get("prediction_metadata")
-        #         prediction_variables = self.data.get("prediction_variables")
-        #         outliers = self.data.get("outliers")
+        outliers["outlier"] = outliers["outlier"].map({True: "outlier", False: "normal"})
+        outliers["class"] = outliers["outlier"]
+        outliers.drop(columns=["outlier"], inplace = True)
 
-        temp_outliers_test = outliers
-        temp_outliers_test["outlier"] = temp_outliers_test["outlier"].map({True: "outlier", False: "normal"})
-        temp_outliers_test["class"] = temp_outliers_test["outlier"]
-        temp_outliers_test.drop(columns=["outlier"], inplace = True)
+        ###classified till here. Decide whether to add internally
 
-        classified_metadata = pd.concat([prediction_metadata["index"], temp_outliers_test], axis=1)
-        # self.data["classified_metadata"] = classified_metadata 
-        # self.data["classified_variables"] = prediction_variables
-        if self.data.get("test_history") is None:    
-            raise ValueError("No tests have been recorded yet. Adding currently available test data.")
-        elif self.data.get("test_history").get("test_date")[2] == "not_verified":
-            self.data["test_history"].update({self.data.get("test_date") : (self.data.get("prediction_variables"), self.data.get("prediction_metadata", ready_to_add))})
+        return outliers
+
+    def evaluate_classes(self, confidence_buffer : float = 0.1, times_classified : int = 2):#move to modelstability class
+        """
+        Evaluates and reassigns class labels in the test history of the isolation forest.
+        In a non-deterministic model, if a sample has been declared an inlier/outlier a minimum of x times with a certain confidence >< y, it can be certified to be so. 
+
+        Args:
+            confidence_buffer (float): The buffer value from the threshold where classification result may be faulty/ambiguous.
+            times_classified (int): The number of times a particular sample has been classified.
+
+        Returns:
+            true_classes (pd.DataFrame): A dataframe of samples that have been tested enough times and have received final class labels
+        """
+        test_history = self.data.get("test_history")
+        true_classes = self.data.get("true_classes")
+        if test_history is not None:
+            sorted_history = dict(sorted(test_history.items()))
+            
+            summary = pd.DataFrame()
+            for test in list(sorted_history):
+                summary = pd.concat([summary, sorted_history[test][1]], ignore_index=True)
+            summary = summary.sort_values("index")
+
+            def get_true_classes(group):
+                outlier_count = ((group['class'] == 'outlier') & (group['confidence'] > 1 + confidence_buffer)).sum() #1 confidence = threshold value. anomaly > 1, normal < 1
+                inlier_count = ((group['class'] == 'normal') & (group['confidence'] < 1 - confidence_buffer)).sum() #values between 0.9 and 1.1 taken as a buffer zone of ambiguous detection accuracy
+
+                if outlier_count > times_classified and outlier_count > inlier_count:
+                    return "outlier"
+                elif inlier_count > times_classified and inlier_count > outlier_count:
+                    return "normal"
+                else:
+                    return "not set"
+
+            class_results = summary.groupby('index').apply(get_true_classes, include_groups=False).reset_index(name='class_true')
         else:
-            print("Verified normal curves can be added to the train set! Add them with add_prediction()")
+            print("No tests have been recorded yet.")
+        
+        if true_classes is not None and isinstance(true_classes, pd.DataFrame):
+            pass
+        else:
+            true_classes = pd.DataFrame()
+        
+        true_classes = pd.concat([true_classes, class_results])
+        true_classes.drop_duplicates(inplace=True)
+        
+        self.data["true_classes"] = true_classes
 
-        self.data["test_history"].update({self.data.get("test_date") : (self.data.get("prediction_variables"), self.data.get("prediction_metadata", ready_to_add))})
-
-        # return ready_to_add
+        return true_classes
     
     def add_data(self, variables: pd.DataFrame = None, metadata: pd.DataFrame = None):
         """

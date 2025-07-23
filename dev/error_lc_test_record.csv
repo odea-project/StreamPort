@@ -1,0 +1,21 @@
+period,window_size,bins,crop,type,n_estimators,max_samples,contamination,max_features,bootstrap,n_jobs,random_state,verbose,warm_start,date,train_set,test_set,threshold,outliers,outliers_percent
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 12-34-15-559746,13,5,-0.053316115422829,0,0.0
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 12-34-21-244860,13,4,-0.053316115422829,4,100.0
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 12-34-26-872389,13,4,-0.053316115422829,1,25.0
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 12-34-32-478978,13,5,-0.053316115422829,2,40.0
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 14-49-20-912694,13,4,-0.066784629126435,3,75.0
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 14-49-28-169722,13,4,-0.066784629126435,1,25.0
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 14-49-35-410842,13,4,-0.066784629126435,1,25.0
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 14-49-42-662975,13,3,-0.066784629126435,2,66.66666666666666
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 15-36-48-666559,13,3,-0.066784629126435,1,33.33333333333333
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 15-36-58-002438,13,3,-0.066784629126435,3,100.0
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 15-37-05-374090,13,3,-0.066784629126435,1,33.33333333333333
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 15-37-12-411668,13,4,-0.066784629126435,3,75.0
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 16-32-57-068221,13,4,-0.0569905657704029,3,75.0
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 16-33-02-728312,13,4,-0.0569905657704029,3,75.0
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 16-33-08-762872,13,3,-0.0569905657704029,3,100.0
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 16-33-14-609525,13,3,-0.0569905657704029,2,66.66666666666666
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 16-34-47-475292,13,3,-0.0465196658742164,0,0.0
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 16-34-53-047367,13,3,-0.0465196658742164,3,100.0
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 16-34-58-573933,13,4,-0.0465196658742164,3,75.0
+10,4,7,2,MinMaxScaler,100,auto,auto,1,False,,,0,False,2025-07-23 16-35-04-244376,13,3,-0.0465196658742164,2,66.66666666666666

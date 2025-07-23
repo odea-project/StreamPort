@@ -3,6 +3,7 @@ This module contains processing methods for machine learning data analysis.
 """
 
 import pandas as pd
+import numpy as np
 from typing import Literal
 from numpy.random import Generator as NpRandomState
 
@@ -156,7 +157,7 @@ class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
 
 class MachineLearningScaleFeaturesScalerSklearn(ProcessingMethod):
     """
-    Adds a scalling
+    Adds a scaler model fit to the training data
 
     Args:
         scaler_type (str): The type of scaler to use. Options are:
@@ -216,45 +217,35 @@ class MachineLearningScaleFeaturesScalerSklearn(ProcessingMethod):
         return analyses
 
 
-class MachineLearningEvaluateModelStability(ProcessingMethod):###----INCOMPLETE!!---###
-    def __init__(self, 
-                 test_record_path: str = None, 
-                 log_folder="dev", 
-                 confidence_buffer=0.1, 
-                 times_classified=2, 
-                 rest_indices=None,
-                 test_indices=None):
-        self.test_record_path = test_record_path
-        self.log_folder = log_folder
-        self.confidence_buffer = confidence_buffer
-        self.times_classified = times_classified
-        self.rest_indices = rest_indices
-        self.test_indices = test_indices
+class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):###----INCOMPLETE!!---###
+    """
+    Creates a method to evaluate the stability of a learning model, i.e, how well it performs classification/regression over many test iterations with no external parameter changes
 
-    def _load_test_record(self):
-        df = pd.read_csv(self.test_record_path)
-        return df.sort_values("date")
+    Args:
+        test_records (pd.DataFrame): A dataframe containing the classification results of all tests conducted by an ML object. 
+                                     Must-have information is class labels, classification confidence and date of test.
+        confidence_buffer (float): Indicates an interval above or below the detection threshold. 
+                                   Classifications with a confidence within this interval are considered a false positive or -negative.
+        times_classified (int): A measure to judge the accuracy of a classification based on how many times the sample has received the same class label.
+        test_size (int): The size of the test sample. This decides how many times each sample may have been tested over many iterations.  
+    """
+    def __init__(self,
+                 test_records: pd.DataFrame = None,  
+                 confidence_buffer: float = 0.1, 
+                 times_classified: int = 2,
+                 test_size: int = 4,
+                 ):
 
-    def _load_test_logs(self, test_record):
-        if self.rest_indices is not None and self.test_indices is not None:
-            min_required = len(self.rest_indices) // len(self.test_indices)
-        else:
-            min_required = 0
+        # if a sample has been classified atleast 3 times, there is enough information to make a judgement on model stability
+        if test_records is not None and isinstance(test_records, pd.DataFrame) and len(test_records)//test_size >= 3:
+            self.test_records = test_records
+        else:    
+            raise ValueError("Insufficient test records given. Please pass a test record Dataframe.")
+    
+        self.confidence_buffer = confidence_buffer if isinstance(confidence_buffer, float) and 0.0 <= confidence_buffer <= 0.2 else 0.1 
+        self.times_classified = times_classified if isinstance(times_classified, int) and times_classified >= 2 else 2
 
-        if len(test_record) <= min_required:
-            print("Not enough evidence of true inliers! Please run more tests for more data.")
-            return None
-
-        logs = []
-        for date in test_record["date"]:
-            log_path = f"{self.log_folder}/error_lc_test_{date}_classified_samples.csv"
-            if os.path.exists(log_path):
-                logs.append(pd.read_csv(log_path))
-            else:
-                print(f"No records for {date}")
-        return logs
-
-    def _get_true_class(self, group):
+    def _get_true_classes(self, group):
         outlier_count = ((group['class'] == 'outlier') & (group['confidence'] > 1 + self.confidence_buffer)).sum()
         inlier_count  = ((group['class'] == 'normal')  & (group['confidence'] < 1 - self.confidence_buffer)).sum()
 
@@ -275,18 +266,23 @@ class MachineLearningEvaluateModelStability(ProcessingMethod):###----INCOMPLETE!
         return np.nan if mean_conf == 0 or pd.isna(mean_conf) else std_conf / mean_conf
 
     def run(self):
-        test_record = self._load_test_record()
-        if test_record is None:
-            return None, None
+        """
+        Evaluates the internal stability of a model and assigns true classes to data based on previous classification test results
 
-        logs = self._load_test_logs(test_record)
-        if logs is None or len(logs) == 0:
-            return None, None
+        Args:
+            instance attributes.
 
-        summary = pd.concat(logs, ignore_index=True).sort_values("index")
+        Returns:
+            true_classes (pd.DataFrame): A dataframe containing the calculated true classes per test index.
+                                        Samples that were not tested sufficiently to form a decision are assigned "not_set" until further tests are run and the process is repeated.
+            stability_score (float): The mean value of the model's combined stability.
+                        combined_stability: agreement score (how many times the same sample received the same class label) 
+                                        +   confidence_consistency (consistency of classification confidence values per sample = 1/(std/mean)variation in confidences)  
+        """
+        summary = self.test_records.sort_values("index")
 
         # True class assignment
-        class_results = summary.groupby('index').apply(self._get_true_class, include_groups=False).reset_index(name='class_true')
+        class_results = summary.groupby('index').apply(self._get_true_classes, include_groups=False).reset_index(name='class_true')
         summary = summary.merge(class_results, on='index', how='left')
 
         # Keep class_true only on first occurrence per index
@@ -317,16 +313,15 @@ class MachineLearningEvaluateModelStability(ProcessingMethod):###----INCOMPLETE!
             confidence_consistency.rename("confidence_consistency")
         ], axis=1)
 
-        print("True classes:\n", true_classes)
-
         # Merge stability scores into summary
         stability_df = combined_stability.reset_index(name='stability_score')
         summary = summary.merge(stability_df, on='index', how='left')
+        print("Model performance Summary: ", summary)
 
-        return summary, combined_stability.mean()
+        return true_classes, combined_stability.mean()
 
 
-# class MachineLearningMethodShapExplainer(ProcessingMethod):###----INCOMPLETE!!---###
+# class MachineLearningMethodShapExplainerShap(ProcessingMethod):###----INCOMPLETE!!---###
 #     """
 #     Explains the predictions of a machine learning model using SHAP (SHapley Additive exPlanations).
 #     """
