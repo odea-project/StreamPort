@@ -10,7 +10,7 @@ from numpy.random import Generator as NpRandomState
 import shap
 
 from sklearn.ensemble import IsolationForest
-from sklearn.neighbors import NearestNeighbors
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn import preprocessing as scaler
 
 from src.StreamPort.core import ProcessingMethod
@@ -76,83 +76,71 @@ class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
         model = IsolationForest(**self.parameters)
         model.fit(variables)
         data["model"] = model
-        # data["model_scores"] = model.decision_function(variables)
         data["parameters"] = self.parameters
         analyses = IsolationForestAnalyses()
         analyses.data = data
         return analyses
 
 
-# class MachineLearningMethodNearestNeighboursClassifierSklearn(ProcessingMethod):###----INCOMPLETE!!---###
-#     """
-#     This class implements a K-Nearest Neighbors (KNN)-based classification algorithm using the sklearn library.
-#     It estimates classes based on the average distance to the k-nearest neighbors.
-#     """
+class MachineLearningMethodNearestNeighboursClassifierSklearn(ProcessingMethod):
+    """
+    This class implements a K-Nearest Neighbors (KNN)-based classification algorithm using the sklearn library.
+    It estimates classes based on the average distance to the k-nearest neighbors.
+    """
 
-#     def __init__(
-#         self,
-#         n_neighbors: int = 5,
-#         contamination: float = 0.1,
-#         scale_data: bool = True,
-#     ):
-#         super().__init__()
-#         self.data_type = "MachineLearning"
-#         self.method = "KNearestNeighbours"
-#         self.algorithm = "Sklearn"
-#         self.input_instance = dict
-#         self.output_instance = dict
-#         self.number_permitted = 1
-#         self.parameters = {
-#             "n_neighbors": n_neighbors,
-#             "contamination": contamination,
-#             "scale_data": scale_data,
-#         }
+    def __init__(
+        self,
+        n_neighbors: int = 5,
+    ):
+        super().__init__()
+        self.data_type = "MachineLearning"
+        self.method = "KNearestNeighbours"
+        self.algorithm = "Sklearn"
+        self.input_instance = dict
+        self.output_instance = dict
+        self.number_permitted = 1
+        self.parameters = {
+            "n_neighbors": n_neighbors,
+        }
 
-#     def run(self, analyses: MachineLearningAnalyses) -> MachineLearningAnalyses:
-#         """
-#         Runs KNN-based anomaly detection on the provided data.
-        
-#         Args:
-#             analyses (MachineLearningAnalyses): The instance containing the data to be processed.
-        
-#         Returns:
-#             NearestNeighboursAnalyses: Child class of Analyses containing processed model and outlier results.
-#         """
-#         data = analyses.data
-#         variables = data.get("variables")
+    def run(self, analyses: MachineLearningAnalyses) -> MachineLearningAnalyses:
+        """
+        Runs KNN classification on the provided data.
 
-#         scaler_model = data.get("scaler_model")
-#         if self.parameters["scale_data"] and scaler_model is not None:
-#             variables = pd.DataFrame(
-#                 scaler_model.transform(variables),
-#                 columns=variables.columns,
-#                 index=variables.index,
-#             )
+        Args:
+            analyses (MachineLearningAnalyses): The instance containing the data to be processed.
 
-#         # Fit Nearest Neighbors
-#         model = NearestNeighbors(n_neighbors=self.parameters["n_neighbors"])
-#         model.fit(variables)
+        Returns:
+            NearestNeighboursAnalyses: Child class of Analyses containing the trained model.
+        """
+        data = analyses.data
 
-#         # Compute average distance to k neighbors
-#         distances, _ = model.kneighbors(variables)
-#         mean_distances = distances.mean(axis=1)
-#         data["model_scores"] = mean_distances
+        variables = data.get("variables")        
+        labels = data.get("metadata")["label"]           
 
-#         # Threshold based on contamination
-#         contamination = self.parameters["contamination"]
-#         threshold = np.percentile(mean_distances, 100 * (1 - contamination))
-#         labels = np.where(mean_distances > threshold, "outlier", "normal")
+        if variables is None or labels is None:
+            raise ValueError("Both 'variables' (features) and 'labels' must be provided in data.")
 
-#         # Store results
-#         data["model"] = model
-#         data["outlier_labels"] = labels
-#         data["threshold"] = threshold
-#         data["parameters"] = self.parameters
+        scaler_model = data.get("scaler_model")
+        if scaler_model is not None:
+            scaled_variables = pd.DataFrame(
+                scaler_model.transform(variables),
+                columns=variables.columns,
+                index=variables.index,
+            )
 
-#         # Return new analysis object with data
-#         analyses = NearestNeighboursAnalyses()
-#         analyses.data = data
-#         return analyses
+        #fit the KNN classifier
+        model = KNeighborsClassifier(n_neighbors=self.parameters["n_neighbors"])
+        model.fit(variables, labels)
+
+        #store trained model
+        data["model"] = model
+        data["parameters"] = self.parameters
+
+        # Return updated analysis object
+        analyses = NearestNeighboursAnalyses()
+        analyses.data = data
+        return analyses
 
 
 class MachineLearningScaleFeaturesScalerSklearn(ProcessingMethod):
@@ -207,17 +195,14 @@ class MachineLearningScaleFeaturesScalerSklearn(ProcessingMethod):
 
         variables = data["variables"]
         scaled_variables = scaler_model.fit_transform(variables)
-        # if hasattr(variables, "columns") and hasattr(variables, "index"):
-        #     scaled_variables = pd.DataFrame(
-        #         scaled_variables, columns=variables.columns, index=variables.index
-        #     )
+
         data["scaler_model"] = scaler_model
-        # data["variables"] = scaled_variables
+
         analyses.data = data
         return analyses
 
 
-class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):###----INCOMPLETE!!---###
+class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
     """
     Creates a method to evaluate the stability of a learning model, i.e, how well it performs classification/regression over many test iterations with no external parameter changes
 
@@ -306,17 +291,15 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):###----INCOM
         confidence_consistency = 1 / (1 + confidence_variation)
         combined_stability = (agreement_ratio + confidence_consistency) / 2
 
-        # Optional: Print diagnostic table
         true_classes = pd.concat([
             class_results.set_index("index"),
             majority_class.rename("majority_class"),
             confidence_consistency.rename("confidence_consistency")
         ], axis=1)
 
-        # Merge stability scores into summary
         stability_df = combined_stability.reset_index(name='stability_score')
         summary = summary.merge(stability_df, on='index', how='left')
-        print("Model performance Summary: ", summary)
+        print("Model performance Summary: ", summary.head())
 
         return true_classes, combined_stability.mean()
 

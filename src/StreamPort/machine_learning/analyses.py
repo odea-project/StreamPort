@@ -197,10 +197,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             self.data["scaler_model"] = scaler_model
             data = pd.DataFrame(scaled_data, columns=data.columns, index=data.index)
 
-        # Not needed?? As the model restarts from scratch
-        # self.data["model"] = IsolationForest(**parameters)
         self.data["model"].fit(data)
-        # self.data["model_scores"] = self.data["model"].decision_function(data)
 
     def get_training_scores(self):
         """
@@ -262,18 +259,6 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         data = data.drop(index=matching_indices)
 
         self.data["prediction_variables"] = data
-
-        # scaler_model = self.data.get("scaler_model")
-        # if scaler_model is not None:
-        #     scaled_data = scaler_model.transform(data)
-        #     data = pd.DataFrame(scaled_data, columns=data.columns, index=data.index)
-        #     variables = self.data.get("variables")
-        #     scaled_train_data = scaler_model.transform(variables)
-        #     self.data["variables"] = pd.DataFrame(
-        #         scaled_train_data, columns=variables.columns, index=variables.index
-        #     )
-
-        # self.data["prediction"] = self.data["model"].decision_function(data)
 
     def get_prediction_scores(self):
         """
@@ -359,58 +344,56 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         outliers["class"] = outliers["outlier"]
         outliers.drop(columns=["outlier"], inplace = True)
 
-        ###classified till here. Decide whether to add internally
-
         return outliers
 
-    def evaluate_classes(self, confidence_buffer : float = 0.1, times_classified : int = 2):#move to modelstability class
-        """
-        Evaluates and reassigns class labels in the test history of the isolation forest.
-        In a non-deterministic model, if a sample has been declared an inlier/outlier a minimum of x times with a certain confidence >< y, it can be certified to be so. 
+    # def evaluate_classes(self, confidence_buffer : float = 0.1, times_classified : int = 2):#move to modelstability class
+    #     """
+    #     Evaluates and reassigns class labels in the test history of the isolation forest.
+    #     In a non-deterministic model, if a sample has been declared an inlier/outlier a minimum of x times with a certain confidence >< y, it can be certified to be so. 
 
-        Args:
-            confidence_buffer (float): The buffer value from the threshold where classification result may be faulty/ambiguous.
-            times_classified (int): The number of times a particular sample has been classified.
+    #     Args:
+    #         confidence_buffer (float): The buffer value from the threshold where classification result may be faulty/ambiguous.
+    #         times_classified (int): The number of times a particular sample has been classified.
 
-        Returns:
-            true_classes (pd.DataFrame): A dataframe of samples that have been tested enough times and have received final class labels
-        """
-        test_history = self.data.get("test_history")
-        true_classes = self.data.get("true_classes")
-        if test_history is not None:
-            sorted_history = dict(sorted(test_history.items()))
+    #     Returns:
+    #         true_classes (pd.DataFrame): A dataframe of samples that have been tested enough times and have received final class labels
+    #     """
+    #     test_history = self.data.get("test_history")
+    #     true_classes = self.data.get("true_classes")
+    #     if test_history is not None:
+    #         sorted_history = dict(sorted(test_history.items()))
             
-            summary = pd.DataFrame()
-            for test in list(sorted_history):
-                summary = pd.concat([summary, sorted_history[test][1]], ignore_index=True)
-            summary = summary.sort_values("index")
+    #         summary = pd.DataFrame()
+    #         for test in list(sorted_history):
+    #             summary = pd.concat([summary, sorted_history[test][1]], ignore_index=True)
+    #         summary = summary.sort_values("index")
 
-            def get_true_classes(group):
-                outlier_count = ((group['class'] == 'outlier') & (group['confidence'] > 1 + confidence_buffer)).sum() #1 confidence = threshold value. anomaly > 1, normal < 1
-                inlier_count = ((group['class'] == 'normal') & (group['confidence'] < 1 - confidence_buffer)).sum() #values between 0.9 and 1.1 taken as a buffer zone of ambiguous detection accuracy
+    #         def get_true_classes(group):
+    #             outlier_count = ((group['class'] == 'outlier') & (group['confidence'] > 1 + confidence_buffer)).sum() #1 confidence = threshold value. anomaly > 1, normal < 1
+    #             inlier_count = ((group['class'] == 'normal') & (group['confidence'] < 1 - confidence_buffer)).sum() #values between 0.9 and 1.1 taken as a buffer zone of ambiguous detection accuracy
 
-                if outlier_count > times_classified and outlier_count > inlier_count:
-                    return "outlier"
-                elif inlier_count > times_classified and inlier_count > outlier_count:
-                    return "normal"
-                else:
-                    return "not set"
+    #             if outlier_count > times_classified and outlier_count > inlier_count:
+    #                 return "outlier"
+    #             elif inlier_count > times_classified and inlier_count > outlier_count:
+    #                 return "normal"
+    #             else:
+    #                 return "not set"
 
-            class_results = summary.groupby('index').apply(get_true_classes, include_groups=False).reset_index(name='class_true')
-        else:
-            print("No tests have been recorded yet.")
+    #         class_results = summary.groupby('index').apply(get_true_classes, include_groups=False).reset_index(name='class_true')
+    #     else:
+    #         print("No tests have been recorded yet.")
         
-        if true_classes is not None and isinstance(true_classes, pd.DataFrame):
-            pass
-        else:
-            true_classes = pd.DataFrame()
+    #     if true_classes is not None and isinstance(true_classes, pd.DataFrame):
+    #         pass
+    #     else:
+    #         true_classes = pd.DataFrame()
         
-        true_classes = pd.concat([true_classes, class_results])
-        true_classes.drop_duplicates(inplace=True)
+    #     true_classes = pd.concat([true_classes, class_results])
+    #     true_classes.drop_duplicates(inplace=True)
         
-        self.data["true_classes"] = true_classes
+    #     self.data["true_classes"] = true_classes
 
-        return true_classes
+    #     return true_classes
     
     def add_data(self, variables: pd.DataFrame = None, metadata: pd.DataFrame = None):
         """
@@ -597,8 +580,163 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
 
 class NearestNeighboursAnalyses(MachineLearningAnalyses):
     """
-    This class extends the MachineLearningAnalyses class and is used to perform Isolation Forest analysis.
+    This class extends the MachineLearningAnalyses class and is used to perform K - Nearest Neighbour analysis.
     """
 
     def __init__(self):
         super().__init__()
+
+    def train(self, data: pd.DataFrame = None):
+        """
+        Trains the KNN classifier model on the provided data.
+        The original data is replaced with new data when given.
+        When new data is not given, the original data is used.
+
+        Args:
+            data (pd.DataFrame): The input data for training.
+        """
+        if data is None:
+            data = self.data["variables"]
+        if data is None:
+            raise ValueError("No data to train.")
+        if not isinstance(data, pd.DataFrame):
+            raise ValueError("Data must be a pandas DataFrame.")
+        if data.shape[0] == 0:
+            raise ValueError("Data must have at least one row.")
+
+        parameters = self.data["parameters"]
+        if parameters is None:
+            raise ValueError("No parameters to train the model.")
+        if not isinstance(parameters, dict):
+            raise ValueError("Parameters must be a dictionary.")
+
+        self.data["variables"] = data
+        self.data["labels"] = self.data.get("metadata")["label"]
+        labels = self.data.get("labels")
+
+        scaler_model = self.data.get("scaler_model")
+        if scaler_model is not None:
+            scaled_data = scaler_model.fit_transform(data)
+            self.data["scaler_model"] = scaler_model
+            data = pd.DataFrame(scaled_data, columns=data.columns, index=data.index)
+
+        self.data["model"].fit(data, labels)
+
+    def get_training_scores(self):
+        """
+        Returns the training scores of the Isolation Forest model.
+
+        Returns:
+            np.ndarray: The training scores of the model.
+        """
+
+        if self.data.get("model") is None:
+            return None
+        if self.data.get("variables") is None:
+            return None
+        data = self.data.get("variables")
+        scaler_model = self.data.get("scaler_model")
+        if scaler_model is not None:
+            scaled_data = scaler_model.transform(data)
+            data = pd.DataFrame(scaled_data, columns=data.columns, index=data.index)
+        scores = self.data["model"].predict(data)
+        return scores
+
+    def predict(self, data: pd.DataFrame = None, metadata: pd.DataFrame = None):
+        """
+        Predicts the output using the Isolation Forest model and adds the prediction to the data.
+
+        Args:
+            data (pd.DataFrame): The input data for prediction.
+        """
+        train_metadata = self.data.get("metadata")
+
+        if self.data["model"] is None:
+            raise ValueError("Model not trained yet.")
+        if data is None:
+            raise ValueError("No data to predict.")
+        if not isinstance(data, pd.DataFrame):
+            raise ValueError("Data must be a pandas DataFrame.")
+        if data.shape[1] != self.data["variables"].shape[1]:
+            raise ValueError(
+                "Data must have the same number of columns as the training data."
+            )
+        if data.shape[0] == 0:
+            raise ValueError("Data must have at least one row.")
+
+        if metadata is not None:
+            if not isinstance(metadata, pd.DataFrame):
+                raise ValueError("Metadata must be a pandas DataFrame.")
+            if metadata.shape[0] != data.shape[0]:
+                raise ValueError(
+                    "Metadata must have the same number of rows as the data."
+                )
+            # safety to remove samples from test set if they already exist in train set
+            if train_metadata is not None:
+                in_train_set = metadata["index"].isin(train_metadata["index"])
+                matching_indices = metadata.index[in_train_set].tolist()
+                metadata = metadata[~in_train_set]
+                
+            self.data["prediction_metadata"] = metadata
+
+        data = data.drop(index=matching_indices)
+
+        self.data["prediction_variables"] = data
+
+    def get_prediction_classes(self):
+        """
+        Returns the prediction scores of the KNN Classifier.
+
+        Returns:
+            np.ndarray: The prediction scores of the model.
+        """
+
+        if self.data.get("prediction_variables") is None:
+            return None
+        if self.data.get("model") is None:
+            return None
+        data = self.data.get("prediction_variables")
+        metadata = self.data.get("prediction_metadata")
+        scaler_model = self.data.get("scaler_model")
+        if scaler_model is not None:
+            scaled_data = scaler_model.transform(data)
+            data = pd.DataFrame(scaled_data, columns=data.columns, index=data.index)
+        scores = self.data["model"].predict(data)
+
+        scores = pd.DataFrame(
+            {
+                "index" : metadata["index"],
+                "labels" : scores,
+            }
+        )
+
+        return scores
+    
+    def get_prediction_probabilities(self, threshold: float | str = "auto") -> pd.DataFrame:
+        """
+        Tests the prediction outliers using the Isolation Forest model.
+
+        Args:
+            threshold (float | str): The threshold for outlier detection. If "auto", the threshold is set to the mean
+            of the training scores minus 3 times the standard deviation of the training scores.
+
+        Returns:
+            pd.DataFrame: A two row DataFrame containing the outlier and score columns for each prediction.
+        """
+        if self.data.get("prediction_variables") is None:
+                    return None
+        if self.data.get("model") is None:
+                    return None
+        data = self.data.get("prediction_variables")
+        metadata = self.data.get("prediction_metadata")
+        scaler_model = self.data.get("scaler_model")
+        if scaler_model is not None:
+            scaled_data = scaler_model.transform(data)
+            data = pd.DataFrame(scaled_data, columns=data.columns, index=data.index)
+        probs = self.data["model"].predict_proba(data)
+
+        threshold = 0.7
+        class_1_probs = probs[:, 1]
+        preds = (class_1_probs >= threshold).astype(int) 
+
+        return preds
