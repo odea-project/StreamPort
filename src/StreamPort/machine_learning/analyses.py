@@ -422,7 +422,6 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
                 self.data["variables"].drop_duplicates(inplace=True)
         else:
             raise ValueError("No variables to add.")
-
         if metadata is not None:
             if not isinstance(metadata, pd.DataFrame):
                 raise ValueError("Metadata must be a pandas DataFrame.")
@@ -458,7 +457,6 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             threshold (float | str): The threshold for outlier detection. If "auto", the threshold is set to the mean
             of the training scores minus 3 times the standard deviation of the training scores.
         """
-
         outliers = self.test_prediction_outliers(threshold)
 
         if outliers is None:
@@ -474,13 +472,13 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             raise ValueError("No prediction metadata to add.")
 
         for i in range(len(outliers)):
-            if outliers.iloc[i, 0] == 0 or add_outliers: 
+            if outliers.iloc[i, outliers.columns.get_loc("class")] == "normal" or add_outliers:
                 self.add_data(
                     prediction_variables.iloc[[i], :], prediction_metadata.iloc[[i], :]
                 )
 
         for i in reversed(range(len(outliers))):
-            if outliers.iloc[i, 0] == 0 or add_outliers:
+            if outliers.iloc[i, outliers.columns.get_loc("class")] == "normal" or add_outliers:
                 idx = self.data["prediction_variables"].index[i]
                 self.data["prediction_variables"] = self.data[
                     "prediction_variables"
