@@ -5,7 +5,6 @@ This module contains processing methods for device analyses data.
 import pandas as pd
 import numpy as np
 from statsmodels.tsa.seasonal import seasonal_decompose
-#from scipy.stats import skew, kurtosis
 from scipy.signal import savgol_filter 
 from sklearn import preprocessing as scaler
 from src.StreamPort.core import ProcessingMethod
@@ -129,14 +128,8 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             "pressure_std": 0,
             "pressure_range": 0,
             "runtime": 0,
-            # "residual_median": 0,
             "residual_noise": 0,
             "residual_std": 0,
-            # "residual_sum": 0,
-            # "residual_max": 0,
-            # "seasonal_amplitude": 0,
-            # "skewness": 0,
-            # "kurtosis": 0,
         }
 
         features_raw_transform = {
@@ -146,32 +139,33 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             "pressure_baseline_corrected": [],
         }
 
-        # A small subset of curves from each method is missing a datapoint. Could indicate an anomaly, may also be reflected in the true runtimes. 
-        # Solution is to pad all shorter curves for each unique method with zeros to indicate the run ended uncharacteristically and handle missing values to enforce a unified time axis.
-        method_time_vars = {}
+        # A small subset of curves from each method/batch is missing a datapoint. Could indicate an anomaly, may also be reflected in the true runtimes. 
+        # pad all shorter curves for each unique method with zeros to indicate the run ended uncharacteristically and handle missing values to enforce a unified time axis.
+        batch_time_vars = {}
 
-        # Find correct length per method
+        # Find correct length per method/batch
         for pc in data:
-            method = pc["method"]
-            time_var = np.array(pc["time_var"])
+            batch = pc["batch"]
+            time_var = np.nan_to_num(np.array(pc["time_var"]), nan=0.0)
 
-            if method not in method_time_vars:
-                method_time_vars[method] = time_var
-            elif len(time_var) > len(method_time_vars[method]):
-                method_time_vars[method] = time_var
+            if batch not in batch_time_vars:
+                batch_time_vars[batch] = time_var
+            elif len(time_var) > len(batch_time_vars[batch]):#batch time_vars are same for routine and error lc
+                batch_time_vars[batch] = time_var
 
         for i, pc in enumerate(data):
 
             # Zeros in place of actual values in these anomalous curves would set them apart in the bin amplitude values calculated below.
-            method = pc["method"]
+            batch = pc["batch"]
+            
             time_var = np.array(pc["time_var"])
-            pressure_vector = np.array(pc["pressure_var"])
-            target_time_var = method_time_vars[method]
+            pressure_vector = np.nan_to_num(np.array(pc["pressure_var"]), nan=0.0)
+            target_time_var = batch_time_vars[batch]
 
             if len(time_var) < len(target_time_var):
                 pc["pressure_var"] = np.concatenate([
                     pressure_vector,
-                    np.zeros(len(target_time_var) - len(pressure_vector))
+                    np.zeros(len(target_time_var) - len(time_var))
                 ])
                 pc["time_var"] = target_time_var
             
@@ -191,11 +185,11 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
 
             pressure_vector = np.array(pc["pressure_var"])
             time_var = np.array(pc["time_var"])
-            
-            # Crop the pressure vector to remove unwanted artifacts before processing
+
+            #crop the pressure vector to remove unwanted artifacts before processing
             pressure_vector = pressure_vector[self.parameters["crop"]:-self.parameters["crop"]] 
             time_var = time_var[self.parameters["crop"]:-self.parameters["crop"]]
-
+            
             pc["pressure_var"] = pressure_vector
             pc["time_var"] = time_var
 
@@ -204,26 +198,14 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
                     "Pressure vector and time variable must have the same length!"
                 )
 
-            # Apply baseline correction
-            # """
-            # 1. Simple Moving Average
-            # - smoothed version of the original signal, with each point replaced by the average of itself and its <window_size - 1> nearest neighbors
-            # - this smoothed vector is then subtracted from the original pressure vector to obtain the baseline corrected vector while retaining noise
-            # """
-            # smoothed_vector = np.convolve(pressure_vector, np.ones(window_size) / window_size, mode='same')
-            # # baseline correction by subtracting the smoothed vector from the original pressure vector
-            # baseline_corrected_vector = pressure_vector - smoothed_vector
-            # # Remove the elements from the beginning and end to avoid edge effects. Typically <window_size // 2>
-            # baseline_corrected_vector = baseline_corrected_vector[crop:-crop]
-
             """
-            2. Savitzky-Golay Filter
+            Savitzky-Golay Filter
             - applies a polynomial smoothing filter to the data, which is particularly effective for preserving features of the data while reducing noise
             - uses a sliding window to fit a polynomial to the data points within the window, and then replaces the central point with the value of the polynomial at that point
             """
-            #from scipy.signal import savgol_filter - to be manually implemented
+            #savgol_filter - to be manually implemented
             if self.parameters["window_size"] % 2 == 0:
-                self.parameters["window_size"] + 1  # Must be odd
+                self.parameters["window_size"] += 1  # Must be odd
 
             poly_order = 2  # Polynomial order
             smoothed_vector = savgol_filter(pressure_vector, self.parameters["window_size"], poly_order)
@@ -238,27 +220,21 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
 
             # np.array_split puts extra elements in the first bin if the length of the vector is not divisible by the number of bins
             vector_bins = np.array_split(baseline_corrected_vector, self.parameters["bins"])
+            reference_bins = np.array_split(target_time_var, self.parameters["bins"])
             bin_edges = []
-            start_edge = 0
-            for bin in vector_bins:
-                end_edge = start_edge + len(bin) - 1
 
-                key = f"abs_deviation_{time_var[start_edge].round(3)}_{time_var[end_edge].round(3)}" 
-                feati[key] = np.max(bin) - np.min(bin)
+            for bin_values, ref_times in zip(vector_bins, reference_bins):
+                start_time = round(ref_times[0], 3)
+                end_time = round(ref_times[-1], 3)
                 
-                bin_edges.append([start_edge, end_edge])
+                key = f"abs_deviation_{start_time}_{end_time}"
+                feati[key] = np.nanmax(bin_values) - np.nanmin(bin_values)
 
-                start_edge = end_edge + 1  
+                bin_edges.append([start_time, end_time])
 
             featrawi["bin_edges"] = bin_edges
 
             feati["area"] = np.trapz(pressure_vector, x=time_var)
-
-            # feati["skewness"] = skew(pressure_vector)
-            # feati["skewness"] = feati["skewness"] + abs(feati["skewness"]) + 1
-
-            # feati["kurtosis"] = kurtosis(pressure_vector)
-            # feati["kurtosis"] = feati["kurtosis"] + abs(feati["kurtosis"]) + 1
 
             decomp = seasonal_decompose(
                 pd.to_numeric(pressure_vector),
@@ -272,17 +248,12 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             featrawi["residual"] = decomp.resid
 
             residual = decomp.resid
-            # raise residual to all positive values
-            # transformed_residual = np.abs(transformed_residual)
             valid_mask = ~np.isnan(residual) & ~np.isnan(time_var)
             residual_derivative = np.gradient(residual[valid_mask])
             time_var_derivative = np.gradient(time_var[valid_mask])
 
             feati["residual_noise"] = np.std(residual_derivative / time_var_derivative)
-            # feati["residual_median"] = np.mean(residual[valid_mask])
             feati["residual_std"] = np.std(residual[valid_mask])
-            # feati["residual_sum"] = np.sum(transformed_residual)
-            # feati["residual_max"] = np.max(residual[valid_mask])
       
             pc["features"] = feati
             pc["features_raw"] = featrawi

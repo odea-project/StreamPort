@@ -246,7 +246,7 @@ class PressureCurvesAnalyses(Analyses):
                 try:
                     pc_fl = _read_pressure_curve_angi(fl, pc_template)
                 except ValueError:
-                    print("No data for this run: ", run)
+                    print("No data for this run: ", run)#error_lc
                     continue
             else:
                 raise ValueError(
@@ -444,7 +444,7 @@ class PressureCurvesAnalyses(Analyses):
             )
 
         fig.update_layout(
-            xaxis_title="Time (s)",
+            xaxis_title="Time (min)",
             yaxis_title="Pressure (bar)",
             template="simple_white",
         )
@@ -553,6 +553,7 @@ class PressureCurvesAnalyses(Analyses):
         for i in indices:
             pc = self.data[i]
             pc_feat = pc["features_raw"]
+            x=pc["time_var"]
 
             if max_trend is None:
                 max_trend = max(pc_feat["trend"])
@@ -561,7 +562,7 @@ class PressureCurvesAnalyses(Analyses):
 
             fig.add_trace(
                 go.Scatter(
-                    x=pc["time_var"],
+                    x=x,
                     y=pc_feat["trend"],
                     mode="lines",
                     name=f"trend {pc['name']} ({pc['sample']})",
@@ -591,7 +592,7 @@ class PressureCurvesAnalyses(Analyses):
 
             fig.add_trace(
                 go.Scatter(
-                    x=pc["time_var"],
+                    x=x,
                     y=pc_feat["pressure_baseline_corrected"],
                     mode="lines",
                     name=f"pressure_baseline_corrected {pc['name']} ({pc['sample']})",
@@ -600,14 +601,14 @@ class PressureCurvesAnalyses(Analyses):
             )
 
         fig.update_layout(
-            xaxis_title="Time (s)",
+            xaxis_title="Time (min)",
             yaxis_title="U.A.",
             template="simple_white",
         )
 
         for i in range(len(pc_feat["bin_edges"])):
-            x0 = pc["time_var"][pc_feat["bin_edges"][i][0]].round(3)
-            x1 = pc["time_var"][pc_feat["bin_edges"][i][1]].round(3) 
+            x0 = (pc_feat["bin_edges"][i][0]).round(3)
+            x1 = (pc_feat["bin_edges"][i][1]).round(3) 
             y1 = max_trend
             fig.add_shape(
                 type="rect",

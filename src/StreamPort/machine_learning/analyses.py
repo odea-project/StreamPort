@@ -584,6 +584,36 @@ class NearestNeighboursAnalyses(MachineLearningAnalyses):
     def __init__(self):
         super().__init__()
 
+    def add_labels(self, data: pd.DataFrame = None, labels: list = None) -> None:
+        if data is None:
+            data = self.data.get("variables")
+        
+        metadata = self.data.get("metadata")
+        
+        if labels is None:
+            if metadata is not None and "label" in metadata.columns:
+                labels = metadata["label"]
+            else:
+                labels = self.data.get("labels")
+
+        elif isinstance(labels, (np.ndarray, pd.Series, list)):
+            for i in labels:
+                if isinstance(i, int) and i in (0,1):
+                    continue
+                elif isinstance(i, str) and i in ("normal", "outlier"):
+                    continue
+                else:
+                    raise ValueError("Class labels must be either 0 or 1, or string values 'normal' or 'outlier'")
+        
+        else:
+            raise TypeError("Labels must be a list, NumPy array, or Pandas Series.")
+        
+        self.data["variables"] = data
+        self.data["label"] = labels
+        print("Labels have been successfully added!")
+    
+        return None
+
     def train(self, data: pd.DataFrame = None):
         """
         Trains the KNN classifier model on the provided data.
@@ -610,7 +640,7 @@ class NearestNeighboursAnalyses(MachineLearningAnalyses):
 
         self.data["variables"] = data
         self.data["labels"] = self.data.get("metadata")["label"]
-        labels = self.data.get("labels")
+        labels = self.data["labels"]
 
         scaler_model = self.data.get("scaler_model")
         if scaler_model is not None:
@@ -738,3 +768,4 @@ class NearestNeighboursAnalyses(MachineLearningAnalyses):
         preds = (class_1_probs >= threshold).astype(int) 
 
         return preds
+    
