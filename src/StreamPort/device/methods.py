@@ -155,7 +155,7 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
 
         for i, pc in enumerate(data):
 
-            # Zeros in place of actual values in these anomalous curves would set them apart in the bin amplitude values calculated below.
+            # padding with zeros in place of actual values in these anomalous curves would set them apart in the bin amplitude values calculated below.
             batch = pc["batch"]
             
             time_var = np.array(pc["time_var"])
@@ -169,8 +169,11 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
                 ])
                 pc["time_var"] = target_time_var
             
+            #padding done. Calculate features
             feati = features_template.copy()
             featrawi = features_raw_transform.copy()
+
+            feati["area"] = np.trapz(pressure_vector, x=time_var)
 
             feati["pressure_max"] = max(pc["pressure_var"])
             feati["pressure_min"] = min(pc["pressure_var"])
@@ -183,10 +186,10 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
 
             feati["runtime"] = pc.get("runtime", 0)
 
+            #crop the pressure vector to remove unwanted artifacts before processing
             pressure_vector = np.array(pc["pressure_var"])
             time_var = np.array(pc["time_var"])
 
-            #crop the pressure vector to remove unwanted artifacts before processing
             pressure_vector = pressure_vector[self.parameters["crop"]:-self.parameters["crop"]] 
             time_var = time_var[self.parameters["crop"]:-self.parameters["crop"]]
             
@@ -233,8 +236,6 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
                 bin_edges.append([start_time, end_time])
 
             featrawi["bin_edges"] = bin_edges
-
-            feati["area"] = np.trapz(pressure_vector, x=time_var)
 
             decomp = seasonal_decompose(
                 pd.to_numeric(pressure_vector),

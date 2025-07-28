@@ -12,6 +12,7 @@ import shap
 from sklearn.ensemble import IsolationForest
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn import preprocessing as scaler
+from sklearn.model_selection import train_test_split, GridSearchCV
 
 from src.StreamPort.core import ProcessingMethod
 from src.StreamPort.machine_learning.analyses import MachineLearningAnalyses
@@ -35,6 +36,7 @@ class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
         random_state: int | NpRandomState | None = None,
         verbose: int = 0,
         warm_start: bool = False,
+        novelty: bool = True,
     ):
         super().__init__()
         self.data_type = "MachineLearning"
@@ -53,6 +55,7 @@ class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
             "random_state": random_state,
             "verbose": verbose,
             "warm_start": warm_start,
+            "novelty": novelty,
         }
 
     def run(self, analyses: MachineLearningAnalyses) -> MachineLearningAnalyses:
@@ -74,7 +77,7 @@ class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
             )
 
         model = IsolationForest(**self.parameters)
-        model.fit(variables)
+        #model.fit(variables)
         data["model"] = model
         data["parameters"] = self.parameters
         analyses = IsolationForestAnalyses()
@@ -123,15 +126,16 @@ class MachineLearningMethodNearestNeighboursClassifierSklearn(ProcessingMethod):
 
         scaler_model = data.get("scaler_model")
         if scaler_model is not None:
-            scaled_variables = pd.DataFrame(
-                scaler_model.transform(variables),
+            scaled_variables = scaler_model.transform(variables)
+            variables = pd.DataFrame(
+                scaled_variables,
                 columns=variables.columns,
                 index=variables.index,
             )
 
-        #fit the KNN classifier
+        #create the KNN classifier
         model = KNeighborsClassifier(n_neighbors=self.parameters["n_neighbors"])
-        model.fit(variables, labels)
+        #model.fit(variables, labels)
 
         #store trained model
         data["model"] = model
@@ -204,7 +208,7 @@ class MachineLearningScaleFeaturesScalerSklearn(ProcessingMethod):
 
 class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
     """
-    Creates a method to evaluate the stability of a learning model, i.e, how well it performs classification/regression over many test iterations with no external parameter changes
+    Creates a method to evaluate the internal stability of a learning model, i.e, how well it performs classification/regression over many test iterations with no parameter changes
 
     Args:
         test_records (pd.DataFrame): A dataframe containing the classification results of all tests conducted by an ML object. 
@@ -218,11 +222,10 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
                  test_records: pd.DataFrame = None,  
                  confidence_buffer: float = 0.1, 
                  times_classified: int = 2,
-                 test_size: int = 4,
                  ):
 
-        # if a sample has been classified atleast 3 times, there is enough information to make a judgement on model stability
-        if test_records is not None and isinstance(test_records, pd.DataFrame) and len(test_records)//test_size >= 3:
+        # if a sample has been classified atleast n times, there is enough information to make a judgement on model stability. n = 2
+        if test_records is not None and isinstance(test_records, pd.DataFrame):
             self.test_records = test_records
         else:    
             raise ValueError("Insufficient test records given. Please pass a test record Dataframe.")
@@ -266,11 +269,11 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
         """
         summary = self.test_records.sort_values("index")
 
-        # True class assignment
+        # true class assignment
         class_results = summary.groupby('index').apply(self._get_true_classes, include_groups=False).reset_index(name='class_true')
-        summary = summary.merge(class_results, on='index', how='left')
+        summary = pd.merge(summary, class_results, on='index', how='left')
 
-        # Keep class_true only on first occurrence per index
+        # keep class_true only on first occurrence per index
         first_occurrence = ~summary.duplicated(subset='index')
         summary.loc[~first_occurrence, 'class_true'] = ""
 
@@ -362,3 +365,89 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
 #         data["shap_values"] = shap_values
 #         analyses.data = data
 #         return analyses
+
+
+class MachineLearningAutomateTestParametersGridSearchSklearn(ProcessingMethod):
+    """
+    Performs automated cross-validation of multiple parameter combinations and estimates the best setup for predictions using GridSearchCV.
+    """
+    def __init__(self, 
+                 model: IsolationForest(),
+                 scaler: scaler = scaler.StandardScaler(), 
+                 parameter_grid: dict = {
+                        'n_estimators': [50, 100, 200],
+                        'max_samples': ['auto', 0.5, 0.7],
+                        'contamination': [0.05, 0.1, 0.2],
+                        'max_features': [0.5, 0.7, 1.0],
+                        'random_state': [42]  
+                        },  
+                 cv: int = 3, 
+                 scoring: str = 'accuracy', 
+                 verbose: int = 2, 
+                 n_jobs: int = -1):
+        super.__init__()
+        self.data_type = "MachineLearning"
+        self.method = "GridSearchCV"
+        self.algorithm = "Sklearn"
+        self.input_instance = dict
+        self.output_instance = dict
+        self.number_permitted = 1
+        self.parameters = {
+            "model" : model,
+            "scaler" : scaler,
+            "parameter_grid" : parameter_grid,
+            "cv" : cv,
+            "scoring" : scoring,
+            "verbose" : verbose,
+            "n_jobs" : n_jobs,
+        }
+    
+    def run(self, test_features: pd.DataFrame = None, test_metadata: pd.DataFrame = None):
+
+        search = GridSearchCV(
+                            self.parameters["model"],
+                            self.parameters["parameter_grid"],
+                            self.parameters["cv"],
+                            self.parameters["scoring"],
+                            self.parameters["verbose"],
+                            self.parameters["n_jobs"],
+                            )
+        
+        scaler = self.parameters["scaler"]
+
+        variables = self.parameters["model"].data.get("variables")
+        
+        scaled_vars = scaler.fit_transform(variables)
+        self.parameters["model"]["variables"] = pd.DataFrame(
+            scaled_vars,
+            columns=variables.columns,
+            index=variables.index
+        )
+
+        search.fit(self.parameters["model"].data.get("variables"),
+                   self.parameters["model"].data.get("metadata")
+                   )
+        
+        print("Best params: ", search.best_params_)
+
+        best_model = search.best_estimator_
+
+        test_features = test_features if test_features is not None else self.parameters["model"].data.get("prediction_variables")
+        test_metadata = test_metadata if test_metadata is not None else self.parameters["model"].data.get("prediction_metadata")
+        
+
+        scaled_test = scaler.transform(test_features)
+        test_features_scaled = pd.DataFrame(
+            scaled_test, 
+            columns=test_features.columns,
+            index=test_features.index
+        )
+
+        prediction_scores = best_model.predict(test_features_scaled)
+
+        scores = {
+            "index" : test_metadata["index"],
+            "label" : np.where(prediction_scores == -1, "outlier", "normal")
+        }
+
+        return scores

@@ -258,7 +258,7 @@ class PressureCurvesAnalyses(Analyses):
         self.data = sorted(self.data, key=lambda x: x["start_time"])
 
         #remove StandBy samples in case of error-lc data
-        self.data = [pc for pc in self.data if pc["sample"] != "StandBy"]
+        self.data = [pc for pc in self.data if pc["sample"].lower() != "standby"]
 
         for i, pc in enumerate(self.data):
             pc["index"] = i
@@ -687,7 +687,7 @@ class PressureCurvesAnalyses(Analyses):
 
 class ActualsAnalyses(Analyses):
     """
-    Class for analyzing device Actuals to be used in combination with signal readings
+    Class for analyzing device Actuals to be used in combination with pressure signal readings
     
     Args:
         files (list): List of paths to actuals data files. Possible formats are .csv.
@@ -695,6 +695,19 @@ class ActualsAnalyses(Analyses):
     Attributes:
         data (list): List of dictionaries containing actuals data. Each dictionary contains the following
             keys:
+            - index: Index of the actuals file.
+            - path: Path to the actuals data file.
+            - batch: Batch name assigned using corresponding pressure curve.
+            - batch_position: Position of the batch in the analysis.
+            - sample: Sample name assigned using corresponding pressure curve.
+            - method: Method name using corresponding pressure curve.
+            - timestamp: Timestamp of the actuals data used to identify and connect to pressure data.
+            - start_time: Start time of the actuals file.
+            - end_time: End time of the actuals file.
+            - module_id: Name of the module/sensor (THM, DAD, ...)
+            - temperature_var: Temperature signal reading.
+            - valve_position: Valve position entry.
+            - error_state: Entry on any discovered errors.
 
     Methods:
     """
