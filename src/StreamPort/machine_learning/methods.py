@@ -36,7 +36,6 @@ class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
         random_state: int | NpRandomState | None = None,
         verbose: int = 0,
         warm_start: bool = False,
-        novelty: bool = True,
     ):
         super().__init__()
         self.data_type = "MachineLearning"
@@ -55,7 +54,6 @@ class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
             "random_state": random_state,
             "verbose": verbose,
             "warm_start": warm_start,
-            "novelty": novelty,
         }
 
     def run(self, analyses: MachineLearningAnalyses) -> MachineLearningAnalyses:
@@ -262,7 +260,7 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
 
         Returns:
             true_classes (pd.DataFrame): A dataframe containing the calculated true classes per test index.
-                                        Samples that were not tested sufficiently to form a decision are assigned "not_set" until further tests are run and the process is repeated.
+                                        Samples that were not tested sufficiently to form a decision are assigned "not_set" or the value of the majority class until further tests are run.
             stability_score (float): The mean value of the model's combined stability.
                         combined_stability: agreement score (how many times the same sample received the same class label) 
                                         +   confidence_consistency (consistency of classification confidence values per sample = 1/(std/mean)variation in confidences)  
@@ -273,11 +271,7 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
         class_results = summary.groupby('index').apply(self._get_true_classes, include_groups=False).reset_index(name='class_true')
         summary = pd.merge(summary, class_results, on='index', how='left')
 
-        # keep class_true only on first occurrence per index
-        first_occurrence = ~summary.duplicated(subset='index')
-        summary.loc[~first_occurrence, 'class_true'] = ""
-
-        # Agreement analysis
+        # agreement analysis: how often a sample received the same label 
         label_counts = summary.groupby(['index', 'class']).size().unstack(fill_value=0)
         max_counts = label_counts.max(axis=1)
         total_counts = label_counts.sum(axis=1)
@@ -285,7 +279,7 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
 
         majority_class = label_counts.idxmax(axis=1)
 
-        # Confidence variation per index
+        # confidence variation in class_assignment per sample
         confidence_variation = summary.groupby('index').apply(
             lambda g: self._get_confidence_variation(g, majority_class), 
             include_groups=False
@@ -299,6 +293,9 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
             majority_class.rename("majority_class"),
             confidence_consistency.rename("confidence_consistency")
         ], axis=1)
+
+        mask = true_classes[true_classes["class_true"] == "not_set"]
+        true_classes.loc[mask, "class_true"] = true_classes.loc[mask, "majority_class"]
 
         stability_df = combined_stability.reset_index(name='stability_score')
         summary = summary.merge(stability_df, on='index', how='left')

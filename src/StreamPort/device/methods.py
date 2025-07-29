@@ -28,7 +28,7 @@ class PressureCurvesMethodAssignBatchPositionNative(ProcessingMethod):
 
     def run(self, analyses: PressureCurvesAnalyses) -> PressureCurvesAnalyses:
         """
-        Assigns batch position and calculated iddle time to pressure curves.
+        Assigns batch position and calculated idle time to pressure curves.
         Args:
             analyses (PressureCurvesAnalyses): The PressureCurvesAnalyses instance to process.
         Returns:
@@ -139,28 +139,28 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             "pressure_baseline_corrected": [],
         }
 
-        # A small subset of curves from each method/batch is missing a datapoint. Could indicate an anomaly, may also be reflected in the true runtimes. 
+        # a small subset of curves from each method/batch is missing a datapoint. Could indicate an anomaly, may also be reflected in the true runtimes. 
         # pad all shorter curves for each unique method with zeros to indicate the run ended uncharacteristically and handle missing values to enforce a unified time axis.
-        batch_time_vars = {}
+        method_time_vars = {}
 
         # Find correct length per method/batch
         for pc in data:
-            batch = pc["batch"]
+            method = pc["method"]
             time_var = np.nan_to_num(np.array(pc["time_var"]), nan=0.0)
 
-            if batch not in batch_time_vars:
-                batch_time_vars[batch] = time_var
-            elif len(time_var) > len(batch_time_vars[batch]):#batch time_vars are same for routine and error lc
-                batch_time_vars[batch] = time_var
+            if method not in method_time_vars:
+                method_time_vars[method] = time_var
+            elif len(time_var) > len(method_time_vars[method]):
+                method_time_vars[method] = time_var
 
         for i, pc in enumerate(data):
 
             # padding with zeros in place of actual values in these anomalous curves would set them apart in the bin amplitude values calculated below.
-            batch = pc["batch"]
-            
+            method = pc["method"]
             time_var = np.array(pc["time_var"])
+            print("Diag device/methods/ln. 161: method: ",method, ", end time: ", time_var[-1])#fix this for error_lc
             pressure_vector = np.nan_to_num(np.array(pc["pressure_var"]), nan=0.0)
-            target_time_var = batch_time_vars[batch]
+            target_time_var = method_time_vars[method]
 
             if len(time_var) < len(target_time_var):
                 pc["pressure_var"] = np.concatenate([
@@ -169,9 +169,26 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
                 ])
                 pc["time_var"] = target_time_var
             
-            #padding done. Calculate features
+            # padding done. Calculate features
             feati = features_template.copy()
             featrawi = features_raw_transform.copy()
+
+            vial_empty = False
+            start_of_curve = pressure_vector[0 : self.parameters["crop"]]
+            # if the initial values of the pressure curve have a positive rate of change, it is likely VialEmpty. Added later to 1st bin RoC
+            # based on observation of available data, early noise to be cropped has a negative rate of change
+            if (start_of_curve[-1] - start_of_curve[0]) > 0: 
+                vial_empty = True 
+            
+            # crop the pressure vector to remove unwanted artifacts before processing
+            pressure_vector = np.array(pc["pressure_var"])
+            time_var = np.array(pc["time_var"])
+
+            pressure_vector = pressure_vector[self.parameters["crop"]:-self.parameters["crop"]] 
+            time_var = time_var[self.parameters["crop"]:-self.parameters["crop"]]
+            
+            pc["pressure_var"] = pressure_vector
+            pc["time_var"] = time_var
 
             feati["area"] = np.trapz(pressure_vector, x=time_var)
 
@@ -185,16 +202,6 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             feati["pressure_range"] = feati["pressure_max"] - feati["pressure_min"]
 
             feati["runtime"] = pc.get("runtime", 0)
-
-            #crop the pressure vector to remove unwanted artifacts before processing
-            pressure_vector = np.array(pc["pressure_var"])
-            time_var = np.array(pc["time_var"])
-
-            pressure_vector = pressure_vector[self.parameters["crop"]:-self.parameters["crop"]] 
-            time_var = time_var[self.parameters["crop"]:-self.parameters["crop"]]
-            
-            pc["pressure_var"] = pressure_vector
-            pc["time_var"] = time_var
 
             if len(pressure_vector) != len(time_var):
                 raise ValueError(
@@ -220,22 +227,38 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
                                                       neginf = np.min(baseline_corrected_vector))
 
             featrawi["pressure_baseline_corrected"] = baseline_corrected_vector
+            #savgol_filter done
 
-            # np.array_split puts extra elements in the first bin if the length of the vector is not divisible by the number of bins
-            vector_bins = np.array_split(baseline_corrected_vector, self.parameters["bins"])
-            reference_bins = np.array_split(target_time_var, self.parameters["bins"])
+            # define bin edges by index
+            split_idxs = np.linspace(0, len(target_time_var), self.parameters["bins"] + 1, dtype=int)
+
             bin_edges = []
 
-            for bin_values, ref_times in zip(vector_bins, reference_bins):
-                start_time = round(ref_times[0], 3)
-                end_time = round(ref_times[-1], 3)
-                
-                key = f"abs_deviation_{start_time}_{end_time}"
-                feati[key] = np.nanmax(bin_values) - np.nanmin(bin_values)
+            for i in range(self.parameters["bins"]):
+                start_idx = split_idxs[i]
+                end_idx = split_idxs[i + 1] - 1
+
+                if end_idx >= len(pressure_vector):
+                    end_idx = len(pressure_vector) - 1  
+
+                start_time = round(target_time_var[start_idx], 3)
+                end_time = round(target_time_var[end_idx], 3)
+
+                key_roc = f"roc_{start_time}_{end_time}"  # deviation in curves caused by e.g. Open Oven lost in smoothing. Pressure curve RoC in bins to id exact moment error causes change
+                key_dev = f"abs_deviation_{start_time}_{end_time}"  # absolute fluctuation in the bin without baseline pressure value to catch small deviations
+
+                if vial_empty == True:# 1st bin reflects high positive rate of change in case of VialEmpty, simplifying identification
+                    feati[key_roc] = ((pressure_vector[end_idx] - start_of_curve[0]) / start_of_curve[0]).round(2)
+                else:
+                    feati[key_roc] = ((pressure_vector[end_idx] - pressure_vector[start_idx]) / pressure_vector[start_idx]).round(2)
+
+                bin_values = baseline_corrected_vector[start_idx:end_idx + 1]  
+                feati[key_dev] = np.nanmax(bin_values) - np.nanmin(bin_values)
 
                 bin_edges.append([start_time, end_time])
 
             featrawi["bin_edges"] = bin_edges
+
 
             decomp = seasonal_decompose(
                 pd.to_numeric(pressure_vector),

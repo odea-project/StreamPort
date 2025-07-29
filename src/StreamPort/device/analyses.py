@@ -95,6 +95,12 @@ def _read_pressure_curve_angi(fl: str, pc_template: dict) -> dict:
         pc_fl["method"] = os.path.basename(method_name.text)
     else:
         raise ValueError("No method name found in SAMPLE.XML file.")
+    
+    #handle error_lc
+    datafile_path = root.find(".//RefDataFilePath")
+    if "D2F" in datafile_path:
+        pc_fl["method"] = "error_lc"
+    #/handle error_lc done
 
     with open(log_file, encoding=get_file_encoding(log_file)) as f:
         for line in f:
@@ -273,7 +279,7 @@ class PressureCurvesAnalyses(Analyses):
             ).total_seconds()
 
             if (
-                pc["method"] == self.data[i - 1]["method"]
+                pc["method"] == self.data[i - 1]["method"]# error_lc batch position assignment breaks here
                 and pc["batch"] == self.data[i - 1]["batch"]
             ):
                 pc["batch_position"] = self.data[i - 1]["batch_position"] + 1
@@ -623,7 +629,7 @@ class PressureCurvesAnalyses(Analyses):
                 x=(x0 + x1) / 2,  
                 y=y1 + 2.0, 
                 text =f"<br>Bin {i+1}<br>",      
-                hovertext=f"Entries between time: {x0} and {x1}",
+                hovertext=f"<br>Entries between time: {x0} and {x1}",
                 showarrow=False,
                 font=dict(size=12, color="black"),
                 align="center",  
