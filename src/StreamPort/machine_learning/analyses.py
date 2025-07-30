@@ -4,7 +4,7 @@ This module contains analyses child classes for machine learning data processing
 
 import pandas as pd
 import numpy as np
-from datetime import datetime
+#from datetime import datetime
 import plotly.graph_objects as go
 import plotly.colors
 from src.StreamPort.core import Analyses
@@ -289,7 +289,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             of the training scores minus 3 times the standard deviation of the training scores.
 
         Returns:
-            pd.DataFrame: A two row DataFrame containing the outlier and score columns for each prediction.
+            pd.DataFrame: A DataFrame containing the details of the predictions.
         """
         training_scores = self.get_training_scores()
         prediction_scores = self.get_prediction_scores()
@@ -578,7 +578,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
 
 class NearestNeighboursAnalyses(MachineLearningAnalyses):
     """
-    This class extends the MachineLearningAnalyses class and is used to perform K - Nearest Neighbour analysis.
+    This class extends the MachineLearningAnalyses class and is used to perform K - Nearest Neighbours analysis.
     """
 
     def __init__(self):

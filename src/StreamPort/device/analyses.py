@@ -97,8 +97,7 @@ def _read_pressure_curve_angi(fl: str, pc_template: dict) -> dict:
         raise ValueError("No method name found in SAMPLE.XML file.")
     
     #handle error_lc
-    datafile_path = root.find(".//RefDataFilePath")
-    if "D2F" in datafile_path:
+    if "D2F" in pc_fl["name"]:
         pc_fl["method"] = "error_lc"
     #/handle error_lc done
 
@@ -252,7 +251,7 @@ class PressureCurvesAnalyses(Analyses):
                 try:
                     pc_fl = _read_pressure_curve_angi(fl, pc_template)
                 except ValueError:
-                    print("No data for this run: ", run)#error_lc
+                    print("No data for this run: ", run)#error_lc. Corrupted .D files cannot be read with SignalExtraction
                     continue
             else:
                 raise ValueError(
@@ -279,7 +278,7 @@ class PressureCurvesAnalyses(Analyses):
             ).total_seconds()
 
             if (
-                pc["method"] == self.data[i - 1]["method"]# error_lc batch position assignment breaks here
+                pc["method"] == self.data[i - 1]["method"]# error_lc batch position assignment broke here. Fixed.
                 and pc["batch"] == self.data[i - 1]["batch"]
             ):
                 pc["batch_position"] = self.data[i - 1]["batch_position"] + 1

@@ -158,7 +158,6 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             # padding with zeros in place of actual values in these anomalous curves would set them apart in the bin amplitude values calculated below.
             method = pc["method"]
             time_var = np.array(pc["time_var"])
-            print("Diag device/methods/ln. 161: method: ",method, ", end time: ", time_var[-1])#fix this for error_lc
             pressure_vector = np.nan_to_num(np.array(pc["pressure_var"]), nan=0.0)
             target_time_var = method_time_vars[method]
 
@@ -247,10 +246,10 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
                 key_roc = f"roc_{start_time}_{end_time}"  # deviation in curves caused by e.g. Open Oven lost in smoothing. Pressure curve RoC in bins to id exact moment error causes change
                 key_dev = f"abs_deviation_{start_time}_{end_time}"  # absolute fluctuation in the bin without baseline pressure value to catch small deviations
 
-                if vial_empty == True:# 1st bin reflects high positive rate of change in case of VialEmpty, simplifying identification
-                    feati[key_roc] = ((pressure_vector[end_idx] - start_of_curve[0]) / start_of_curve[0]).round(2)
-                else:
-                    feati[key_roc] = ((pressure_vector[end_idx] - pressure_vector[start_idx]) / pressure_vector[start_idx]).round(2)
+                feati[key_roc] = ((pressure_vector[end_idx] - pressure_vector[start_idx]) / pressure_vector[start_idx]).round(2)
+                if i == 0:
+                    if vial_empty == True:# 1st bin reflects high positive rate of change in case of VialEmpty, simplifying identification
+                        feati[key_roc] = ((pressure_vector[end_idx] - start_of_curve[0]) / start_of_curve[0]).round(2)
 
                 bin_values = baseline_corrected_vector[start_idx:end_idx + 1]  
                 feati[key_dev] = np.nanmax(bin_values) - np.nanmin(bin_values)
