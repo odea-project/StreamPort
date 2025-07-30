@@ -13,6 +13,7 @@ from sklearn.ensemble import IsolationForest
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn import preprocessing as scaler
 from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.metrics import accuracy_score
 
 from src.StreamPort.core import ProcessingMethod
 from src.StreamPort.machine_learning.analyses import MachineLearningAnalyses
@@ -244,8 +245,9 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
             return "normal"
         else:
             return "not set"
-
-    def _get_confidence_variation(self, group, majority_class_series):
+        
+    # the confidence with which a sample is classified/flagged fluctuates based on ML kernel, train size, test group, scaling.
+    def _get_confidence_variation(self, group, majority_class_series): 
         majority = majority_class_series.loc[group.name]
         confidence_values = group.loc[group['class'] == majority, 'confidence']
         if len(confidence_values) == 0:
@@ -254,7 +256,7 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
         std_conf = confidence_values.std()
         return np.nan if mean_conf == 0 or pd.isna(mean_conf) else std_conf / mean_conf
 
-    def run(self):
+    def run(self):# should the two private methods be standalone public methods in place of run() for better usability?
         """
         Evaluates the internal stability of a model and assigns true classes to data based on previous classification test results
 
@@ -262,11 +264,13 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
             instance attributes.
 
         Returns:
-            true_classes (pd.DataFrame): A dataframe containing the calculated true classes per test index.
-                                        Samples that were not tested sufficiently to form a decision are assigned "not_set" or the value of the majority class until further tests are run.
-            stability_score (float): The mean value of the model's combined stability.
-                        combined_stability: agreement score (how many times the same sample received the same class label) 
-                                        +   confidence_consistency (consistency of classification confidence values per sample = 1/(std/mean)variation in confidences)  
+            dict(
+                true_classes (pd.DataFrame): A dataframe containing the calculated true classes per test index.
+                                            Samples that were not tested sufficiently to form a decision are assigned "not_set" or the value of the majority class until further tests are run.
+                stability_score (float): The mean value of the model's combined stability.
+                    combined_stability: agreement score (how many times the same sample received the same class label) 
+                                    +   confidence_consistency (consistency of classification confidence values per sample = 1/(std/mean)variation in confidences)
+            )  
         """
         summary = self.test_records.sort_values("index")
 
@@ -296,86 +300,92 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
             majority_class.rename("majority_class"),
             confidence_consistency.rename("confidence_consistency")
         ], axis=1)
+        true_classes.reset_index(inplace=True)
 
         stability_df = combined_stability.reset_index(name='stability_score')
         summary = summary.merge(stability_df, on='index', how='left')
         print("Model performance Summary: ", summary.head())
 
-        return true_classes, combined_stability.mean()
+        return {"true_classes" : true_classes, 
+                "stability_score" : combined_stability.mean()}
 
 
-# class MachineLearningMethodShapExplainerShap(ProcessingMethod):###----INCOMPLETE!!---###
-#     """
-#     Explains the predictions of a machine learning model using SHAP (SHapley Additive exPlanations).
-#     """
+class MachineLearningExplainModelPredictionShap(ProcessingMethod):###----INCOMPLETE!!---###
+    """
+    Explains the predictions based on feature importances of a machine learning model using SHAP (SHapley Additive exPlanations).
+    """
 
-#     def __init__(self, model: Literal["classification", "regression"] = "regression", model_type: Literal["tree", "linear", "deep"] = "tree"):
-#         super().__init__()
-#         self.data_type = "MachineLearning"
-#         self.method = "ExplainModel"
-#         self.algorithm = "SHAP"
-#         self.input_instance = dict
-#         self.output_instance = dict
-#         self.number_permitted = 1
-#         self.parameters = {"type": model_type, "model": model}
+    def __init__(self, model: None = None, task: Literal["classification", "anomaly_detection"] = "classification", model_type: Literal["distance", "tree", "linear", "deep"] = "distance"):
+        super().__init__()
+        self.data_type = "MachineLearning"
+        self.method = "ExplainModel"
+        self.algorithm = "SHAP"
+        self.input_instance = dict
+        self.output_instance = dict
+        self.number_permitted = 1
+        self.parameters = {"model" : model, "task": task, "model_type": model_type}
 
-#     def run(self, analyses: MachineLearningAnalyses) -> MachineLearningAnalyses:
-#         """
-#         Runs the SHAP explanation on the provided data from a MachineLearning instance.
-#         Args:
-#             analyses (MachineLearning): The MachineLearning instance containing the data to be processed.
-#         Returns:
-#             MachineLearning: The processed MachineLearning instance with SHAP explanations.
-#         """
-#         data = analyses.data
-#         if len(data) == 0:
-#             print("No data to process.")
-#             return analyses
+    def run(self, analyses: MachineLearningAnalyses) -> MachineLearningAnalyses:
+        """
+        Runs the SHAP explanation on the provided data from a MachineLearning instance.
+        Args:
+            analyses (MachineLearning): The MachineLearning instance containing the data to be processed.
+        Returns:
+            analyses (MachineLearning): The processed MachineLearning instance with SHAP explanations.
+        """
+        data = analyses.data
+        if len(data) == 0:
+            print("No data to process.")
+            return analyses
 
-#         model = data.get("model")
-#         if model is None:
-#             raise ValueError("No model found for explanation.")
+        model = data.get("model")
+        if model is None:
+            raise ValueError("No model provided for explanation.")
 
-#         #tree-based models (RandomForest, XGBoost, LightGBM, CatBoost)
-#         if self.parameters["type"] == "tree":
-#             explainer = shap.TreeExplainer(model)
+        # distance-based models (KNN)
+        if self.parameters["model_type"] == "distance":
+            explainer = shap.KernelExplainer(model)
 
-#         #linear models
-#         #elif self.parameters["type"] == "linear":
-#         #    explainer = shap.LinearExplainer(model, X_train)
+        # tree-based models (RandomForest, XGBoost, LightGBM, CatBoost)
+        if self.parameters["model_type"] == "tree":
+            explainer = shap.TreeExplainer(model)
+
+        # linear models
+        #elif self.parameters["model_type"] == "linear":
+        #    explainer = shap.LinearExplainer(model, X_train)
         
-#         # for deep learning models (Keras, PyTorch)
-#         #elif self.parameters["type"] == "deep":
-#         #    explainer = shap.DeepExplainer(model, X_train)
+        # deep learning models (Keras - Autoencoder, PyTorch)
+        #elif self.parameters["model_type"] == "deep":
+        #    explainer = shap.DeepExplainer(model, X_train)
 
-#         test_variables = data.get("prediction variables")
-#         if test_variables is None:
-#             raise ValueError("Pass test data to algorithm for explanation.")
+        test_variables = data.get("prediction variables")
+        if test_variables is None:
+            raise ValueError("Pass test data to algorithm for explanation.")
         
-#         if self.parameters["model"] == "classification":
-#             shap_values = explainer.shap_values(test_variables)
-#         elif self.parameters["model"] == "regression":
-#             shap_values = explainer.expected_value(test_variables)
+        if self.parameters["task"] == "classification":
+            shap_values = explainer.shap_values(test_variables)
+        elif self.parameters["task"] == "anomaly_detection":
+            shap_values = explainer.expected_value(test_variables)
 
-#         print("SHAP values calculated. Run shap.summary_plot(shap_values, test_data) to visualize them.")
+        print("SHAP values calculated. Run shap.summary_plot(shap_values, test_data) to visualize them.")
 
-#         data["shap_values"] = shap_values
-#         analyses.data = data
-#         return analyses
+        data["shap_values"] = shap_values
+        analyses.data = data
+        return analyses
 
 
-class MachineLearningAutomateTestParametersGridSearchSklearn(ProcessingMethod):
+class MachineLearningAutomateTestParameterTuningGridSearchSklearn(ProcessingMethod):
     """
     Performs automated cross-validation of multiple parameter combinations and estimates the best setup for predictions using GridSearchCV.
 
     Args:
-        - model (sklearn): An ML model object (e.g. sklearn.ensemble.IsolationForest). 
-        - scaler (sklearn): A scaler object (sklearn.preprocessing). If no scaler is provided, a default scaler will be used.
+        - model (sklearn): An ML model object (e.g. sklearn.neighbors.KNeighborsClassifier). 
+        - scaler (sklearn): A scaler object (sklearn.preprocessing). If no scaler is provided, StandardScaler will be used by default.
         - train_data (pd.DataFrame): A DataFrame of the training data.
         - train_metadata (pd.DataFrame): A DataFrame of training metadata/labels.                         
         - parameter_grid (dict): A dict of test parameters that should be Cross-validated by GridSearchCV. If none is given, it will be estimated based on the model provided.
-        - cv (int):
-        - scoring (str):
+        - cv (int): Cross-validation folds to take for parameter tuning. Defaults is 3
+        - scoring (str): Scoring metric to be applied on the model's classification results. Defaults to 'accuracy'
         - verbose (int):
         - n_jobs (int):
     """
@@ -423,7 +433,7 @@ class MachineLearningAutomateTestParametersGridSearchSklearn(ProcessingMethod):
             Instance attributes.
 
         Returns:
-            grid (tuple): A 2-tuple containing the scaler used on the training data, and the GridSearchCV object fit to the parameters. 
+            grid (dict): A dict containing the scaler used on the training data, and the GridSearchCV object fit to the parameters. 
         """
         search = GridSearchCV(
                             estimator = self.parameters["model"],
@@ -439,26 +449,29 @@ class MachineLearningAutomateTestParametersGridSearchSklearn(ProcessingMethod):
         data = self.parameters["data"]
         metadata = self.parameters["metadata"]
 
-        if isinstance(self.parameters["model"], IsolationForest):
-            y = metadata
-        elif isinstance(self.parameters["model"], KNeighborsClassifier):
-            y = metadata["label"]
-        else:
-            raise TypeError("Wrong model passed to GridSearch. Please provide an IsolationForest or KNeighborsClassifier object.")
-
         scaled_data = scaler.fit_transform(data)
         scaled_train = pd.DataFrame(
             scaled_data,
             columns=data.columns,
             index=data.index
         )
+        ####Expand for XGBoost and further
+        if isinstance(self.parameters["model"], KNeighborsClassifier):
+            y = metadata["label"]
+
+        else:
+            y = None
+            raise TypeError("Wrong model passed to GridSearch. Please provide an XGBoost or KNeighborsClassifier object.")
 
         search.fit(scaled_train,
-                   y
-                   )
-        
+                    y
+                )
+
         print("Best params: ", search.best_params_)
-        print("Get accuracy of best estimator on test set using: search.best_estimator_.score(X_test_scaled, y_test)")
-        grid = (scaler, search)
+        print("Get accuracy of best estimator on test set using: grid['grid_object'].best_estimator_.score(X_test_scaled, y_test)")
+        grid = {
+            "scaler" : scaler,
+            "grid_object" : search
+        }
 
         return grid
