@@ -226,24 +226,32 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
                  times_classified: int = 2,
                  ):
         super().__init__()
+        self.data_type = "MachineLearning"
+        self.method = "EvaluateModelStability"
+        self.algorithm = "Native"
+        self.input_instance = None
+        self.output_instance = None
+        self.number_permitted = 1
+        self.parameters = { "test_records" : test_records,
+                            "confidence_buffer" : confidence_buffer,
+                            "times_classified" : times_classified,
+                           }
         self.data = {}
 
         # if a sample has been classified atleast n times, there is enough information to make a judgement on model stability. n = 2
-        if test_records is not None and isinstance(test_records, pd.DataFrame):
-            self.test_records = test_records
-        else:    
+        if self.parameters.get("test_records") is None or not isinstance(self.parameters.get("test_records"), pd.DataFrame):    
             raise ValueError("Insufficient test records given. Please pass a test record Dataframe.")
     
-        self.confidence_buffer = confidence_buffer if isinstance(confidence_buffer, float) and 0.0 <= confidence_buffer <= 0.2 else 0.1 
-        self.times_classified = times_classified if isinstance(times_classified, int) and times_classified >= 2 else 2
+        self.parameters["confidence_buffer"] = confidence_buffer if isinstance(confidence_buffer, float) and 0.0 <= confidence_buffer <= 0.2 else 0.1 
+        self.parameters["times_classified"] = times_classified if isinstance(times_classified, int) and times_classified >= 2 else 2
 
     def _get_true_classes(self, group):
-        outlier_count = ((group['class'] == 'outlier') & (group['confidence'] > 1 + self.confidence_buffer)).sum()
-        inlier_count  = ((group['class'] == 'normal')  & (group['confidence'] < 1 - self.confidence_buffer)).sum()
+        outlier_count = ((group['class'] == 'outlier') & (group['confidence'] > 1 + self.parameters["confidence_buffer"])).sum()
+        inlier_count  = ((group['class'] == 'normal')  & (group['confidence'] < 1 - self.parameters["confidence_buffer"])).sum()
 
-        if outlier_count > self.times_classified and outlier_count > inlier_count:
+        if outlier_count > self.parameters["times_classified"] and outlier_count > inlier_count:
             return "outlier"
-        elif inlier_count > self.times_classified and inlier_count > outlier_count:
+        elif inlier_count > self.parameters["times_classified"] and inlier_count > outlier_count:
             return "normal"
         else:
             return "not set"
@@ -274,7 +282,7 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
                                     +   confidence_consistency (consistency of classification confidence values per sample = 1/(std/mean)variation in confidences)
             )  
         """
-        summary = self.test_records.sort_values("index")
+        summary = self.parameters["test_records"].sort_values("index")
 
         # true class assignment
         class_results = summary.groupby('index').apply(self._get_true_classes, include_groups=False).reset_index(name='class_true')
@@ -323,45 +331,60 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
 
         if summary is None or true_classes is None:
             self.data = self.run()
-            summary = summary = self.data.get("summary")
+            summary = self.data.get("summary")
             true_classes = self.data.get("true_classes")
 
+        # merge to pair number of classifications per index/sample with the estimated true labels
         merged_df = summary.merge(true_classes, on='index', how='left')
-        
-        # number of normal and outlier classifications for each index
-        normal_counts = merged_df[merged_df['confidence'] <= 1].groupby('index').size()
-        outlier_counts = merged_df[merged_df['confidence'] > 1].groupby('index').size()
+
+        grouped_by_index = merged_df.groupby('index')
 
         # total number of tests per index
-        total_tests = merged_df.groupby('index').size()
+        total_tests = grouped_by_index.size().to_dict()
+
+        # number of normal and outlier classifications for each index
+        normal_counts = merged_df[merged_df['confidence'] <= 1].groupby('index').size().to_dict()
+        outlier_counts = merged_df[merged_df['confidence'] > 1].groupby('index').size().to_dict()
     
         # average confidence per index
-        avg_confidence = merged_df.groupby('index')['confidence'].mean()
+        avg_confidence = grouped_by_index['confidence'].mean().to_dict()
 
-        # unique indices sorted in ascending order
-        indices_sorted = sorted(merged_df['index'].unique())
-
-        hovertext = [
-            f"Index: {idx}<br>Times Tested: {total_tests[idx]}<br>Normal: {normal_counts.get(idx, 0)}<br>Outlier: {outlier_counts.get(idx, 0)}<br>Average Confidence: {avg_confidence[idx]:.2f}"
-            for idx in indices_sorted
-        ]
-
-        colors = [
-            'red' if merged_df.loc[merged_df['index'] == idx, 'class_true'].values[0] == 'outlier' else 'blue'
-            for idx in indices_sorted
-        ]   
+        # unique indices 
+        indices_sorted = merged_df['index'].unique()
 
         fig = go.Figure()
 
-        fig.add_trace(go.Bar(
-            x=indices_sorted,
-            y=[total_tests[idx] for idx in indices_sorted],
-            text=hovertext,
-            width=0.6,
-            hoverinfo="text",  
-            marker=dict(color=colors),
-            name="Total Tests per Index"
-        ))
+        idx_classes = merged_df.set_index('index')['class_true'].to_dict()
+        
+        colors = {"outlier" : "red", 
+                  "normal" : "blue"}
+    
+        seen = set()
+
+        for idx in indices_sorted:
+
+            idx_class = idx_classes[idx]
+            set_show = idx_class not in seen
+
+            if set_show == True:
+                seen.add(idx_class)
+
+            color = colors[idx_class]
+            
+            fig.add_trace(go.Bar(
+                x=[idx],
+                y=[total_tests[idx]],
+                text=[(
+                f"Index: {idx}<br>Times Tested: {total_tests[idx]}<br>Normal: {normal_counts.get(idx, 0)}<br>"
+                f"Outlier: {outlier_counts.get(idx, 0)}<br>Average Confidence: {avg_confidence[idx]:.2f}"
+                )],
+                width=0.6,
+                hoverinfo="text",
+                marker=dict(color=color),
+                name=idx_class, 
+                legendgroup = idx_class,
+                showlegend = set_show
+            ))
 
         fig.update_layout(
             title="Classification confidence over tests",
@@ -484,13 +507,7 @@ class MachineLearningAutomateTestParameterTuningGridSearchSklearn(ProcessingMeth
             "scaler" : scaler,
             "data" : train_data,
             "metadata" : train_metadata,
-            "parameter_grid" : parameter_grid if parameter_grid is not None else {
-                        'n_estimators': [50, 100, 200],
-                        'max_samples': ['auto', 0.5, 0.7],
-                        'contamination': [0.05, 0.1, 0.2],
-                        'max_features': [0.5, 0.7, 1.0],
-                        'random_state': [42]  
-                        } if isinstance(model,IsolationForest) else {'n_neighbors' : list(range(1, 11))},
+            "parameter_grid" : parameter_grid if parameter_grid is not None else {'n_neighbors' : list(range(1, 11))},
             "cv" : cv,
             "scoring" : scoring,
             "verbose" : verbose,
