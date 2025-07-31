@@ -4,6 +4,7 @@ This module contains processing methods for machine learning data analysis.
 
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
 from typing import Literal
 from numpy.random import Generator as NpRandomState
 
@@ -225,6 +226,7 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
                  times_classified: int = 2,
                  ):
         super().__init__()
+        self.data = {}
 
         # if a sample has been classified atleast n times, there is enough information to make a judgement on model stability. n = 2
         if test_records is not None and isinstance(test_records, pd.DataFrame):
@@ -256,7 +258,7 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
         std_conf = confidence_values.std()
         return np.nan if mean_conf == 0 or pd.isna(mean_conf) else std_conf / mean_conf
 
-    def run(self):# should the two private methods be standalone public methods in place of run() for better usability?
+    def run(self) -> dict:# should the two private methods be standalone public methods in place of run() for better usability?
         """
         Evaluates the internal stability of a model and assigns true classes to data based on previous classification test results
 
@@ -276,7 +278,6 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
 
         # true class assignment
         class_results = summary.groupby('index').apply(self._get_true_classes, include_groups=False).reset_index(name='class_true')
-        summary = pd.merge(summary, class_results, on='index', how='left')
 
         # agreement analysis: how often a sample received the same label 
         label_counts = summary.groupby(['index', 'class']).size().unstack(fill_value=0)
@@ -302,12 +303,83 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
         ], axis=1)
         true_classes.reset_index(inplace=True)
 
-        stability_df = combined_stability.reset_index(name='stability_score')
-        summary = summary.merge(stability_df, on='index', how='left')
-        print("Model performance Summary: ", summary.head())
+        if (true_classes["class_true"] == "not_set").any():
+            print("Classification Complete")
+        else:
+            print("Some samples are unverified. Setting true_classes to majority class")
+            mask = true_classes["class_true"] == "not set"
+            true_classes.loc[mask, "class_true"] = true_classes.loc[mask, "majority_class"]
+
+        self.data["true_classes"] = true_classes
+        self.data["summary"] = summary
 
         return {"true_classes" : true_classes, 
                 "stability_score" : combined_stability.mean()}
+    
+    def plot_confidences(self) -> go.Figure:
+
+        summary = self.data.get("summary")
+        true_classes = self.data.get("true_classes")
+
+        if summary is None or true_classes is None:
+            self.data = self.run()
+            summary = summary = self.data.get("summary")
+            true_classes = self.data.get("true_classes")
+
+        merged_df = summary.merge(true_classes, on='index', how='left')
+        
+        # number of normal and outlier classifications for each index
+        normal_counts = merged_df[merged_df['confidence'] <= 1].groupby('index').size()
+        outlier_counts = merged_df[merged_df['confidence'] > 1].groupby('index').size()
+
+        # total number of tests per index
+        total_tests = merged_df.groupby('index').size()
+    
+        # average confidence per index
+        avg_confidence = merged_df.groupby('index')['confidence'].mean()
+
+        # unique indices sorted in ascending order
+        indices_sorted = sorted(merged_df['index'].unique())
+
+        hovertext = [
+            f"Index: {idx}<br>Times Tested: {total_tests[idx]}<br>Normal: {normal_counts.get(idx, 0)}<br>Outlier: {outlier_counts.get(idx, 0)}<br>Average Confidence: {avg_confidence[idx]:.2f}"
+            for idx in indices_sorted
+        ]
+
+        colors = [
+            'red' if merged_df.loc[merged_df['index'] == idx, 'class_true'].values[0] == 'outlier' else 'blue'
+            for idx in indices_sorted
+        ]   
+
+        fig = go.Figure()
+
+        fig.add_trace(go.Bar(
+            x=indices_sorted,
+            y=[total_tests[idx] for idx in indices_sorted],
+            text=hovertext,
+            width=0.6,
+            hoverinfo="text",  
+            marker=dict(color=colors),
+            name="Total Tests per Index"
+        ))
+
+        fig.update_layout(
+            title="Classification confidence over tests",
+            xaxis=dict(
+                title="Analysis Index",
+                tickmode="array",
+            ),
+            yaxis=dict(
+                title="Number of Tests",
+                showgrid=True,
+            ),
+            bargap=0.9,
+            template="simple_white",
+            height=500,
+            showlegend=False
+        )
+
+        return fig
 
 
 class MachineLearningExplainModelPredictionShap(ProcessingMethod):###----INCOMPLETE!!---###
