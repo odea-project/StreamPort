@@ -2,6 +2,7 @@
 This module contains analyses child classes for machine learning data processing.
 """
 
+import umap
 import pandas as pd
 import numpy as np
 #from datetime import datetime
@@ -789,9 +790,7 @@ class NearestNeighboursAnalyses(MachineLearningAnalyses):
             data = pd.DataFrame(scaled_data, columns=data.columns, index=data.index)
         probs = self.data["model"].predict_proba(data)
 
-        threshold = 0.7
-        class_1_probs = probs[:, 1]
-        preds = (class_1_probs >= threshold).astype(int) 
-
-        return preds
+        probs_df = pd.DataFrame(probs, columns=["normal", "outlier"], index=metadata["index"])
+        
+        return probs_df
     
