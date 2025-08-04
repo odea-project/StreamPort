@@ -469,7 +469,7 @@ class MachineLearningExplainModelPredictionShap(ProcessingMethod):###----INCOMPL
         return analyses
 
 
-class MachineLearningAutomateTestParameterTuningGridSearchSklearn(ProcessingMethod):
+class MachineLearningTuneTestParametersGridSearchSklearn(ProcessingMethod):
     """
     Performs automated cross-validation of multiple parameter combinations and estimates the best setup for predictions using GridSearchCV.
 
@@ -507,7 +507,7 @@ class MachineLearningAutomateTestParameterTuningGridSearchSklearn(ProcessingMeth
             "scaler" : scaler,
             "data" : train_data,
             "metadata" : train_metadata,
-            "parameter_grid" : parameter_grid if parameter_grid is not None else {'n_neighbors' : list(range(1, 11))},
+            "parameter_grid" : parameter_grid if parameter_grid is not None else {'n_neighbors' : list(range(1, 12, 2))},
             "cv" : cv,
             "scoring" : scoring,
             "verbose" : verbose,

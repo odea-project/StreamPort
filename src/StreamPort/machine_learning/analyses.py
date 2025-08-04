@@ -650,7 +650,7 @@ class NearestNeighboursAnalyses(MachineLearningAnalyses):
 
         self.data["model"].fit(data, labels)
 
-    def get_training_scores(self):
+    def get_training_labels(self):
         """
         Returns the training scores of the Isolation Forest model.
 
@@ -668,7 +668,9 @@ class NearestNeighboursAnalyses(MachineLearningAnalyses):
             scaled_data = scaler_model.transform(data)
             data = pd.DataFrame(scaled_data, columns=data.columns, index=data.index)
         scores = self.data["model"].predict(data)
-        return scores
+
+        return pd.DataFrame({"index" : self.data.get("metadata")["index"],
+                "label" : scores})
 
     def predict(self, data: pd.DataFrame = None, metadata: pd.DataFrame = None):
         """
@@ -711,12 +713,12 @@ class NearestNeighboursAnalyses(MachineLearningAnalyses):
 
         self.data["prediction_variables"] = data
 
-    def get_prediction_classes(self):
+    def get_prediction_labels(self):
         """
         Returns the prediction scores of the KNN Classifier.
 
         Returns:
-            np.ndarray: The prediction scores of the model.
+            pd.DataFrame: The prediction scores of the model.
         """
 
         if self.data.get("prediction_variables") is None:
@@ -734,12 +736,36 @@ class NearestNeighboursAnalyses(MachineLearningAnalyses):
         scores = pd.DataFrame(
             {
                 "index" : metadata["index"],
-                "labels" : scores,
+                "label" : scores,
             }
         )
 
         return scores
-    
+
+    def get_true_labels(self, data: str = None) -> pd.DataFrame:
+        """
+        Returns the true labels of the KNN Classifier's test data.
+
+        Returns:
+            pd.DataFrame: The true labels of the test data.
+        """
+        if data == "test" or data is None:
+            test_metadata = self.data.get("prediction_metadata")
+            if test_metadata is None:
+                raise ValueError("No test data available.")
+            else:
+                return test_metadata[["index", "label"]]
+            
+        elif data == "train":
+            train_metadata = self.data.get("metadata")
+            if train_metadata is None:
+                raise ValueError("No training data available.")
+            else:
+                return train_metadata[["index", "label"]]
+            
+        else:
+            raise ValueError("Invalid input to function. Usage: get_true_labels(['test'|'train'])")
+            
     def get_prediction_probabilities(self, threshold: float | str = "auto") -> pd.DataFrame:
         """
         Tests the prediction outliers using the Isolation Forest model.
