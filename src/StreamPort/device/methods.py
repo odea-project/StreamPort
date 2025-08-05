@@ -120,17 +120,7 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             print("No data to process.")
             return analyses
 
-        features_template = {
-            "area": 0,
-            "pressure_max": 0,
-            "pressure_min": 0,
-            "pressure_mean": 0,
-            "pressure_std": 0,
-            "pressure_range": 0,
-            "runtime": 0,
-            "residual_noise": 0,
-            "residual_std": 0,
-        }
+        features_template = {}
 
         features_raw_transform = {
             "trend": [],
@@ -172,12 +162,9 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             feati = features_template.copy()
             featrawi = features_raw_transform.copy()
 
-            vial_empty = False
-            start_of_curve = pressure_vector[0 : self.parameters["crop"]]
-            # if the initial values of the pressure curve have a positive rate of change, it is likely VialEmpty. Added later to 1st bin RoC
-            # based on observation of available data, early noise to be cropped has a negative rate of change
-            if (start_of_curve[-1] - start_of_curve[0]) > 0: 
-                vial_empty = True 
+            # max and min before cropping will not affect results. vialEmpty and wrongColumn will show a much lower minimum than other curves
+            # feati["pressure_max"] = max(pc["pressure_var"])
+            # feati["pressure_min"] = min(pc["pressure_var"])
             
             # crop the pressure vector to remove unwanted artifacts before processing
             pressure_vector = np.array(pc["pressure_var"])
@@ -189,16 +176,14 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             pc["pressure_var"] = pressure_vector
             pc["time_var"] = time_var
 
-            feati["area"] = np.trapz(pressure_vector, x=time_var)
+            # feati["area"] = np.trapz(pressure_vector, x=time_var)
 
-            feati["pressure_max"] = max(pc["pressure_var"])
-            feati["pressure_min"] = min(pc["pressure_var"])
-            feati["pressure_mean"] = sum(pc["pressure_var"]) / len(pc["pressure_var"])
-            feati["pressure_std"] = (
-                sum((x - feati["pressure_mean"]) ** 2 for x in pc["pressure_var"])
-                / len(pc["pressure_var"])
-            ) ** 0.5
-            feati["pressure_range"] = feati["pressure_max"] - feati["pressure_min"]
+            # feati["pressure_mean"] = sum(pc["pressure_var"]) / len(pc["pressure_var"])
+            # feati["pressure_std"] = (
+            #     sum((x - feati["pressure_mean"]) ** 2 for x in pc["pressure_var"])
+            #     / len(pc["pressure_var"])
+            # ) ** 0.5
+            # feati["pressure_range"] = feati["pressure_max"] - feati["pressure_min"]
 
             feati["runtime"] = pc.get("runtime", 0)
 
@@ -228,6 +213,20 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             featrawi["pressure_baseline_corrected"] = baseline_corrected_vector
             #savgol_filter done
 
+            decomp = seasonal_decompose(
+                pd.to_numeric(pressure_vector),
+                model="additive",
+                period=self.parameters["period"],
+                extrapolate_trend="freq",
+            )
+
+            featrawi["trend"] = decomp.trend
+            featrawi["seasonal"] = decomp.seasonal
+            featrawi["residual"] = decomp.resid
+
+            residual = decomp.resid
+            # valid_mask = ~np.isnan(residual) & ~np.isnan(time_var)
+
             # define bin edges by index
             split_idxs = np.linspace(0, len(target_time_var), self.parameters["bins"] + 1, dtype=int)
 
@@ -243,40 +242,65 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
                 start_time = round(target_time_var[start_idx], 3)
                 end_time = round(target_time_var[end_idx], 3)
 
-                key_roc = f"roc_{start_time}_{end_time}"  # deviation in curves caused by e.g. Open Oven lost in smoothing. Pressure curve RoC in bins to id exact moment error causes change
+                key_area = f"area_{start_time}_{end_time}"
+                feati[key_area] = np.trapz(pressure_vector[start_idx:end_idx + 1], x = target_time_var[start_idx:end_idx + 1])
+                
+                key_min = f"min_{start_time}_{end_time}"
+                feati[key_min] = min(pressure_vector[start_idx:end_idx + 1])
+                
+                key_max = f"max_{start_time}_{end_time}"
+                feati[key_max] = max(pressure_vector[start_idx:end_idx + 1])
+
+                key_mean = f"mean_{start_time}_{end_time}"
+                feati[key_mean] = sum(pressure_vector[start_idx:end_idx + 1]) / (end_idx + 1 -start_idx)
+
+                key_std = f"std_{start_time}_{end_time}"
+                feati[key_std] = (
+                sum((x - feati[key_mean]) ** 2 for x in pressure_vector[start_idx:end_idx + 1])
+                / (end_idx + 1 -start_idx)
+                ) ** 0.5
+
+                key_range = f"range_{start_time}_{end_time}"
+                feati[key_range] = feati[key_max] - feati[key_min]
+
+                key_res_std = f"residual_std_{start_time}_{end_time}"
+                resid_bin = residual[start_idx:end_idx + 1]
+                valid_bin_mask = ~np.isnan(resid_bin) & ~np.isnan(target_time_var[start_idx:end_idx + 1])
+                feati[key_res_std] = np.std(resid_bin[valid_bin_mask]) if np.any(valid_bin_mask) else np.nan
+
+                key_res_noise = f"residual_noise_{start_time}_{end_time}"
+                if np.sum(valid_bin_mask) >= 2:  # gradient needs at least 2 points
+                    resid_deriv = np.gradient(resid_bin[valid_bin_mask])
+                    time_deriv = np.gradient(target_time_var[start_idx:end_idx + 1][valid_bin_mask])
+                    res_noise = np.std(resid_deriv / time_deriv)
+                else:
+                    res_noise = np.nan
+                feati[key_res_noise] = res_noise
+
+                # residual_derivative = np.gradient(residual[valid_mask])
+                # time_var_derivative = np.gradient(time_var[valid_mask])
+
+                # feati["residual_noise"] = np.std(residual_derivative / time_var_derivative)
+                # feati["residual_std"] = np.std(residual[valid_mask])
+                
+                # key_res_noise = f"residual_noise_{start_time}_{end_time}"
+                # feati[key_res_noise] = 
+
+                # key_res_std = f"residual__std_{start_time}_{end_time}"
+                # feati[key_res_std] = 
+
+                key_roc = f"roc_{start_time}_{end_time}"
+                feati[key_roc] = ((pressure_vector[end_idx] - pressure_vector[start_idx]) / target_time_var[end_idx] - target_time_var[start_idx]).round(2)
+
+                key_relc = f"relative_change_{start_time}_{end_time}"  # deviation in curves caused by e.g. Open Oven lost in smoothing. Pressure curve RoC in bins to id exact moment error causes change
+                feati[key_relc] = ((pressure_vector[end_idx] - pressure_vector[start_idx]) / pressure_vector[start_idx]).round(2)                
+                
                 key_dev = f"abs_deviation_{start_time}_{end_time}"  # absolute fluctuation in the bin without baseline pressure value to catch small deviations
-
-                feati[key_roc] = ((pressure_vector[end_idx] - pressure_vector[start_idx]) / pressure_vector[start_idx]).round(2)
-                if i == 0:
-                    if vial_empty == True:# 1st bin reflects high positive rate of change in case of VialEmpty, simplifying identification
-                        feati[key_roc] = ((pressure_vector[end_idx] - start_of_curve[0]) / start_of_curve[0]).round(2)
-
-                bin_values = baseline_corrected_vector[start_idx:end_idx + 1]  
-                feati[key_dev] = np.nanmax(bin_values) - np.nanmin(bin_values)
+                feati[key_dev] = np.nanmax(baseline_corrected_vector[start_idx:end_idx + 1]) - np.nanmin(baseline_corrected_vector[start_idx:end_idx + 1])
 
                 bin_edges.append([start_time, end_time])
 
             featrawi["bin_edges"] = bin_edges
-
-
-            decomp = seasonal_decompose(
-                pd.to_numeric(pressure_vector),
-                model="additive",
-                period=self.parameters["period"],
-                extrapolate_trend="freq",
-            )
-
-            featrawi["trend"] = decomp.trend
-            featrawi["seasonal"] = decomp.seasonal
-            featrawi["residual"] = decomp.resid
-
-            residual = decomp.resid
-            valid_mask = ~np.isnan(residual) & ~np.isnan(time_var)
-            residual_derivative = np.gradient(residual[valid_mask])
-            time_var_derivative = np.gradient(time_var[valid_mask])
-
-            feati["residual_noise"] = np.std(residual_derivative / time_var_derivative)
-            feati["residual_std"] = np.std(residual[valid_mask])
       
             pc["features"] = feati
             pc["features_raw"] = featrawi
