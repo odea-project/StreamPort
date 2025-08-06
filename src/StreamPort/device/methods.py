@@ -161,10 +161,6 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             # padding done. Calculate features
             feati = features_template.copy()
             featrawi = features_raw_transform.copy()
-
-            # max and min before cropping will not affect results. vialEmpty and wrongColumn will show a much lower minimum than other curves
-            # feati["pressure_max"] = max(pc["pressure_var"])
-            # feati["pressure_min"] = min(pc["pressure_var"])
             
             # crop the pressure vector to remove unwanted artifacts before processing
             pressure_vector = np.array(pc["pressure_var"])
@@ -175,15 +171,6 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             
             pc["pressure_var"] = pressure_vector
             pc["time_var"] = time_var
-
-            # feati["area"] = np.trapz(pressure_vector, x=time_var)
-
-            # feati["pressure_mean"] = sum(pc["pressure_var"]) / len(pc["pressure_var"])
-            # feati["pressure_std"] = (
-            #     sum((x - feati["pressure_mean"]) ** 2 for x in pc["pressure_var"])
-            #     / len(pc["pressure_var"])
-            # ) ** 0.5
-            # feati["pressure_range"] = feati["pressure_max"] - feati["pressure_min"]
 
             feati["runtime"] = pc.get("runtime", 0)
 
@@ -242,9 +229,11 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
                 start_time = round(target_time_var[start_idx], 3)
                 end_time = round(target_time_var[end_idx], 3)
 
+                # area under curve
                 key_area = f"area_{start_time}_{end_time}"
                 feati[key_area] = np.trapz(pressure_vector[start_idx:end_idx + 1], x = target_time_var[start_idx:end_idx + 1])
-                
+
+                # base statisical features
                 key_min = f"min_{start_time}_{end_time}"
                 feati[key_min] = min(pressure_vector[start_idx:end_idx + 1])
                 
@@ -263,11 +252,13 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
                 key_range = f"range_{start_time}_{end_time}"
                 feati[key_range] = feati[key_max] - feati[key_min]
 
+                # std in noise component of curve
                 key_res_std = f"residual_std_{start_time}_{end_time}"
                 resid_bin = residual[start_idx:end_idx + 1]
                 valid_bin_mask = ~np.isnan(resid_bin) & ~np.isnan(target_time_var[start_idx:end_idx + 1])
                 feati[key_res_std] = np.std(resid_bin[valid_bin_mask]) if np.any(valid_bin_mask) else np.nan
 
+                # absolute noise 
                 key_res_noise = f"residual_noise_{start_time}_{end_time}"
                 if np.sum(valid_bin_mask) >= 2:  # gradient needs at least 2 points
                     resid_deriv = np.gradient(resid_bin[valid_bin_mask])
@@ -277,24 +268,18 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
                     res_noise = np.nan
                 feati[key_res_noise] = res_noise
 
-                # residual_derivative = np.gradient(residual[valid_mask])
-                # time_var_derivative = np.gradient(time_var[valid_mask])
+                if pressure_vector[start_idx] == 0:
+                    pressure_vector[start_idx] = 0.01 #avoid division by 0
 
-                # feati["residual_noise"] = np.std(residual_derivative / time_var_derivative)
-                # feati["residual_std"] = np.std(residual[valid_mask])
-                
-                # key_res_noise = f"residual_noise_{start_time}_{end_time}"
-                # feati[key_res_noise] = 
-
-                # key_res_std = f"residual__std_{start_time}_{end_time}"
-                # feati[key_res_std] = 
-
-                key_roc = f"roc_{start_time}_{end_time}"
-                feati[key_roc] = ((pressure_vector[end_idx] - pressure_vector[start_idx]) / target_time_var[end_idx] - target_time_var[start_idx]).round(2)
-
+                # relative change
                 key_relc = f"relative_change_{start_time}_{end_time}"  # deviation in curves caused by e.g. Open Oven lost in smoothing. Pressure curve RoC in bins to id exact moment error causes change
-                feati[key_relc] = ((pressure_vector[end_idx] - pressure_vector[start_idx]) / pressure_vector[start_idx]).round(2)                
+                feati[key_relc] = ((pressure_vector[end_idx] - pressure_vector[start_idx]) / pressure_vector[start_idx]) #abs((pressure_vector[end_idx] - pressure_vector[start_idx]) / pressure_vector[start_idx]) 
                 
+                # rate of change. Absolute value used to avoid negative roc and relative change values
+                key_roc = f"roc_{start_time}_{end_time}"
+                feati[key_roc] = ((pressure_vector[end_idx] - pressure_vector[start_idx]) / target_time_var[end_idx] - target_time_var[start_idx]) #abs((pressure_vector[end_idx] - pressure_vector[start_idx]) / target_time_var[end_idx] - target_time_var[start_idx])               
+                
+                # absolute value of minute fluctuations after baseline correction 
                 key_dev = f"abs_deviation_{start_time}_{end_time}"  # absolute fluctuation in the bin without baseline pressure value to catch small deviations
                 feati[key_dev] = np.nanmax(baseline_corrected_vector[start_idx:end_idx + 1]) - np.nanmin(baseline_corrected_vector[start_idx:end_idx + 1])
 

@@ -9,6 +9,8 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.colors
 from src.StreamPort.core import Analyses
+from src.StreamPort.machine_learning.methods import MachineLearningMethodIsolationForestSklearn
+from src.StreamPort.machine_learning.methods import MachineLearningEvaluateModelStabilityNative
 
 
 class MachineLearningAnalyses(Analyses):
@@ -163,8 +165,10 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
     This class extends the MachineLearningAnalyses class and is used to perform Isolation Forest analysis.
     """
 
-    def __init__(self):
+    def __init__(self, creator: MachineLearningMethodIsolationForestSklearn = None):
         super().__init__()
+        self.creator = creator
+        self.results = {}
 
     def train(self, data: pd.DataFrame = None):
         """
@@ -268,7 +272,6 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         Returns:
             np.ndarray: The prediction scores of the model.
         """
-
         if self.data.get("prediction_variables") is None:
             return None
         if self.data.get("model") is None:
@@ -281,7 +284,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         scores = self.data["model"].decision_function(data)
         return scores
 
-    def test_prediction_outliers(self, threshold: float | str = "auto") -> pd.DataFrame:
+    def test_prediction_outliers(self, threshold: float | str = "auto", n_tests: int = 1) -> pd.DataFrame:
         """
         Tests the prediction outliers using the Isolation Forest model.
 
@@ -291,12 +294,10 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
 
         Returns:
             pd.DataFrame: A DataFrame containing the details of the predictions.
-        """
+        """  
         training_scores = self.get_training_scores()
-        prediction_scores = self.get_prediction_scores()
-
-        if prediction_scores is None:
-            raise ValueError("No prediction scores to test.")
+        if training_scores is None:
+            raise ValueError("No training scores available.")
 
         if threshold == "auto":
             threshold = np.mean(training_scores) - 3 * np.std(
@@ -304,18 +305,47 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             )
         elif not isinstance(threshold, (int, float)):
             raise ValueError("Threshold must be a number.")
-        
-        prediction_metadata = self.data.get("prediction_metadata")
-        outliers = pd.DataFrame(
-            {
-                "index": prediction_metadata["index"],
-                "outlier": prediction_scores < threshold,
-                "threshold" : threshold,
-                "score": prediction_scores,
-                "confidence" : ((prediction_scores / threshold)).round(2),
-            }
-        )
-        outliers = self._assign_class_labels(outliers)
+
+        for i in range(n_tests):
+
+            if n_tests > 1:
+                new_model = self.creator.create_model()
+                new_model.fit(self.data["variables"])
+                self.data["model"] = new_model
+                self.train()
+                self.predict(self.data["prediction_variables"], self.data["prediction_metadata"])
+
+            prediction_scores = self.get_prediction_scores()
+            if prediction_scores is None:
+                raise ValueError("No prediction scores to test.")
+
+            prediction_metadata = self.data.get("prediction_metadata")
+            outliers = pd.DataFrame(
+                {
+                    "index": prediction_metadata["index"],
+                    "outlier": prediction_scores < threshold,
+                    "threshold" : threshold,
+                    "score": prediction_scores,
+                    "confidence" : ((prediction_scores / threshold)).round(2),
+                }
+            )
+            outliers = self._assign_class_labels(outliers)
+
+            self.results[f"test_{i}"] = outliers
+
+        if n_tests > 1:
+            result_list = []
+            for key, data in self.results.items():
+                temp = data.copy()
+                temp["test_number"] = key
+                result_list.append(temp)
+
+            test_records = pd.concat(result_list, axis=0, ignore_index=True)
+            evaluator = MachineLearningEvaluateModelStabilityNative(test_records=test_records)
+            eval_results = evaluator.run()
+            stability_plot = evaluator.plot_confidences()
+            return {"results" : eval_results,
+                    "stability_plot" : stability_plot}
 
         return outliers
     

@@ -24,7 +24,18 @@ from src.StreamPort.machine_learning.analyses import NearestNeighboursAnalyses
 
 class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
     """
-    This class implements the Isolation Forest algorithm for anomaly detection using the sklearn library.
+    This class implements the Isolation Forest algorithm for anomaly detection using the sklearn library. It creates an IForest instance using any provided parameters.
+
+    Args:
+        "n_estimators": Number of trees in the forest. Defaults to 100.
+        "max_samples": Number of samples to draw from train set to train each tree. Float value between 0 and 1, defaults to min(256, n_samples) if "auto" is passed.
+        "contamination": Expected proportion of outliers in data. Float value between 0 and 1, defaults to "auto", which estimates it based on the data.
+        "max_features": Number of features to use when fitting each tree. Float between 0 and 1, defaults to 1.0 (all features).
+        "bootstrap": Randomly pick train samples with replacement when fitting trees. Defaults to False.
+        "n_jobs": n_jobs,
+        "random_state": random_state,
+        "verbose": verbose,
+        "warm_start": warm_start,
     """
 
     def __init__(
@@ -58,6 +69,10 @@ class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
             "warm_start": warm_start,
         }
 
+    def create_model(self):
+        model = IsolationForest(**self.parameters)
+        return model
+
     def run(self, analyses: MachineLearningAnalyses) -> MachineLearningAnalyses:
         """
         Runs the Isolation Forest algorithm on the provided data from a MachineLearning instance.
@@ -76,11 +91,9 @@ class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
                 scaled_variables, columns=variables.columns, index=variables.index
             )
 
-        model = IsolationForest(**self.parameters)
-        #model.fit(variables)
-        data["model"] = model
+        data["model"] = self.create_model()
         data["parameters"] = self.parameters
-        analyses = IsolationForestAnalyses()
+        analyses = IsolationForestAnalyses(self)
         analyses.data = data
         return analyses
 
@@ -162,7 +175,7 @@ class MachineLearningScaleFeaturesScalerSklearn(ProcessingMethod):
             - "MaxNormalizer"
     """
 
-    def __init__(self, scaler_type: str = "MinMaxScaler"):
+    def __init__(self, scaler_type: str = "StandardScaler"):
         super().__init__()
         self.data_type = "MachineLearning"
         self.method = "ScaleFeatures"
