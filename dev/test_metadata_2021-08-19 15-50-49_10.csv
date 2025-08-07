@@ -1,0 +1,2 @@
+index,name,path,batch,batch_position,idle_time,sample,method,timestamp,detector,pump,start_time,end_time,runtime
+125,210819_Pac--010,C:/Users/Sandeep/Desktop/ExtractedSignals\210819_Pac 2021-08-19 15-50-49\210819_Pac--010.D,210819_Pac 2021-08-19 15-50-49,10,39.0,210818/001 :20,SAA_411_Pac.M,2021-08-19 16:34:42,G7110B,G7110B,2021-08-19 16:35:16,2021-08-19 16:39:17,239.7000000000036

@@ -424,7 +424,7 @@ class PressureCurvesAnalyses(Analyses):
         if indices is None:
             indices = list(range(len(self.data)))
         elif isinstance(indices, int):
-            indices = list(indices)
+            indices = [indices]
         elif isinstance(indices, tuple):
             indices = list(indices)
         if not isinstance(indices, list):

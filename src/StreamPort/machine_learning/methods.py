@@ -386,14 +386,15 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
 
             color = colors[idx_class]
 
-            fig.add_trace(go.Bar(
-                x=[idx],
-                y=[total_tests[idx]],
+            fig.add_trace(go.Bar( # CONVERT TO SCATTER PLOT FOR TESTS VS CONFIDENCE and color for class
+                x=[total_tests[idx]],
+                y=merged_df["confidence"],
                 text=[(
                 f"Index: {idx}<br>Times Tested: {total_tests[idx]}<br>Normal: {normal_counts.get(idx, 0)}<br>"
                 f"Outlier: {outlier_counts.get(idx, 0)}<br>Average Confidence: {avg_confidence[idx]:.2f}"
                 )],
                 width=0.6,
+                textposition="none",
                 hoverinfo="text",
                 marker=dict(color=color),
                 name=idx_class, 
@@ -421,29 +422,120 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
     
     def plot_threshold_variation(self) -> go.Figure:
 
-        test_records = self.parameters.get("test_records")
+        test_records = self.data.get("summary")
         if test_records is None:
             raise ValueError("No test records available to estimate threshold variation.")
-    
+
+        test_numbers = sorted(test_records["test_number"].unique())
+
+        threshold_values = []
+        outlier_counts = []
+        train_sizes = []
+        test_sizes = []
+        outlier_percents = []
+        hover_logs = []
+
+        for i in test_numbers:
+            this_test = test_records[test_records["test_number"] == i]
+
+            threshold = this_test["threshold"].iloc[0]
+            train_size = this_test["train_size"].iloc[0]
+            test_size = len(this_test)
+            outliers_df = this_test[this_test["class"] == "outlier"]
+            outlier_count = len(outliers_df)
+            outlier_percent = round((outlier_count / test_size) * 100, 2) if test_size > 0 else 0
+
+            threshold_values.append(threshold)
+            outlier_counts.append(outlier_count)
+            train_sizes.append(train_size)
+            test_sizes.append(test_size)
+            outlier_percents.append(outlier_percent)
+
+            hover_logs.append(this_test.to_string(index=False).replace("\n", "<br>"))
+
         fig = go.Figure()
-     
+
+        # Threshold Line
         fig.add_trace(
             go.Scatter(
-                x=test_records["test_number"],
-                y=test_records["threshold"],
+                x=test_numbers,
+                y=threshold_values,
                 mode="lines+markers",
                 name="Threshold",
-                yaxis="y1",  
+                yaxis="y1",
                 hovertemplate=[
-                    "<br>Threshold: " + str(test_records["threshold"][i])  
-                    for i in range(len(test_records))
+                    f"<br>Threshold: {threshold_values[i]}" for i in range(len(test_numbers))
                 ],
                 line=dict(color="red", width=2, dash='dash'),
                 marker=dict(size=8, symbol="circle")
             )
         )
 
-        
+        # Outliers Bar
+        fig.add_trace(
+            go.Bar(
+                x=test_numbers,
+                y=outlier_counts,
+                name="Outliers",
+                yaxis="y2",
+                width=0.15,
+                marker_color="blue",
+                hovertext=hover_logs,
+                hoverinfo="text"
+            )
+        )
+
+        # Training Set Line
+        fig.add_trace(
+            go.Scatter(
+                x=test_numbers,
+                y=train_sizes,
+                mode="lines+markers",
+                name="Training Size",
+                yaxis="y2",
+                hovertemplate=[
+                    f"<br>Training samples: {train_sizes[i]}" +
+                    f"<br>Test samples: {test_sizes[i]}" +
+                    f"<br>Outliers: {outlier_counts[i]}" +
+                    f"<br>Outliers %: {outlier_percents[i]}"
+                    for i in range(len(test_numbers))
+                ],
+                line=dict(color="green", width=2, dash='solid'),
+                marker=dict(size=8, symbol="star")
+            )
+        )
+
+        # Layout
+        fig.update_layout(
+            title="Detection accuracy over Test Runs and Training Set Size",
+            xaxis=dict(
+                tickvals=test_numbers,
+                ticktext=[str(tn) for tn in test_numbers],
+                tickangle=45,
+                title="Test Number"
+            ),
+            yaxis=dict(
+                title=dict(text="Threshold", font=dict(color="red")),
+                tickfont=dict(color="red")
+            ),
+            yaxis2=dict(
+                title=dict(text="Outliers", font=dict(color="blue")),
+                tickfont=dict(color="blue"),
+                overlaying="y",
+                side="right"
+            ),
+            bargap=1,
+            template="simple_white",
+            legend=dict(
+                x=0.5,
+                y=1.1,
+                xanchor="center",
+                yanchor="top",
+                orientation="h",
+                bgcolor="rgba(255,255,255,0.5)",
+                borderwidth=1
+            )
+        )
 
         return fig
 

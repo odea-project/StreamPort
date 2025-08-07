@@ -5,7 +5,7 @@ This module contains analyses child classes for machine learning data processing
 import umap
 import pandas as pd
 import numpy as np
-#from datetime import datetime
+from timeit import timeit
 import plotly.graph_objects as go
 import plotly.colors
 from src.StreamPort.core import Analyses
@@ -156,7 +156,7 @@ class MachineLearningAnalyses(Analyses):
         )
 
         return fig
-
+    
 
 class IsolationForestAnalyses(MachineLearningAnalyses):
     """
@@ -199,7 +199,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             self.data["scaler_model"] = scaler_model
             data = pd.DataFrame(scaled_data, columns=data.columns, index=data.index)
 
-        self.data["model"].fit(data)
+        self.data["train_time"] = timeit(lambda: self.data["model"].fit(data), number=1)
 
     def get_training_scores(self):
         """
@@ -296,10 +296,6 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
                                     2. The "stability_plot" go.Figure() of EvaluateModelStability. 
             when show_scores = True, the method plots the scores for each of the n_tests test runs. 
         """  
-        if n_tests > 1:
-            from src.StreamPort.machine_learning.methods import MachineLearningMethodIsolationForestSklearn
-            if not isinstance(self.creator, MachineLearningMethodIsolationForestSklearn):
-                self.creator = MachineLearningMethodIsolationForestSklearn 
         self.results = {}
         
         training_scores = self.get_training_scores()
@@ -315,12 +311,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
 
         for i in range(n_tests):
 
-            if n_tests > 1:
-                new_model = self.creator.create_model()
-                new_model.fit(self.data["variables"])
-                self.data["model"] = new_model
-                self.train()
-                self.predict(self.data["prediction_variables"], self.data["prediction_metadata"])
+            self.predict(self.data["prediction_variables"], self.data["prediction_metadata"])
 
             prediction_scores = self.get_prediction_scores()
             if prediction_scores is None:
@@ -331,6 +322,8 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
                 {
                     "index": prediction_metadata["index"],
                     "outlier": prediction_scores < threshold,
+                    "train_size" : len(training_scores),
+                    "train_time" : self.data["train_time"],
                     "threshold" : threshold,
                     "score": prediction_scores,
                     "confidence" : ((prediction_scores / threshold)).round(2),
@@ -347,6 +340,8 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
                     score_plot.show()
 
             self.results[f"test_{i}"] = outliers
+            if n_tests > 1:
+                self.train()
 
         if n_tests > 1:
             from src.StreamPort.machine_learning.methods import MachineLearningEvaluateModelStabilityNative
@@ -358,10 +353,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
 
             test_records = pd.concat(result_list, axis=0, ignore_index=True)
             evaluator = MachineLearningEvaluateModelStabilityNative(test_records=test_records)
-            eval_results = evaluator.run()
-            stability_plot = evaluator.plot_confidences()
-            return {"results" : eval_results,
-                    "stability_plot" : stability_plot}
+            return evaluator
 
         return outliers
     
@@ -387,8 +379,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             outliers = self.test_prediction_outliers()
             prediction_metadata = self.data.get("prediction_metadata")  
 
-        outliers["outlier"] = outliers["outlier"].map({True: "outlier", False: "normal"})
-        outliers["class"] = outliers["outlier"]
+        outliers["class"] = outliers["outlier"].map({True: "outlier", False: "normal"})
         outliers.drop(columns=["outlier"], inplace = True)
 
         return outliers
@@ -404,6 +395,10 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             results (pd.DataFrame): A DataFrame containing records of all tests run using this model
         """
         results = self.results
+        if results == {}:
+            return None
+        else:
+            return results
 
     # def evaluate_classes(self, confidence_buffer : float = 0.1, times_classified : int = 2):#move to modelstability class
     #     """
@@ -633,7 +628,41 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         )
 
         return fig
+    
+    def plot_train_time(self):
+        """
+        Plots the change in training time on increase of train set size.
+        Args:
+            None
+        Return:
+            plotly.graph_objects: A graph_objects figure.
+        """
+        import timeit
 
+        history = self.results
+        if history is None:
+            raise ValueError("No history to plot.")
+
+        history = history.sort_values("index").unique()
+        train_sizes = list(history["train_size"].unique())
+
+        fig = go.Figure()
+
+        fig.add_trace(
+            go.Scatter(
+                x=train_sizes,
+                y=[timeit.timeit(self.train)],
+                mode = "lines+markers",
+                name = "Training time" 
+            )
+        )
+
+        fig.update_layout(
+            xaxis_title="Train size (Num. samples)",
+            yaxis_title ="Time(s)"
+        )
+
+        return fig
 
 class NearestNeighboursAnalyses(MachineLearningAnalyses):
     """
