@@ -9,8 +9,6 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.colors
 from src.StreamPort.core import Analyses
-from src.StreamPort.machine_learning.methods import MachineLearningMethodIsolationForestSklearn
-from src.StreamPort.machine_learning.methods import MachineLearningEvaluateModelStabilityNative
 
 
 class MachineLearningAnalyses(Analyses):
@@ -165,10 +163,9 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
     This class extends the MachineLearningAnalyses class and is used to perform Isolation Forest analysis.
     """
 
-    def __init__(self, creator: MachineLearningMethodIsolationForestSklearn = None):
+    def __init__(self, creator = None):
         super().__init__()
         self.creator = creator
-        self.results = {}
 
     def train(self, data: pd.DataFrame = None):
         """
@@ -284,7 +281,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         scores = self.data["model"].decision_function(data)
         return scores
 
-    def test_prediction_outliers(self, threshold: float | str = "auto", n_tests: int = 1) -> pd.DataFrame:
+    def test_prediction_outliers(self, threshold: float | str = "auto", n_tests: int = 1, show_scores : bool = False) -> pd.DataFrame:
         """
         Tests the prediction outliers using the Isolation Forest model.
 
@@ -293,8 +290,18 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             of the training scores minus 3 times the standard deviation of the training scores.
 
         Returns:
-            pd.DataFrame: A DataFrame containing the details of the predictions.
+            when n_tests = 1, pd.DataFrame: A DataFrame containing the details of the predictions.
+            when n_tests > 1, dict(): A dict containing: 
+                                    1. The "results" dict() of EvaluateModelStability containing a DataFrame with the true_classes of the test set and the stability_score of the model.
+                                    2. The "stability_plot" go.Figure() of EvaluateModelStability. 
+            when show_scores = True, the method plots the scores for each of the n_tests test runs. 
         """  
+        if n_tests > 1:
+            from src.StreamPort.machine_learning.methods import MachineLearningMethodIsolationForestSklearn
+            if not isinstance(self.creator, MachineLearningMethodIsolationForestSklearn):
+                self.creator = MachineLearningMethodIsolationForestSklearn 
+        self.results = {}
+        
         training_scores = self.get_training_scores()
         if training_scores is None:
             raise ValueError("No training scores available.")
@@ -331,9 +338,18 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             )
             outliers = self._assign_class_labels(outliers)
 
+            if show_scores == True:
+                if n_tests == 1:
+                    print("Only one test was run. plot scores using analyses.plot_scores()")
+                else:
+                    score_plot = self.plot_scores()
+                    score_plot.update_layout(title = f"Test run {i + 1}")
+                    score_plot.show()
+
             self.results[f"test_{i}"] = outliers
 
         if n_tests > 1:
+            from src.StreamPort.machine_learning.methods import MachineLearningEvaluateModelStabilityNative
             result_list = []
             for key, data in self.results.items():
                 temp = data.copy()
@@ -376,6 +392,18 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         outliers.drop(columns=["outlier"], inplace = True)
 
         return outliers
+    
+    def get_results(self):
+        """
+        Returns the IsolationForestAnalyses results.
+
+        Args:
+            None
+        
+        Returns:
+            results (pd.DataFrame): A DataFrame containing records of all tests run using this model
+        """
+        results = self.results
 
     # def evaluate_classes(self, confidence_buffer : float = 0.1, times_classified : int = 2):#move to modelstability class
     #     """

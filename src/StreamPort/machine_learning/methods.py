@@ -338,7 +338,9 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
                 "stability_score" : combined_stability.mean()}
     
     def plot_confidences(self) -> go.Figure:
-
+        """
+        Plots the model's calssification/detection confidence along with final assigned classes over multiple test runs
+        """
         summary = self.data.get("summary")
         true_classes = self.data.get("true_classes")
 
@@ -383,7 +385,7 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
                 seen.add(idx_class)
 
             color = colors[idx_class]
-            
+
             fig.add_trace(go.Bar(
                 x=[idx],
                 y=[total_tests[idx]],
@@ -414,6 +416,34 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
             height=500,
             showlegend=False
         )
+
+        return fig
+    
+    def plot_threshold_variation(self) -> go.Figure:
+
+        test_records = self.parameters.get("test_records")
+        if test_records is None:
+            raise ValueError("No test records available to estimate threshold variation.")
+    
+        fig = go.Figure()
+     
+        fig.add_trace(
+            go.Scatter(
+                x=test_records["test_number"],
+                y=test_records["threshold"],
+                mode="lines+markers",
+                name="Threshold",
+                yaxis="y1",  
+                hovertemplate=[
+                    "<br>Threshold: " + str(test_records["threshold"][i])  
+                    for i in range(len(test_records))
+                ],
+                line=dict(color="red", width=2, dash='dash'),
+                marker=dict(size=8, symbol="circle")
+            )
+        )
+
+        
 
         return fig
 
