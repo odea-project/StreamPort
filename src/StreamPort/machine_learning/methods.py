@@ -69,7 +69,7 @@ class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
             "warm_start": warm_start,
         }
 
-    def create_model(self):
+    def _create_model(self):
         model = IsolationForest(**self.parameters)
         return model
 
@@ -91,9 +91,9 @@ class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
                 scaled_variables, columns=variables.columns, index=variables.index
             )
 
-        data["model"] = self.create_model()
+        data["model"] = self._create_model()
         data["parameters"] = self.parameters
-        analyses = IsolationForestAnalyses(self)
+        analyses = IsolationForestAnalyses()
         analyses.data = data
         return analyses
 
@@ -223,20 +223,19 @@ class MachineLearningScaleFeaturesScalerSklearn(ProcessingMethod):
 
 class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
     """
-    Creates a method to evaluate the internal stability of a learning model, i.e, how well it performs classification/regression over many test iterations with no parameter changes
+    Creates a method to evaluate the internal stability of a learning model, i.e, how well it performs over many test iterations with no parameter changes and no fixed seed
 
     Args:
         test_records (pd.DataFrame): A dataframe containing the classification results of all tests conducted by an ML object. 
-                                     Must-have information is class labels, classification confidence and date of test.
+                                     Must-have information is class labels, classification confidence.
         confidence_buffer (float): Indicates an interval above or below the detection threshold. 
-                                   Classifications with a confidence within this interval are considered a false positive or -negative.
-        times_classified (int): A measure to judge the accuracy of a classification based on how many times the sample has received the same class label.
-        test_size (int): The size of the test sample. This decides how many times each sample may have been tested over many iterations.  
+                                   Classifications with a confidence within this interval are considered as false positives/negatives.
+        min_classification (int): A measure to judge the accuracy of a classification based on the minimum number of tests run on the sample.
     """
     def __init__(self,
                  test_records: pd.DataFrame = None,  
                  confidence_buffer: float = 0.1, 
-                 times_classified: int = 2,
+                 min_classification: int = 2,
                  ):
         super().__init__()
         self.data_type = "MachineLearning"
@@ -247,7 +246,7 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
         self.number_permitted = 1
         self.parameters = { "test_records" : test_records,
                             "confidence_buffer" : confidence_buffer,
-                            "times_classified" : times_classified,
+                            "min_classification" : min_classification,
                            }
         self.data = {}
 
@@ -256,15 +255,15 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
             raise ValueError("Insufficient test records given. Please pass a test record Dataframe.")
     
         self.parameters["confidence_buffer"] = confidence_buffer if isinstance(confidence_buffer, float) and 0.0 <= confidence_buffer <= 0.2 else 0.1 
-        self.parameters["times_classified"] = times_classified if isinstance(times_classified, int) and times_classified >= 2 else 2
+        self.parameters["min_classification"] = min_classification if isinstance(min_classification, int) and min_classification >= 2 else 2
 
     def _get_true_classes(self, group):
         outlier_count = ((group['class'] == 'outlier') & (group['confidence'] > 1 + self.parameters["confidence_buffer"])).sum()
         inlier_count  = ((group['class'] == 'normal')  & (group['confidence'] < 1 - self.parameters["confidence_buffer"])).sum()
 
-        if outlier_count > self.parameters["times_classified"] and outlier_count > inlier_count:
+        if outlier_count > self.parameters["min_classification"] and outlier_count > inlier_count:
             return "outlier"
-        elif inlier_count > self.parameters["times_classified"] and inlier_count > outlier_count:
+        elif inlier_count > self.parameters["min_classification"] and inlier_count > outlier_count:
             return "normal"
         else:
             return "not set"
@@ -377,42 +376,73 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
         seen = set()
 
         for idx in indices_sorted:
-
             idx_class = idx_classes[idx]
             set_show = idx_class not in seen
-
-            if set_show == True:
+            if set_show:
                 seen.add(idx_class)
-
             color = colors[idx_class]
 
-            fig.add_trace(go.Bar( # CONVERT TO SCATTER PLOT FOR TESTS VS CONFIDENCE and color for class
-                x=[total_tests[idx]],
-                y=merged_df["confidence"],
-                text=[(
-                f"Index: {idx}<br>Times Tested: {total_tests[idx]}<br>Normal: {normal_counts.get(idx, 0)}<br>"
-                f"Outlier: {outlier_counts.get(idx, 0)}<br>Average Confidence: {avg_confidence[idx]:.2f}"
-                )],
-                width=0.6,
-                textposition="none",
-                hoverinfo="text",
+            # Extract y-values (confidences for this index)
+            y_values = merged_df[merged_df['index'] == idx]['confidence'].tolist()
+            x_values = list(range(1, len(y_values) + 1))
+            classifications = merged_df[merged_df['index'] == idx]['class'].tolist()
+
+            hover_text = [
+                f"Index: {idx}<br>Times Tested: {total_tests[idx]}<br>"
+                f"Test #: {test_num}<br>"
+                f"Class: {_class}<br>"
+                f"Confidence: {confidence:.2f}<br>"
+                f"Average Confidence: {avg_confidence[idx]:.2f}"
+                for test_num, _class, confidence in zip(x_values, classifications, y_values)
+            ]
+
+            fig.add_trace(go.Scatter(
+                x=x_values,
+                y=y_values,
+                text=hover_text,
+                hoverinfo='text',
                 marker=dict(color=color),
-                name=idx_class, 
-                legendgroup = idx_class,
-                showlegend = set_show
+                mode='lines+markers',
+                name=idx_class,
+                legendgroup=idx_class,
+                showlegend=set_show
             ))
+
+            fig.add_trace(go.Scatter(
+                x=x_values,
+                y=[1] * len(x_values),
+                mode = "lines",
+                line=dict(color="black", dash="dash"),
+                name = "Threshold"
+            ))
+
+            # fig.add_trace(go.Bar( # CONVERT TO SCATTER PLOT FOR TESTS VS CONFIDENCE and color for class
+            #     x=[total_tests[idx]],
+            #     y=grouped_by_index["confidence"],
+            #     text=[(
+            #     f"Index: {idx}<br>Times Tested: {total_tests[idx]}<br>Normal: {normal_counts.get(idx, 0)}<br>"
+            #     f"Outlier: {outlier_counts.get(idx, 0)}<br>Average Confidence: {avg_confidence[idx]:.2f}"
+            #     )],
+            #     width=0.6,
+            #     textposition="none",
+            #     hoverinfo="text",
+            #     marker=dict(color=color),
+            #     name=idx_class, 
+            #     legendgroup = idx_class,
+            #     showlegend = set_show
+            # ))
 
         fig.update_layout(
             title="Classification confidence over tests",
             xaxis=dict(
-                title="Analysis Index",
+                title="Number of tests",
                 tickmode="array",
             ),
             yaxis=dict(
-                title="Number of Tests",
+                title="Confidence",
                 showgrid=True,
             ),
-            bargap=0.9,
+            #bargap=0.9,
             template="simple_white",
             height=500,
             showlegend=False

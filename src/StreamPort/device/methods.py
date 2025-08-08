@@ -179,17 +179,38 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
                     "Pressure vector and time variable must have the same length!"
                 )
 
-            """
-            Savitzky-Golay Filter
-            - applies a polynomial smoothing filter to the data, which is particularly effective for preserving features of the data while reducing noise
-            - uses a sliding window to fit a polynomial to the data points within the window, and then replaces the central point with the value of the polynomial at that point
-            """
-            #savgol_filter - to be manually implemented
-            if self.parameters["window_size"] % 2 == 0:
-                self.parameters["window_size"] += 1  # Must be odd
+            # """
+            # Savitzky-Golay Filter
+            # - applies a polynomial smoothing filter to the data, which is particularly effective for preserving features of the data while reducing noise
+            # - uses a sliding window to fit a polynomial to the data points within the window, and then replaces the central point with the value of the polynomial at that point
+            # """
+            # #savgol_filter - to be manually implemented
+            # if self.parameters["window_size"] % 2 == 0:
+            #     self.parameters["window_size"] += 1  # Must be odd
 
-            poly_order = 2  # Polynomial order
-            smoothed_vector = savgol_filter(pressure_vector, self.parameters["window_size"], poly_order)
+            # poly_order = 2  # Polynomial order
+            # smoothed_vector = savgol_filter(pressure_vector, self.parameters["window_size"], poly_order)
+
+            """
+            SNIP(Statistical Non-linear Iterative Peak)
+            -  
+            """
+            # apply a double logarithm transformation to the pressure vector
+            lls_vector = np.log(np.log(np.sqrt(pressure_vector + 1) + 1) + 1)
+            # Define a function to compute the minimum filter
+            def min_filter(lls_vector, m):
+                """Applies the SNIP minimum filter"""
+                lls_filtered = np.copy(lls_vector)
+                for i in range(m, len(lls_vector) - m):
+                    lls_filtered[i] = min(lls_vector[i], (lls_vector[i-m] + lls_vector[i + m])/2)
+                return lls_filtered
+
+            # Apply the filter for the first 100 iterations
+            lls_filtered = np.copy(lls_vector)
+            for m in range(5):
+                lls_filtered = min_filter(lls_vector, m)
+
+            smoothed_vector = (np.exp(np.exp(lls_filtered) - 1) - 1) ** 2 - 1
             baseline_corrected_vector = pressure_vector - smoothed_vector
             
             #baseline_correction or any such operation may introduce NaN values
@@ -198,7 +219,7 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
                                                       neginf = np.min(baseline_corrected_vector))
 
             featrawi["pressure_baseline_corrected"] = baseline_corrected_vector
-            #savgol_filter done
+            #baseline correction done
 
             decomp = seasonal_decompose(
                 pd.to_numeric(pressure_vector),

@@ -291,10 +291,8 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
 
         Returns:
             when n_tests = 1, pd.DataFrame: A DataFrame containing the details of the predictions.
-            when n_tests > 1, dict(): A dict containing: 
-                                    1. The "results" dict() of EvaluateModelStability containing a DataFrame with the true_classes of the test set and the stability_score of the model.
-                                    2. The "stability_plot" go.Figure() of EvaluateModelStability. 
-            when show_scores = True, the method plots the scores for each of the n_tests test runs. 
+            when n_tests > 1, evaluator: An instance of EvaluateModelStability with the test records of [n_tests] runs loaded as argument 
+                when show_scores = True, the method plots the scores for each of the [n_tests] test runs. 
         """  
         self.results = {}
         
@@ -311,7 +309,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
 
         for i in range(n_tests):
 
-            self.predict(self.data["prediction_variables"], self.data["prediction_metadata"])
+            #self.predict(self.data["prediction_variables"], self.data["prediction_metadata"])
 
             prediction_scores = self.get_prediction_scores()
             if prediction_scores is None:
@@ -629,9 +627,9 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
 
         return fig
     
-    def plot_train_time(self):
+    def plot_train_time(self): # could also be moved to EvaluateModelStability if train_time and train_size over tests is saved 
         """
-        Plots the change in training time on increase of train set size.
+        Plots the change in training time over increase of train set size.
         Args:
             None
         Return:
@@ -645,13 +643,14 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
 
         history = history.sort_values("index").unique()
         train_sizes = list(history["train_size"].unique())
+        train_times = list(history[history["train_size"] == train_sizes])
 
         fig = go.Figure()
 
         fig.add_trace(
             go.Scatter(
                 x=train_sizes,
-                y=[timeit.timeit(self.train)],
+                y=train_times,
                 mode = "lines+markers",
                 name = "Training time" 
             )
