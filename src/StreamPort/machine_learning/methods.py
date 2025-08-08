@@ -456,7 +456,7 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
         if test_records is None:
             raise ValueError("No test records available to estimate threshold variation.")
 
-        test_numbers = sorted(test_records["test_number"].unique())
+        test_numbers = test_records["index"].unique()
 
         threshold_values = []
         outlier_counts = []
