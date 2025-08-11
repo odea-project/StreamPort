@@ -233,7 +233,6 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             featrawi["residual"] = decomp.resid
 
             residual = decomp.resid
-            # valid_mask = ~np.isnan(residual) & ~np.isnan(time_var)
 
             # define bin edges by index
             split_idxs = np.linspace(0, len(target_time_var), self.parameters["bins"] + 1, dtype=int)
@@ -294,11 +293,11 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
 
                 # relative change
                 key_relc = f"relative_change_{start_time}_{end_time}"  # deviation in curves caused by e.g. Open Oven lost in smoothing. Pressure curve RoC in bins to id exact moment error causes change
-                feati[key_relc] = ((pressure_vector[end_idx] - pressure_vector[start_idx]) / pressure_vector[start_idx]) #abs((pressure_vector[end_idx] - pressure_vector[start_idx]) / pressure_vector[start_idx]) 
+                feati[key_relc] = abs((pressure_vector[end_idx] - pressure_vector[start_idx]) / pressure_vector[start_idx]) #abs((pressure_vector[end_idx] - pressure_vector[start_idx]) / pressure_vector[start_idx]) 
                 
                 # rate of change. Absolute value used to avoid negative roc and relative change values
                 key_roc = f"roc_{start_time}_{end_time}"
-                feati[key_roc] = ((pressure_vector[end_idx] - pressure_vector[start_idx]) / target_time_var[end_idx] - target_time_var[start_idx]) #abs((pressure_vector[end_idx] - pressure_vector[start_idx]) / target_time_var[end_idx] - target_time_var[start_idx])               
+                feati[key_roc] = abs((pressure_vector[end_idx] - pressure_vector[start_idx]) / target_time_var[end_idx] - target_time_var[start_idx]) #abs((pressure_vector[end_idx] - pressure_vector[start_idx]) / target_time_var[end_idx] - target_time_var[start_idx])               
                 
                 # absolute value of minute fluctuations after baseline correction 
                 key_dev = f"abs_deviation_{start_time}_{end_time}"  # absolute fluctuation in the bin without baseline pressure value to catch small deviations

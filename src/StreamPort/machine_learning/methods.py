@@ -13,8 +13,8 @@ import shap
 from sklearn.ensemble import IsolationForest
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn import preprocessing as scaler
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.metrics import accuracy_score
+from sklearn.model_selection import GridSearchCV #train_test_split
+#from sklearn.metrics import accuracy_score
 
 from src.StreamPort.core import ProcessingMethod
 from src.StreamPort.machine_learning.analyses import MachineLearningAnalyses
@@ -25,17 +25,6 @@ from src.StreamPort.machine_learning.analyses import NearestNeighboursAnalyses
 class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
     """
     This class implements the Isolation Forest algorithm for anomaly detection using the sklearn library. It creates an IForest instance using any provided parameters.
-
-    Args:
-        "n_estimators": Number of trees in the forest. Defaults to 100.
-        "max_samples": Number of samples to draw from train set to train each tree. Float value between 0 and 1, defaults to min(256, n_samples) if "auto" is passed.
-        "contamination": Expected proportion of outliers in data. Float value between 0 and 1, defaults to "auto", which estimates it based on the data.
-        "max_features": Number of features to use when fitting each tree. Float between 0 and 1, defaults to 1.0 (all features).
-        "bootstrap": Randomly pick train samples with replacement when fitting trees. Defaults to False.
-        "n_jobs": n_jobs,
-        "random_state": random_state,
-        "verbose": verbose,
-        "warm_start": warm_start,
     """
 
     def __init__(
@@ -93,7 +82,7 @@ class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
 
         data["model"] = self._create_model()
         data["parameters"] = self.parameters
-        analyses = IsolationForestAnalyses()
+        analyses = IsolationForestAnalyses(evaluator = MachineLearningEvaluateModelStabilityNative)
         analyses.data = data
         return analyses
 
@@ -129,7 +118,7 @@ class MachineLearningMethodNearestNeighboursClassifierSklearn(ProcessingMethod):
             analyses (MachineLearningAnalyses): The instance containing the data to be processed.
 
         Returns:
-            NearestNeighboursAnalyses: Child class of Analyses containing the trained model.
+            NearestNeighboursAnalyses: Child class of Analyses containing the initialized model.
         """
         data = analyses.data
 
@@ -150,9 +139,8 @@ class MachineLearningMethodNearestNeighboursClassifierSklearn(ProcessingMethod):
 
         #create the KNN classifier
         model = KNeighborsClassifier(n_neighbors=self.parameters["n_neighbors"], weights=self.parameters["weights"])
-        #model.fit(variables, labels)
 
-        #store trained model
+        #store model
         data["model"] = model
         data["parameters"] = self.parameters
 
@@ -278,7 +266,7 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
         std_conf = confidence_values.std()
         return np.nan if mean_conf == 0 or pd.isna(mean_conf) else std_conf / mean_conf
 
-    def run(self) -> dict:# should the two private methods be standalone public methods in place of run() for better usability?
+    def run(self) -> dict:
         """
         Evaluates the internal stability of a model and assigns true classes to data based on previous classification test results
 
@@ -326,7 +314,7 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
         if (true_classes["class_true"] == "not_set").any():
             print("Classification Complete")
         else:
-            print("Some samples are unverified. Setting true_classes to majority class")
+            print("Setting true_classes to majority class...")
             mask = true_classes["class_true"] == "not set"
             true_classes.loc[mask, "class_true"] = true_classes.loc[mask, "majority_class"]
 
@@ -350,15 +338,12 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
 
         # merge to pair number of classifications per index/sample with the estimated true labels
         merged_df = summary.merge(true_classes, on='index', how='left')
+        merged_df = merged_df[merged_df["index"] == max(merged_df["index"])]
 
         grouped_by_index = merged_df.groupby('index')
 
         # total number of tests per index
         total_tests = grouped_by_index.size().to_dict()
-
-        # number of normal and outlier classifications for each index
-        normal_counts = merged_df[merged_df['confidence'] <= 1].groupby('index').size().to_dict()
-        outlier_counts = merged_df[merged_df['confidence'] > 1].groupby('index').size().to_dict()
     
         # average confidence per index
         avg_confidence = grouped_by_index['confidence'].mean().to_dict()
@@ -412,25 +397,9 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
                 x=x_values,
                 y=[1] * len(x_values),
                 mode = "lines",
-                line=dict(color="black", dash="dash"),
+                line=dict(color="red", dash="dash"),
                 name = "Threshold"
             ))
-
-            # fig.add_trace(go.Bar( # CONVERT TO SCATTER PLOT FOR TESTS VS CONFIDENCE and color for class
-            #     x=[total_tests[idx]],
-            #     y=grouped_by_index["confidence"],
-            #     text=[(
-            #     f"Index: {idx}<br>Times Tested: {total_tests[idx]}<br>Normal: {normal_counts.get(idx, 0)}<br>"
-            #     f"Outlier: {outlier_counts.get(idx, 0)}<br>Average Confidence: {avg_confidence[idx]:.2f}"
-            #     )],
-            #     width=0.6,
-            #     textposition="none",
-            #     hoverinfo="text",
-            #     marker=dict(color=color),
-            #     name=idx_class, 
-            #     legendgroup = idx_class,
-            #     showlegend = set_show
-            # ))
 
         fig.update_layout(
             title="Classification confidence over tests",
@@ -442,7 +411,6 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
                 title="Confidence",
                 showgrid=True,
             ),
-            #bargap=0.9,
             template="simple_white",
             height=500,
             showlegend=False
@@ -450,88 +418,95 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
 
         return fig
     
-    def plot_threshold_variation(self) -> go.Figure:
-
+    def plot_threshold_variation(self) -> go.Figure: 
+        """
+        Plots the change in threshold over increase of train set size.
+        """
         test_records = self.data.get("summary")
         if test_records is None:
             raise ValueError("No test records available to estimate threshold variation.")
 
-        test_numbers = test_records["index"].unique()
+        true_classes = self.data.get("true_classes")
 
-        threshold_values = []
-        outlier_counts = []
-        train_sizes = []
-        test_sizes = []
-        outlier_percents = []
-        hover_logs = []
+        # group each index
+        test_groups = test_records.groupby("index")
+        group_stats = test_groups.agg(
+            mean_threshold = ("threshold", "mean"),
+            num_tests = ("test_number", "count"),
+        ).reset_index()
 
-        for i in test_numbers:
-            this_test = test_records[test_records["test_number"] == i]
-
-            threshold = this_test["threshold"].iloc[0]
-            train_size = this_test["train_size"].iloc[0]
-            test_size = len(this_test)
-            outliers_df = this_test[this_test["class"] == "outlier"]
-            outlier_count = len(outliers_df)
-            outlier_percent = round((outlier_count / test_size) * 100, 2) if test_size > 0 else 0
-
-            threshold_values.append(threshold)
-            outlier_counts.append(outlier_count)
-            train_sizes.append(train_size)
-            test_sizes.append(test_size)
-            outlier_percents.append(outlier_percent)
-
-            hover_logs.append(this_test.to_string(index=False).replace("\n", "<br>"))
+        group_stats=group_stats.sort_values("index")
+        unique_indices = sorted(test_records["index"].unique())
 
         fig = go.Figure()
 
-        # Threshold Line
+        true_classes_dict = true_classes.set_index("index")["class_true"].to_dict()
+        threshold_dict = group_stats.set_index("index")["mean_threshold"].to_dict()
+        train_size_dict = test_records.set_index("index")["train_size"].to_dict()
+        batch_position_dict = test_records.set_index("index")["batch_position"].to_dict()
+
+        outlier_or_not = []
+        threshold_vals = []
+        train_sizes = []
+        batch_positions = []
+
+        for index in unique_indices:
+            outlier = 1 if true_classes_dict.get(index) == "outlier" else 0  
+            threshold_val = threshold_dict.get(index, None) 
+            train_size = train_size_dict.get(index, None)  
+            batch_position = batch_position_dict.get(index, None) 
+
+            outlier_or_not.append(outlier)
+            threshold_vals.append(threshold_val)
+            train_sizes.append(train_size)
+            batch_positions.append(batch_position)
+
+        # threshold
         fig.add_trace(
             go.Scatter(
-                x=test_numbers,
-                y=threshold_values,
-                mode="lines+markers",
+                x=unique_indices,
+                y=threshold_vals,
+                mode="lines",
                 name="Threshold",
+                legendgroup="Threshold",
                 yaxis="y1",
-                hovertemplate=[
-                    f"<br>Threshold: {threshold_values[i]}" for i in range(len(test_numbers))
-                ],
-                line=dict(color="red", width=2, dash='dash'),
-                marker=dict(size=8, symbol="circle")
+                hovertemplate=(
+                "<br>Threshold: %{y}"
+                ),
+                line=dict(color="red", width=2, dash='dash')
             )
         )
 
-        # Outliers Bar
+        # outliers bar
         fig.add_trace(
             go.Bar(
-                x=test_numbers,
-                y=outlier_counts,
+                x=unique_indices,
+                y=outlier_or_not,
                 name="Outliers",
+                legendgroup="Outliers",
                 yaxis="y2",
                 width=0.15,
                 marker_color="blue",
-                hovertext=hover_logs,
-                hoverinfo="text"
+                hovertemplate=(
+                    "Index: %{x}<br>Batch position: %{customdata}<br>"
+                ),
+                customdata=batch_positions
             )
         )
 
-        # Training Set Line
+        # training set
         fig.add_trace(
             go.Scatter(
-                x=test_numbers,
+                x=unique_indices,
                 y=train_sizes,
                 mode="lines+markers",
                 name="Training Size",
+                legendgroup="Training Size",
                 yaxis="y2",
-                hovertemplate=[
-                    f"<br>Training samples: {train_sizes[i]}" +
-                    f"<br>Test samples: {test_sizes[i]}" +
-                    f"<br>Outliers: {outlier_counts[i]}" +
-                    f"<br>Outliers %: {outlier_percents[i]}"
-                    for i in range(len(test_numbers))
-                ],
-                line=dict(color="green", width=2, dash='solid'),
-                marker=dict(size=8, symbol="star")
+                hovertemplate=(
+                    "Training samples: %{y}"),
+                line=dict(color="black", width=2, dash='solid'),
+                marker=dict(size=8, symbol="star"),
             )
         )
 
@@ -539,18 +514,18 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
         fig.update_layout(
             title="Detection accuracy over Test Runs and Training Set Size",
             xaxis=dict(
-                tickvals=test_numbers,
-                ticktext=[str(tn) for tn in test_numbers],
-                tickangle=45,
-                title="Test Number"
+                tickvals=unique_indices,
+                ticktext=[str(ind) for ind in unique_indices],
+                title="Analysis Index"
             ),
             yaxis=dict(
                 title=dict(text="Threshold", font=dict(color="red")),
-                tickfont=dict(color="red")
+                tickfont=dict(color="red"),
+                side="left"
             ),
             yaxis2=dict(
-                title=dict(text="Outliers", font=dict(color="blue")),
-                tickfont=dict(color="blue"),
+                title=dict(text="Train size", font=dict(color="black")),
+                tickfont=dict(color="black"),
                 overlaying="y",
                 side="right"
             ),
@@ -568,13 +543,54 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
         )
 
         return fig
+    
+    def plot_train_time(self): 
+        """
+        Plots the change in training time over increase of train set size.
+        """
+        history = self.data.get("summary")
+        if history is None:
+            raise ValueError("No history to plot.")
+
+        history = history.sort_values("index")
+
+        group_stats = history.groupby("index").agg(
+            train_times = ("train_time", "mean"),
+            train_sizes = ("train_size", "mean") 
+        )    
+
+        fig = go.Figure()
+
+        fig.add_trace(
+            go.Scatter(
+                x=list(group_stats["train_sizes"]),
+                y=list(group_stats["train_times"]),
+                mode = "lines+markers",
+                name = "Training time" 
+            )
+        )
+
+        fig.update_layout(
+            title = "Training time over increase of training samples",
+            template = "simple_white",
+            xaxis_title="Train size (Num. samples)",
+            yaxis_title ="Time (s)"
+        )
+
+        return fig
+    
+    def plot_model_stability(self):
+        """
+        Plots the change in threshold, confidence consistency, number of tests required over train set size
+        """
+        
+        return None
 
 
 class MachineLearningExplainModelPredictionShap(ProcessingMethod):###----INCOMPLETE!!---###
     """
     Explains the predictions based on feature importances of a machine learning model using SHAP (SHapley Additive exPlanations).
     """
-
     def __init__(self, model: None = None, task: Literal["classification", "anomaly_detection"] = "classification", model_type: Literal["distance", "tree", "linear", "deep"] = "distance"):
         super().__init__()
         self.data_type = "MachineLearning"
@@ -644,10 +660,10 @@ class MachineLearningTuneTestParametersGridSearchSklearn(ProcessingMethod):
         - train_data (pd.DataFrame): A DataFrame of the training data.
         - train_metadata (pd.DataFrame): A DataFrame of training metadata/labels.                         
         - parameter_grid (dict): A dict of test parameters that should be Cross-validated by GridSearchCV. If none is given, it will be estimated based on the model provided.
-        - cv (int): Cross-validation folds to take for parameter tuning. Defaults is 3
-        - scoring (str): Scoring metric to be applied on the model's classification results. Defaults to 'accuracy'
-        - verbose (int):
-        - n_jobs (int):
+        - cv (int): Cross-validation folds to take for parameter tuning. Defaults is 3.
+        - scoring (str): Scoring metric to be applied on the model's classification results. Defaults to 'accuracy'.
+        - verbose (int): Controls how much information is printed out for debugging or monitoring progress. Defaults to 0 (no output).
+        - n_jobs (int): Decides how many threads are run in parallel. Defaults to 0 (1 thread used).
     """
     def __init__(self, 
                  model: None = None,

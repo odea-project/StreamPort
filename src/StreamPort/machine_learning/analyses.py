@@ -163,9 +163,11 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
     This class extends the MachineLearningAnalyses class and is used to perform Isolation Forest analysis.
     """
 
-    def __init__(self, creator = None):
+    def __init__(self, evaluator):
         super().__init__()
-        self.creator = creator
+        self.results = {}
+        self.evaluator = evaluator
+        self.evaluation_object = None
 
     def train(self, data: pd.DataFrame = None):
         """
@@ -280,8 +282,37 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             data = pd.DataFrame(scaled_data, columns=data.columns, index=data.index)
         scores = self.data["model"].decision_function(data)
         return scores
+    
+    def _get_num_tests(self, scaling_const: int = 100, offset: int = 5, n_min: int = 5, n_max: int = 50):
+        """
+        Dynamically calculates the number of tests n_tests required based on the size of the training set.
 
-    def test_prediction_outliers(self, threshold: float | str = "auto", n_tests: int = 1, show_scores : bool = False) -> pd.DataFrame:
+        Args:
+            - scaling_const: Constant that adjusts the rate of decrease of n_tests with respect to train set size
+            - offset: Offset to ensure n_tests does not fall below a certain minimum
+            - n_min: Minimum value for n_tests
+            - n_max: Maximum value for n_tests
+        
+        Returns:
+            - n_tests: The computed appropriate number of tests to perform
+        """
+        try:
+            train_size = len(self.data.get("metadata"))
+        except TypeError:
+            train_size = 0
+
+        if train_size == 0:
+            raise ValueError("No train data available.")
+        
+        # calculate n using a log scale. train_size + 1 avoids the log of 0 or very small number
+        n_tests = scaling_const / (np.log(train_size + 1)) + offset
+
+        # ensure n is within the defined bounds
+        n_tests = max(n_min, min(n_max, int(n_tests)))
+        
+        return n_tests
+
+    def test_prediction_outliers(self, threshold: float | str = "auto", n_tests: int = None, show_scores : bool = False) -> pd.DataFrame:
         """
         Tests the prediction outliers using the Isolation Forest model.
 
@@ -294,8 +325,6 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             when n_tests > 1, evaluator: An instance of EvaluateModelStability with the test records of [n_tests] runs loaded as argument 
                 when show_scores = True, the method plots the scores for each of the [n_tests] test runs. 
         """  
-        self.results = {}
-        
         training_scores = self.get_training_scores()
         if training_scores is None:
             raise ValueError("No training scores available.")
@@ -307,9 +336,10 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         elif not isinstance(threshold, (int, float)):
             raise ValueError("Threshold must be a number.")
 
-        for i in range(n_tests):
+        if n_tests is None:
+            n_tests = self._get_num_tests()
 
-            #self.predict(self.data["prediction_variables"], self.data["prediction_metadata"])
+        for i in range(n_tests):
 
             prediction_scores = self.get_prediction_scores()
             if prediction_scores is None:
@@ -318,13 +348,14 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             prediction_metadata = self.data.get("prediction_metadata")
             outliers = pd.DataFrame(
                 {
-                    "index": prediction_metadata["index"],
+                    "index": prediction_metadata["index"].iloc[0],
+                    "batch_position": prediction_metadata["batch_position"].iloc[0],
                     "outlier": prediction_scores < threshold,
                     "train_size" : len(training_scores),
                     "train_time" : self.data["train_time"],
                     "threshold" : threshold,
                     "score": prediction_scores,
-                    "confidence" : ((prediction_scores / threshold)).round(2),
+                    "confidence" : abs((prediction_scores / threshold)).round(2),
                 }
             )
             outliers = self._assign_class_labels(outliers)
@@ -337,21 +368,26 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
                     score_plot.update_layout(title = f"Test run {i + 1}")
                     score_plot.show()
 
-            self.results[f"test_{i}"] = outliers
-            if n_tests > 1:
+            self.results[f"{prediction_metadata["index"].iloc[0]}_{i+1}"] = outliers
+            if n_tests > 1 and i != n_tests - 1: # no need to train after last test
                 self.train()
 
         if n_tests > 1:
-            from src.StreamPort.machine_learning.methods import MachineLearningEvaluateModelStabilityNative
             result_list = []
             for key, data in self.results.items():
                 temp = data.copy()
-                temp["test_number"] = key
+                if str(prediction_metadata["index"].iloc[0]) == key.split("_")[0]:
+                    temp["test_number"] = key 
                 result_list.append(temp)
 
-            test_records = pd.concat(result_list, axis=0, ignore_index=True)
-            evaluator = MachineLearningEvaluateModelStabilityNative(test_records=test_records)
-            return evaluator
+            test_records = pd.concat(result_list, axis=0, ignore_index=True) # consider returning the same outliers but tested and make separate methods for plotting
+            evaluator = self.evaluator(test_records=test_records)
+            self.evaluation_object = evaluator
+            result = evaluator.run()
+
+            true_classes = result["true_classes"]
+            outliers["class"] = true_classes[true_classes["index"] == outliers["index"]]["class_true"]
+            # return evaluator
 
         return outliers
     
@@ -378,7 +414,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             prediction_metadata = self.data.get("prediction_metadata")  
 
         outliers["class"] = outliers["outlier"].map({True: "outlier", False: "normal"})
-        outliers.drop(columns=["outlier"], inplace = True)
+        outliers.drop(columns="outlier", inplace = True)
 
         return outliers
     
@@ -396,56 +432,9 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         if results == {}:
             return None
         else:
+            results = pd.concat(results.values(), ignore_index=True)
+            results["test_id"] = [key for key in results.keys() for _ in range(len(self.results[key]))]
             return results
-
-    # def evaluate_classes(self, confidence_buffer : float = 0.1, times_classified : int = 2):#move to modelstability class
-    #     """
-    #     Evaluates and reassigns class labels in the test history of the isolation forest.
-    #     In a non-deterministic model, if a sample has been declared an inlier/outlier a minimum of x times with a certain confidence >< y, it can be certified to be so. 
-
-    #     Args:
-    #         confidence_buffer (float): The buffer value from the threshold where classification result may be faulty/ambiguous.
-    #         times_classified (int): The number of times a particular sample has been classified.
-
-    #     Returns:
-    #         true_classes (pd.DataFrame): A dataframe of samples that have been tested enough times and have received final class labels
-    #     """
-    #     test_history = self.data.get("test_history")
-    #     true_classes = self.data.get("true_classes")
-    #     if test_history is not None:
-    #         sorted_history = dict(sorted(test_history.items()))
-            
-    #         summary = pd.DataFrame()
-    #         for test in list(sorted_history):
-    #             summary = pd.concat([summary, sorted_history[test][1]], ignore_index=True)
-    #         summary = summary.sort_values("index")
-
-    #         def get_true_classes(group):
-    #             outlier_count = ((group['class'] == 'outlier') & (group['confidence'] > 1 + confidence_buffer)).sum() #1 confidence = threshold value. anomaly > 1, normal < 1
-    #             inlier_count = ((group['class'] == 'normal') & (group['confidence'] < 1 - confidence_buffer)).sum() #values between 0.9 and 1.1 taken as a buffer zone of ambiguous detection accuracy
-
-    #             if outlier_count > times_classified and outlier_count > inlier_count:
-    #                 return "outlier"
-    #             elif inlier_count > times_classified and inlier_count > outlier_count:
-    #                 return "normal"
-    #             else:
-    #                 return "not set"
-
-    #         class_results = summary.groupby('index').apply(get_true_classes, include_groups=False).reset_index(name='class_true')
-    #     else:
-    #         print("No tests have been recorded yet.")
-        
-    #     if true_classes is not None and isinstance(true_classes, pd.DataFrame):
-    #         pass
-    #     else:
-    #         true_classes = pd.DataFrame()
-        
-    #     true_classes = pd.concat([true_classes, class_results])
-    #     true_classes.drop_duplicates(inplace=True)
-        
-    #     self.data["true_classes"] = true_classes
-
-    #     return true_classes
     
     def add_data(self, variables: pd.DataFrame = None, metadata: pd.DataFrame = None):
         """
@@ -509,13 +498,23 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             threshold (float | str): The threshold for outlier detection. If "auto", the threshold is set to the mean
             of the training scores minus 3 times the standard deviation of the training scores.
         """
-        outliers = self.test_prediction_outliers(threshold)
-
+        result = self.evaluation_object
+        if result is None:
+            outliers = self.test_prediction_outliers()
+        else:
+            class_data = result.data.get("true_classes")
+            outliers = class_data.copy()
+            outliers.rename(columns={"class_true" : "class"}, inplace = True)
+            
         if outliers is None:
             raise ValueError("No outliers to add.")
 
         prediction_variables = self.data.get("prediction_variables")
         prediction_metadata = self.data.get("prediction_metadata")
+
+        idx = prediction_metadata["index"].iloc[0]
+        outliers = outliers[outliers["index"] == idx]
+        # only add indices from outliers that are present in prediction_variables and metadata
 
         if prediction_variables is None:
             raise ValueError("No prediction variables to add.")
@@ -627,41 +626,54 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
 
         return fig
     
-    def plot_train_time(self): # could also be moved to EvaluateModelStability if train_time and train_size over tests is saved 
+    def plot_confidences(self):
         """
-        Plots the change in training time over increase of train set size.
-        Args:
-            None
-        Return:
-            plotly.graph_objects: A graph_objects figure.
+        Plot the variation in detection confidence over n runs of a single test sample
         """
-        import timeit
+        evaluator = self.evaluation_object
+        if evaluator is None:
+            self.test_prediction_outliers()
+            evaluator = self.evaluation_object
 
-        history = self.results
-        if history is None:
-            raise ValueError("No history to plot.")
+        confidence_plot = evaluator.plot_confidences()
+        return confidence_plot
+    
+    def plot_threshold_variation(self):
+        """
+        Plot the variation in detection threshold w.r.t train_size
+        """
+        evaluator = self.evaluation_object
+        if evaluator is None:
+            self.test_prediction_outliers()
+            evaluator = self.evaluation_object
+        
+        threshold_plot = evaluator.plot_threshold_variation()
+        return threshold_plot
+    
+    def plot_train_time(self):
+        """
+        Plot the variation in model train time w.r.t train size
+        """
+        evaluator = self.evaluation_object
+        if evaluator is None:
+            self.test_prediction_outliers()
+            evaluator = self.evaluation_object
 
-        history = history.sort_values("index").unique()
-        train_sizes = list(history["train_size"].unique())
-        train_times = list(history[history["train_size"] == train_sizes])
+        train_time_plot = evaluator.plot_train_time()
+        return train_time_plot
+    
+    def plot_model_stability(self):
+        """
+        Plot the variation in model stability w.r.t the change in average classification/detection confidence and n_tests requirement over change in train size
+        """
+        evaluator = self.evaluation_object
+        if evaluator is None:
+            self.test_prediction_outliers()
+            evaluator = self.evaluation_object
 
-        fig = go.Figure()
-
-        fig.add_trace(
-            go.Scatter(
-                x=train_sizes,
-                y=train_times,
-                mode = "lines+markers",
-                name = "Training time" 
-            )
-        )
-
-        fig.update_layout(
-            xaxis_title="Train size (Num. samples)",
-            yaxis_title ="Time(s)"
-        )
-
-        return fig
+        stability_plot = evaluator.plot_model_stability()
+        return stability_plot
+    
 
 class NearestNeighboursAnalyses(MachineLearningAnalyses):
     """
