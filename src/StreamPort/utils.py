@@ -9,10 +9,14 @@ import chardet
 def get_file_encoding(file):
     """
     Detect the character encoding of a file.
+    
     Args:
-        file (str): Path to the file.
+        file (str): Path to the file. Must properly handle escape characters or be a rawstring r"path".
+    
+    Returns:
+        character_encoding (str): The encoding (e.g UTF-8/ASCII) that the file is saved in. 
     """
-
+    
     with open(file, "rb") as f:
         rawdata = f.read()
     decoding_result = chardet.detect(rawdata)

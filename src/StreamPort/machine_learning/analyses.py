@@ -304,7 +304,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         if train_size == 0:
             raise ValueError("No train data available.")
         
-        # calculate n using a log scale. train_size + 1 avoids the log of 0 or very small number
+        # calculate n using a log scale. train_size + 1 avoids the log of 0 or a very small number
         n_tests = scaling_const / (np.log(train_size + 1)) + offset
 
         # ensure n is within the defined bounds
@@ -318,38 +318,43 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
 
         Args:
             threshold (float | str): The threshold for outlier detection. If "auto", the threshold is set to the mean
-            of the training scores minus 3 times the standard deviation of the training scores.
+                                    of the training scores minus 3 times the standard deviation of the training scores.
+            n_tests (int): The number of times a sample should be scored using decision_function(). This mitigates poor model generalization with small datasets. 
+                                    If None, defaults to a dynamically assigned value based on the train size (see _get_num_tests()).
+            show_scores (bool): If True, the method plots the anomaly scores for each of the [n_tests] test runs.
 
         Returns:
-            when n_tests = 1, pd.DataFrame: A DataFrame containing the details of the predictions.
-            when n_tests > 1, evaluator: An instance of EvaluateModelStability with the test records of [n_tests] runs loaded as argument 
-                when show_scores = True, the method plots the scores for each of the [n_tests] test runs. 
+            outliers (pd.DataFrame): A DataFrame containing the details of the predictions, including the confidence level of the classification. 
         """  
-        training_scores = self.get_training_scores()
-        if training_scores is None:
-            raise ValueError("No training scores available.")
-
-        if threshold == "auto":
-            threshold = np.mean(training_scores) - 3 * np.std(
-                training_scores
-            )
-        elif not isinstance(threshold, (int, float)):
-            raise ValueError("Threshold must be a number.")
-
-        if n_tests is None:
+        if n_tests is None or n_tests == 0:
             n_tests = self._get_num_tests()
 
+        prediction_metadata = self.data.get("prediction_metadata")
+
+        index = prediction_metadata["index"].iloc[0]
+        batch_position = prediction_metadata["batch_position"].iloc[0]
+
         for i in range(n_tests):
+            
+            training_scores = self.get_training_scores()
+            if training_scores is None:
+                raise ValueError("No training scores available.")
+
+            if threshold == "auto":
+                threshold = np.mean(training_scores) - 3 * np.std(
+                    training_scores
+                )
+            elif not isinstance(threshold, (int, float)):
+                raise ValueError("Threshold must be a number.")
 
             prediction_scores = self.get_prediction_scores()
             if prediction_scores is None:
                 raise ValueError("No prediction scores to test.")
 
-            prediction_metadata = self.data.get("prediction_metadata")
             outliers = pd.DataFrame(
                 {
-                    "index": prediction_metadata["index"].iloc[0],
-                    "batch_position": prediction_metadata["batch_position"].iloc[0],
+                    "index": index,
+                    "batch_position": batch_position,
                     "outlier": prediction_scores < threshold,
                     "train_size" : len(training_scores),
                     "train_time" : self.data["train_time"],
@@ -369,7 +374,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
                     score_plot.show()
 
             self.results[f"{prediction_metadata["index"].iloc[0]}_{i+1}"] = outliers
-            if n_tests > 1 and i != n_tests - 1: # no need to train after last test
+            if n_tests > 1 and i != n_tests - 1: # no need to train after last test since add_data already calls it
                 self.train()
 
         if n_tests > 1:
@@ -386,8 +391,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             result = evaluator.run()
 
             true_classes = result["true_classes"]
-            outliers["class"] = true_classes[true_classes["index"] == outliers["index"]]["class_true"]
-            # return evaluator
+            outliers["class"] = true_classes.set_index("index").loc[outliers["index"].iloc[0], "class_true"]
 
         return outliers
     
@@ -401,40 +405,63 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             outliers (pd.DateFrame): The result of test_prediction_outliers()
 
         Returns:
-            outliers (pd.DataFrame): A dataframe of classified samples, including the confidence level of the classification
+            outliers (pd.DataFrame): A dataframe of classified samples
         """
-        ###set classes
-        if outliers is not None and isinstance(outliers, pd.DataFrame):
+        if not isinstance(outliers, pd.DataFrame):
+            outliers = self.test_prediction_outliers()  
+            
+        else:    
             prediction_metadata = self.data.get("prediction_metadata")  
             if not outliers["index"].equals(prediction_metadata["index"]):
                 raise ValueError("False set of prediction results were provided. Outliers should belong to the latest prediction performed.")
-            
-        else:    
-            outliers = self.test_prediction_outliers()
-            prediction_metadata = self.data.get("prediction_metadata")  
 
         outliers["class"] = outliers["outlier"].map({True: "outlier", False: "normal"})
         outliers.drop(columns="outlier", inplace = True)
 
         return outliers
     
-    def get_results(self):
+    def get_results(self, indices: int | list = None):
         """
         Returns the IsolationForestAnalyses results.
 
         Args:
-            None
+            indices (int | list(int), optional): The sample(s) identified by index/indices for which the results should be retrieved. If None, returns all results.
         
         Returns:
-            results (pd.DataFrame): A DataFrame containing records of all tests run using this model
+            results (pd.DataFrame): A DataFrame containing records of the predictions of this model.
         """
         results = self.results
-        if results == {}:
+
+        if indices is None:
+            indices = []
+
+        elif isinstance(indices, list):
+            for idx in indices:
+                if not isinstance(idx, int):
+                    raise ValueError("Indices must be an int or a list of ints.")
+                                            
+        elif isinstance(indices, int):
+            indices = [indices]
+
+        else:
+            raise ValueError("Indices must be an int or a list of ints.")
+
+        filtered_results = {}
+        for key in list(results.keys()):
+            if int(key.split("_")[0]) in indices:
+                filtered_results[key] = results[key]
+
+        if filtered_results:
+            results = filtered_results
+
+        results = {key : results[key] for key in sorted(results.keys(), key = lambda k: ( int(k.split("_")[0]), int(k.split("_")[-1]) ))}
+
+        if not results:
             return None
         else:
-            results = pd.concat(results.values(), ignore_index=True)
-            results["test_id"] = [key for key in results.keys() for _ in range(len(self.results[key]))]
-            return results
+            results_df = pd.concat(results.values(), ignore_index=True)
+            results_df["test_id"] = [key.split("_")[-1] for key in results.keys() for i in range(len(results[key]))]
+            return results_df
     
     def add_data(self, variables: pd.DataFrame = None, metadata: pd.DataFrame = None):
         """

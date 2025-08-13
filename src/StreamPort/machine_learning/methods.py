@@ -73,12 +73,12 @@ class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
         data = analyses.data
         variables = data.get("variables")
 
-        scaler_model = data.get("scaler_model")
-        if scaler_model is not None:
-            scaled_variables = scaler_model.transform(variables)
-            variables = pd.DataFrame(
-                scaled_variables, columns=variables.columns, index=variables.index
-            )
+        # scaler_model = data.get("scaler_model")
+        # if scaler_model is not None:
+        #     scaled_variables = scaler_model.transform(variables)
+        #     variables = pd.DataFrame(
+        #         scaled_variables, columns=variables.columns, index=variables.index
+        #     )
 
         data["model"] = self._create_model()
         data["parameters"] = self.parameters
@@ -128,16 +128,16 @@ class MachineLearningMethodNearestNeighboursClassifierSklearn(ProcessingMethod):
         if variables is None or labels is None:
             raise ValueError("Both 'variables' (features) and 'labels' must be provided in data.")
 
-        scaler_model = data.get("scaler_model")
-        if scaler_model is not None:
-            scaled_variables = scaler_model.transform(variables)
-            variables = pd.DataFrame(
-                scaled_variables,
-                columns=variables.columns,
-                index=variables.index,
-            )
+        # scaler_model = data.get("scaler_model")
+        # if scaler_model is not None:
+        #     scaled_variables = scaler_model.transform(variables)
+        #     variables = pd.DataFrame(
+        #         scaled_variables,
+        #         columns=variables.columns,
+        #         index=variables.index,
+        #     )
 
-        #create the KNN classifier
+        # create the KNN classifier
         model = KNeighborsClassifier(n_neighbors=self.parameters["n_neighbors"], weights=self.parameters["weights"])
 
         #store model
