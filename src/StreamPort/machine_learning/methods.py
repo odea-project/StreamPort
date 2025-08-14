@@ -398,11 +398,12 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
                 y=[1] * len(x_values),
                 mode = "lines",
                 line=dict(color="red", dash="dash"),
-                name = "Threshold"
+                name = "Threshold",
+                hovertemplate="Confidence threshold: 1"
             ))
 
         fig.update_layout(
-            title="Classification confidence over tests",
+            title="Detection accuracy and confidence over tests",
             xaxis=dict(
                 title="Number of tests",
                 tickmode="array",
@@ -512,7 +513,7 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
 
         # Layout
         fig.update_layout(
-            title="Detection accuracy over Test Runs and Training Set Size",
+            title="Threshold variation over Test Runs and Training Set Size",
             xaxis=dict(
                 tickvals=unique_indices,
                 ticktext=[str(ind) for ind in unique_indices],
@@ -548,13 +549,13 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
         """
         Plots the change in training time over increase of train set size.
         """
-        history = self.data.get("summary")
-        if history is None:
-            raise ValueError("No history to plot.")
+        summary = self.data.get("summary")
+        if summary is None:
+            raise ValueError("No test history to plot.")
+        
+        summary = summary.sort_values("index")
 
-        history = history.sort_values("index")
-
-        group_stats = history.groupby("index").agg(
+        group_stats = summary.groupby("index").agg(
             train_times = ("train_time", "mean"),
             train_sizes = ("train_size", "mean") 
         )    
@@ -566,7 +567,11 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
                 x=list(group_stats["train_sizes"]),
                 y=list(group_stats["train_times"]),
                 mode = "lines+markers",
-                name = "Training time" 
+                name = "Training time", 
+                hovertemplate=(
+                    "Train size: %{x}<br>" + 
+                    "Train time: %{y}"
+                )
             )
         )
 
@@ -583,9 +588,82 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
         """
         Plots the change in threshold, confidence consistency, number of tests required over train set size
         """
-        
-        return None
+        summary = self.data.get("summary")
+        true_classes = self.data.get("true_classes")
 
+        merged_df = summary.merge(true_classes[["index", "confidence_consistency"]], on="index", how="left")
+            
+        tests_per_index = summary.groupby(["index", "train_size"])["test_number"].nunique().reset_index(name="num_tests")
+
+        grouped = merged_df.drop_duplicates(subset=["index", "train_size"]).merge(
+            tests_per_index,
+            on=["index", "train_size"],
+            how="left"
+        )
+
+        grouped["train_size"] = grouped["train_size"].astype(int)
+
+        grouped = grouped.sort_values("train_size")
+        
+        fig = go.Figure()
+
+        # Threshold line
+        fig.add_trace(go.Scatter(
+            x=grouped["train_size"],
+            y=grouped["threshold"],
+            mode="lines+markers",
+            name="Mean Threshold",
+            line=dict(color="red", width=2, dash="dash"),
+            hovertemplate="Train size: %{x}<br>Mean Threshold: %{y:.3f}"
+        ))
+
+        # Confidence consistency line
+        fig.add_trace(go.Scatter(
+            x=grouped["train_size"],
+            y=grouped["confidence_consistency"],
+            mode="lines+markers",
+            name="Mean Confidence Consistency",
+            line=dict(color="blue", width=2),
+            hovertemplate="Train size: %{x}<br>Mean Confidence Consistency: %{y:.3f}"
+        ))
+
+        # Number of tests bar on secondary y-axis
+        fig.add_trace(go.Scatter(
+            x=grouped["train_size"],
+            y=grouped["num_tests"],
+            mode="lines+markers",
+            name="Number of Tests",
+            line=dict(color="green", width=2),
+            yaxis="y2",
+            hovertemplate="Train size: %{x}<br>Number of Tests: %{y}"
+        ))
+
+        # Layout with two y-axes
+        fig.update_layout(
+            title="Train Size vs Threshold, Confidence Consistency, and Number of Tests",
+            xaxis=dict(title="Train Size (Number of Samples)"),
+            yaxis=dict(
+                title="Threshold / Confidence Consistency",
+                tickfont=dict(color="black"),
+                side="left"
+            ),
+            yaxis2=dict(
+                title="Number of Tests",
+                tickfont=dict(color="green"),
+                overlaying="y",
+                side="right"
+            ),
+            legend=dict(
+                x=0.5, y=1.1,
+                xanchor="center", yanchor="bottom",
+                orientation="h"
+            ),
+            template="simple_white",
+            height=500
+        )
+
+        return fig
+            
 
 class MachineLearningExplainModelPredictionShap(ProcessingMethod):###----INCOMPLETE!!---###
     """

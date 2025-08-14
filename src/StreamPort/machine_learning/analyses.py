@@ -381,8 +381,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             result_list = []
             for key, data in self.results.items():
                 temp = data.copy()
-                if str(prediction_metadata["index"].iloc[0]) == key.split("_")[0]:
-                    temp["test_number"] = key 
+                temp["test_number"] = key 
                 result_list.append(temp)
 
             test_records = pd.concat(result_list, axis=0, ignore_index=True) # consider returning the same outliers but tested and make separate methods for plotting
@@ -420,15 +419,15 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
 
         return outliers
     
-    def get_results(self, indices: int | list = None):
+    def get_results(self, indices: int | list = None, summarize: bool = False) -> pd.DataFrame | None:
         """
         Returns the IsolationForestAnalyses results.
 
         Args:
             indices (int | list(int), optional): The sample(s) identified by index/indices for which the results should be retrieved. If None, returns all results.
-        
+            summarize (bool, optional): If True, returns a summary of the records for each unique index instead of a DataFrame.
         Returns:
-            results (pd.DataFrame): A DataFrame containing records of the predictions of this model.
+            results (pd.DataFrame | None): A DataFrame containing records of the predictions of this model or prints a stringified summary of the records. Grouped by unique index.
         """
         results = self.results
 
@@ -460,8 +459,30 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             return None
         else:
             results_df = pd.concat(results.values(), ignore_index=True)
-            results_df["test_id"] = [key.split("_")[-1] for key in results.keys() for i in range(len(results[key]))]
-            return results_df
+            results_df["test_number"] = [key.split("_")[-1] for key in results.keys() for i in range(len(results[key]))]
+
+        if summarize:    
+            group_stats = results_df.groupby("index").agg(
+                train_size = ("train_size", "mean"),
+                normal_count = ("class", lambda x: (x == "normal").sum()),
+                outlier_count = ("class", lambda x: (x == "outlier").sum()),
+                num_tests = ("test_number", "count")
+            ).reset_index()
+
+            summary = ""
+
+            for row in group_stats.itertuples(index=False):
+                summary += "Index: " + str(row.index) + "\n"
+                summary += "Train size: " + str(int(row.train_size)) + "\n"
+                summary += "Num. Tests: " + str(row.num_tests) + "\n" 
+                summary += "Normal: " + str(row.normal_count) + "\n" 
+                summary += "Outlier: " + str(row.outlier_count) + "\n" 
+                summary += "\n"
+
+            print(summary)
+            return None
+
+        return results_df
     
     def add_data(self, variables: pd.DataFrame = None, metadata: pd.DataFrame = None):
         """
