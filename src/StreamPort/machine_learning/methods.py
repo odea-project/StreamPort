@@ -738,7 +738,7 @@ class MachineLearningTuneTestParametersGridSearchSklearn(ProcessingMethod):
         - train_data (pd.DataFrame): A DataFrame of the training data.
         - train_metadata (pd.DataFrame): A DataFrame of training metadata/labels.                         
         - parameter_grid (dict): A dict of test parameters that should be Cross-validated by GridSearchCV. If none is given, it will be estimated based on the model provided.
-        - cv (int): Cross-validation folds to take for parameter tuning. Defaults is 3.
+        - cv (int): Cross-validation folds to take for parameter tuning. Default is 3.
         - scoring (str): Scoring metric to be applied on the model's classification results. Defaults to 'accuracy'.
         - verbose (int): Controls how much information is printed out for debugging or monitoring progress. Defaults to 0 (no output).
         - n_jobs (int): Decides how many threads are run in parallel. Defaults to 0 (1 thread used).

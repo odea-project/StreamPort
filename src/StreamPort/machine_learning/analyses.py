@@ -425,7 +425,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
 
         Args:
             indices (int | list(int), optional): The sample(s) identified by index/indices for which the results should be retrieved. If None, returns all results.
-            summarize (bool, optional): If True, returns a summary of the records for each unique index instead of a DataFrame.
+            summarize (bool, optional): If True, prints a summary of the records for each unique index instead.
         Returns:
             results (pd.DataFrame | None): A DataFrame containing records of the predictions of this model or prints a stringified summary of the records. Grouped by unique index.
         """
