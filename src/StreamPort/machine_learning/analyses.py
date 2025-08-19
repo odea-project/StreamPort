@@ -283,15 +283,15 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         scores = self.data["model"].decision_function(data)
         return scores
     
-    def _get_num_tests(self, scaling_const: int = 100, offset: int = 5, n_min: int = 5, n_max: int = 50):
+    def _get_num_tests(self, scaling_const: int = 100, offset: int = 5, n_min: int = 3, n_max: int = 50):
         """
         Dynamically calculates the number of tests n_tests required based on the size of the training set.
 
         Args:
-            - scaling_const: Constant that adjusts the rate of decrease of n_tests with respect to train set size
+            - scaling_const: Constant that adjusts the rate of decrease of n_tests with respect to train set size. Higher scaling_const means a slower decrease
             - offset: Offset to ensure n_tests does not fall below a certain minimum
-            - n_min: Minimum value for n_tests
-            - n_max: Maximum value for n_tests
+            - n_min: Minimum number of tests to run
+            - n_max: Maximum number of tests
         
         Returns:
             - n_tests: The computed appropriate number of tests to perform
@@ -384,12 +384,15 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
                 temp["test_number"] = key 
                 result_list.append(temp)
 
-            test_records = pd.concat(result_list, axis=0, ignore_index=True) # consider returning the same outliers but tested and make separate methods for plotting
+            test_records = pd.concat(result_list, axis=0, ignore_index=True) 
+            
+            # run ModelEvaluator
             evaluator = self.evaluator(test_records=test_records)
+            evaluator.run()
             self.evaluation_object = evaluator
-            result = evaluator.run()
 
-            true_classes = result["true_classes"]
+            true_classes = evaluator.get_true_classes()
+            
             outliers["class"] = true_classes.set_index("index").loc[outliers["index"].iloc[0], "class_true"]
 
         return outliers
@@ -550,7 +553,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         if result is None:
             outliers = self.test_prediction_outliers()
         else:
-            class_data = result.data.get("true_classes")
+            class_data = result.get_true_classes()
             outliers = class_data.copy()
             outliers.rename(columns={"class_true" : "class"}, inplace = True)
             
@@ -674,7 +677,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
 
         return fig
     
-    def plot_confidences(self):
+    def plot_confidence_variation(self):
         """
         Plot the variation in detection confidence over n runs of a single test sample
         """
@@ -683,7 +686,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             self.test_prediction_outliers()
             evaluator = self.evaluation_object
 
-        confidence_plot = evaluator.plot_confidences()
+        confidence_plot = evaluator.plot_confidence_variation()
         return confidence_plot
     
     def plot_threshold_variation(self):

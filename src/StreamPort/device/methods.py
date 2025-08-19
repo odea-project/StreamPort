@@ -278,26 +278,32 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
                 valid_bin_mask = ~np.isnan(resid_bin) & ~np.isnan(target_time_var[start_idx:end_idx + 1])
                 feati[key_res_std] = np.std(resid_bin[valid_bin_mask]) if np.any(valid_bin_mask) else np.nan
 
+                """
+                Out for now, residual_noise shows the most deviation among features. Could hinder visibility of other features. 
+                """
                 # absolute noise 
-                key_res_noise = f"residual_noise_{start_time}_{end_time}"
-                if np.sum(valid_bin_mask) >= 2:  # gradient needs at least 2 points
-                    resid_deriv = np.gradient(resid_bin[valid_bin_mask])
-                    time_deriv = np.gradient(target_time_var[start_idx:end_idx + 1][valid_bin_mask])
-                    res_noise = np.std(resid_deriv / time_deriv)
-                else:
-                    res_noise = np.nan
-                feati[key_res_noise] = res_noise
+                # key_res_noise = f"residual_noise_{start_time}_{end_time}"
+                # if np.sum(valid_bin_mask) >= 2:  # gradient needs at least 2 points
+                #     resid_deriv = np.gradient(resid_bin[valid_bin_mask])
+                #     time_deriv = np.gradient(target_time_var[start_idx:end_idx + 1][valid_bin_mask])
+                #     res_noise = np.std(resid_deriv / time_deriv)
+                # else:
+                #     res_noise = np.nan
+                # feati[key_res_noise] = res_noise
 
                 if pressure_vector[start_idx] == 0:
                     pressure_vector[start_idx] = 0.01 #avoid division by 0
 
                 # relative change
                 key_relc = f"relative_change_{start_time}_{end_time}"  # deviation in curves caused by e.g. Open Oven lost in smoothing. Pressure curve RoC in bins to id exact moment error causes change
-                feati[key_relc] = abs((pressure_vector[end_idx] - pressure_vector[start_idx]) / pressure_vector[start_idx]) #abs((pressure_vector[end_idx] - pressure_vector[start_idx]) / pressure_vector[start_idx]) 
+                feati[key_relc] = (pressure_vector[end_idx] - pressure_vector[start_idx]) / pressure_vector[start_idx] #abs((pressure_vector[end_idx] - pressure_vector[start_idx]) / pressure_vector[start_idx]) 
                 
+                """
+                Out for now, roc shows the most deviation among features. Could hinder visibility of other features. 
+                """
                 # rate of change. Absolute value used to avoid negative roc and relative change values
-                key_roc = f"roc_{start_time}_{end_time}"
-                feati[key_roc] = abs((pressure_vector[end_idx] - pressure_vector[start_idx]) / target_time_var[end_idx] - target_time_var[start_idx]) #abs((pressure_vector[end_idx] - pressure_vector[start_idx]) / target_time_var[end_idx] - target_time_var[start_idx])               
+                # key_roc = f"roc_{start_time}_{end_time}"
+                # feati[key_roc] = abs((pressure_vector[end_idx] - pressure_vector[start_idx]) / target_time_var[end_idx] - target_time_var[start_idx]) #abs((pressure_vector[end_idx] - pressure_vector[start_idx]) / target_time_var[end_idx] - target_time_var[start_idx])               
                 
                 # absolute value of minute fluctuations after baseline correction 
                 key_dev = f"abs_deviation_{start_time}_{end_time}"  # absolute fluctuation in the bin without baseline pressure value to catch small deviations

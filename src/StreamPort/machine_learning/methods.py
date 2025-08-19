@@ -82,7 +82,7 @@ class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):
 
         data["model"] = self._create_model()
         data["parameters"] = self.parameters
-        analyses = IsolationForestAnalyses(evaluator = MachineLearningEvaluateModelStabilityNative)
+        analyses = IsolationForestAnalyses(evaluator = MachineLearningEvaluateModelMetricsNative)
         analyses.data = data
         return analyses
 
@@ -209,9 +209,9 @@ class MachineLearningScaleFeaturesScalerSklearn(ProcessingMethod):
         return analyses
 
 
-class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
+class MachineLearningEvaluateModelMetricsNative(ProcessingMethod):
     """
-    Creates a method to evaluate the internal stability of a learning model, i.e, how well it performs over many test iterations with no parameter changes and no fixed seed
+    A native implementation to evaluate a learning model, i.e, how well it performs over many test iterations with no parameter changes and no fixed seed
 
     Args:
         test_records (pd.DataFrame): A dataframe containing the classification results of all tests conducted by an ML object. 
@@ -219,6 +219,22 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
         confidence_buffer (float): Indicates an interval above or below the detection threshold. 
                                    Classifications with a confidence within this interval are considered as false positives/negatives.
         min_classification (int): A measure to judge the accuracy of a classification based on the minimum number of tests run on the sample.
+    
+    Attributes:
+        data (dict): A dict containing the test_records argument before and after processing, and related results:
+                    {
+                        summary: Test records grouped and sorted, 
+                        true_classes: Calculated true classes of the test samples,
+                        stability_score: Model Stability score calculated based on the detection/classification consistency 
+                    }
+
+    Methods:
+        get_true_classes(): Returns the test_records with True Classes assigned to each unique sample (unique by index).
+        get_stability_score(): Returns a float value representing the mean stability of the model's classification/detection accuracy ~1 is highly stable.
+        plot_confidence_variation(): Plots the change in classification/detection confidence over many uncorrelated, non-deterministic tests on the same sample.
+        plot_threshold_variation(): Plots the change in detection threshold/sensitivity over the change in size of the training set as tests are conducted and inliers are added.
+        plot_train_time(): Time required to train the model over increasing train sizes.
+        plot_model_stability(): Change in threshold, detection confidence and minimum required number of tests over size of the train set as a representative figure of model performance improvement.
     """
     def __init__(self,
                  test_records: pd.DataFrame = None,  
@@ -227,7 +243,7 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
                  ):
         super().__init__()
         self.data_type = "MachineLearning"
-        self.method = "EvaluateModelStability"
+        self.method = "EvaluateModelMetrics"
         self.algorithm = "Native"
         self.input_instance = None
         self.output_instance = None
@@ -274,13 +290,7 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
             instance attributes.
 
         Returns:
-            dict(
-                true_classes (pd.DataFrame): A dataframe containing the calculated true classes per test index.
-                                            Samples that were not tested sufficiently to form a decision are assigned "not_set" or the value of the majority class until further tests are run.
-                stability_score (float): The mean value of the model's combined stability.
-                    combined_stability: agreement score (how many times the same sample received the same class label) 
-                                    +   confidence_consistency (consistency of classification confidence values per sample = 1/(std/mean)variation in confidences)
-            )  
+            None
         """
         summary = self.parameters["test_records"].sort_values("index")
 
@@ -318,23 +328,36 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
             mask = true_classes["class_true"] == "not set"
             true_classes.loc[mask, "class_true"] = true_classes.loc[mask, "majority_class"]
 
-        self.data["true_classes"] = true_classes
         self.data["summary"] = summary
-
-        return {"true_classes" : true_classes, 
-                "stability_score" : combined_stability.mean()}
+        self.data["true_classes"] = true_classes
+        self.data["stability_score"] = combined_stability.mean()
     
-    def plot_confidences(self) -> go.Figure:
+    def get_true_classes(self) -> pd.DataFrame:
         """
-        Plots the model's calssification/detection confidence along with final assigned classes over multiple test runs
+        Returns the true classes previously calculated. If none available, calls run() using the initialization arguments and returns true classes.
         """
-        summary = self.data.get("summary")
         true_classes = self.data.get("true_classes")
-
-        if summary is None or true_classes is None:
-            self.data = self.run()
-            summary = self.data.get("summary")
+        if true_classes is None:
+            self.run()
             true_classes = self.data.get("true_classes")
+        return true_classes
+    
+    def get_stability_score(self) -> float:
+        """
+        Returns the stability score of the model. If none available, calls run() using the initialization arguments and returns the score.
+        """
+        stability_score = self.data.get("stability_score")
+        if stability_score is None:
+            self.run()
+            stability_score = self.data.get("stability_score")
+        return stability_score
+
+    def plot_confidence_variation(self) -> go.Figure:
+        """
+        Plots the model's calssification/detection confidences along with final assigned classes over multiple test runs
+        """
+        true_classes = self.get_true_classes()
+        summary = self.data.get("summary")
 
         # merge to pair number of classifications per index/sample with the estimated true labels
         merged_df = summary.merge(true_classes, on='index', how='left')
@@ -421,13 +444,12 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
     
     def plot_threshold_variation(self) -> go.Figure: 
         """
-        Plots the change in threshold over increase of train set size.
+        Plots the change in model sensitivity (detection threshold) over increase of train set size.
         """
+        true_classes = self.get_true_classes()
         test_records = self.data.get("summary")
         if test_records is None:
             raise ValueError("No test records available to estimate threshold variation.")
-
-        true_classes = self.data.get("true_classes")
 
         # group each index
         test_groups = test_records.groupby("index")
@@ -588,8 +610,8 @@ class MachineLearningEvaluateModelStabilityNative(ProcessingMethod):
         """
         Plots the change in threshold, confidence consistency, number of tests required over train set size
         """
+        true_classes = self.get_true_classes()
         summary = self.data.get("summary")
-        true_classes = self.data.get("true_classes")
 
         merged_df = summary.merge(true_classes[["index", "confidence_consistency"]], on="index", how="left")
             
