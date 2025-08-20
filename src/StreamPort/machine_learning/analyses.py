@@ -6,6 +6,7 @@ import umap
 import pandas as pd
 import numpy as np
 from timeit import timeit
+import copy
 import plotly.graph_objects as go
 import plotly.colors
 from src.StreamPort.core import Analyses
@@ -163,8 +164,9 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
     This class extends the MachineLearningAnalyses class and is used to perform Isolation Forest analysis.
     """
 
-    def __init__(self, evaluator):
+    def __init__(self, evaluator = None):
         super().__init__()
+        self.models = []
         self.results = {}
         self.evaluator = evaluator
         self.evaluation_object = None
@@ -319,6 +321,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         Args:
             threshold (float | str): The threshold for outlier detection. If "auto", the threshold is set to the mean
                                     of the training scores minus 3 times the standard deviation of the training scores.
+                                    If "min" it is set to the smallest value in training scores.
             n_tests (int): The number of times a sample should be scored using decision_function(). This mitigates poor model generalization with small datasets. 
                                     If None, defaults to a dynamically assigned value based on the train size (see _get_num_tests()).
             show_scores (bool): If True, the method plots the anomaly scores for each of the [n_tests] test runs.
@@ -329,14 +332,19 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         if n_tests is None or n_tests == 0:
             n_tests = self._get_num_tests()
 
+        self.models = [copy.deepcopy(self) for i in range(n_tests)]
+        score_plots = []
+
         prediction_metadata = self.data.get("prediction_metadata")
 
         index = prediction_metadata["index"].iloc[0]
         batch_position = prediction_metadata["batch_position"].iloc[0]
 
-        for i in range(n_tests):
+        for i, model in enumerate(self.models):
             
-            training_scores = self.get_training_scores()
+            model.train()
+
+            training_scores = model.get_training_scores()
             if training_scores is None:
                 raise ValueError("No training scores available.")
 
@@ -344,10 +352,12 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
                 threshold = np.mean(training_scores) - 3 * np.std(
                     training_scores
                 )
+            elif threshold == "min":
+                threshold = min(training_scores)
             elif not isinstance(threshold, (int, float)):
                 raise ValueError("Threshold must be a number.")
 
-            prediction_scores = self.get_prediction_scores()
+            prediction_scores = model.get_prediction_scores()
             if prediction_scores is None:
                 raise ValueError("No prediction scores to test.")
 
@@ -357,25 +367,25 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
                     "batch_position": batch_position,
                     "outlier": prediction_scores < threshold,
                     "train_size" : len(training_scores),
-                    "train_time" : self.data["train_time"],
+                    "train_time" : model.data["train_time"],
                     "threshold" : threshold,
                     "score": prediction_scores,
                     "confidence" : abs((prediction_scores / threshold)).round(2),
                 }
             )
-            outliers = self._assign_class_labels(outliers)
+            outliers = model._assign_class_labels(outliers)
 
             if show_scores == True:
                 if n_tests == 1:
                     print("Only one test was run. plot scores using analyses.plot_scores()")
                 else:
-                    score_plot = self.plot_scores()
+                    score_plot = model.plot_scores(threshold=threshold)
                     score_plot.update_layout(title = f"Test run {i + 1}")
-                    score_plot.show()
+                    score_plots.append(score_plot)
 
             self.results[f"{prediction_metadata["index"].iloc[0]}_{i+1}"] = outliers
-            if n_tests > 1 and i != n_tests - 1: # no need to train after last test since add_data already calls it
-                self.train()
+            #if n_tests > 1 and i != n_tests - 1: # no need to train after last test since add_data already calls it
+            #    self.train()
 
         if n_tests > 1:
             result_list = []
@@ -395,7 +405,8 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
             
             outliers["class"] = true_classes.set_index("index").loc[outliers["index"].iloc[0], "class_true"]
 
-        return outliers
+        return {"outliers" : outliers,
+                "score_plots" : score_plots}
     
     def _assign_class_labels(self, 
                              outliers: pd.DataFrame = None, 
@@ -547,7 +558,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         Args:
             add_outliers (bool): Whether to add the outliers to the data.
             threshold (float | str): The threshold for outlier detection. If "auto", the threshold is set to the mean
-            of the training scores minus 3 times the standard deviation of the training scores.
+            of the training scores minus 3 times the standard deviation of the training scores. If "min", set to the minimum value of the training scores.
         """
         result = self.evaluation_object
         if result is None:
@@ -613,6 +624,8 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
 
         if threshold == "auto":
             threshold = np.mean(training_scores) - 3 * np.std(training_scores)
+        elif threshold == "min":
+            threshold = min(training_scores)
         elif not isinstance(threshold, (int, float)):
             raise ValueError("Threshold must be a number.")
 
