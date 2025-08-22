@@ -27,8 +27,10 @@ share/python-wheels/
 MANIFEST
 
 # Modules for testing and reporting
-src/StreamPort/extract.bat
 .vscode
+
+# figure folders
+dev/figures/gif_figs
 
 # PyInstaller
 #  Usually these files are written by a python script from a template

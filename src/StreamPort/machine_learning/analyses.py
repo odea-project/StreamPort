@@ -2,10 +2,11 @@
 This module contains analyses child classes for machine learning data processing.
 """
 
-import umap
+#import umap
 import pandas as pd
 import numpy as np
 from timeit import timeit
+from joblib import Parallel, delayed
 import copy
 import plotly.graph_objects as go
 import plotly.colors
@@ -232,6 +233,10 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         Args:
             data (pd.DataFrame): The input data for prediction.
         """
+
+        n_tests = self._get_num_tests()
+        self.models = [copy.copy(self) for i in range(n_tests)]
+        
         train_metadata = self.data.get("metadata")
 
         if self.data["model"] is None:
@@ -298,8 +303,11 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         Returns:
             - n_tests: The computed appropriate number of tests to perform
         """
+
+        train_data = self.data.get("metadata")
+
         try:
-            train_size = len(self.data.get("metadata"))
+            train_size = len(train_data)
         except TypeError:
             train_size = 0
 
@@ -313,6 +321,61 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         n_tests = max(n_min, min(n_max, int(n_tests)))
         
         return n_tests
+    
+    def _run_test(self, model_number: int = None, threshold: float | str = "auto", show_scores: bool = False):
+        """
+        Runs the prediction and returns results. Used by each new model object. Extends test_prediction_outliers().
+        """
+        if model_number is None:
+            model_number = 0
+
+        print("Running test on Model No. ", model_number, "...")
+
+        prediction_metadata = self.data.get("prediction_metadata")
+
+        index = prediction_metadata["index"].iloc[0]
+        batch_position = prediction_metadata["batch_position"].iloc[0]
+
+        self.train()
+
+        training_scores = self.get_training_scores()
+        if training_scores is None:
+            raise ValueError("No training scores available.")
+
+        if threshold == "auto":
+            threshold = np.mean(training_scores) - 3 * np.std(
+                training_scores
+            )
+        elif threshold == "min":
+            threshold = min(training_scores)
+        elif not isinstance(threshold, (int, float)):
+            raise ValueError("Threshold must be a number.")
+
+        prediction_scores = self.get_prediction_scores()
+        if prediction_scores is None:
+            raise ValueError("No prediction scores to test.")
+
+        outliers = pd.DataFrame(
+            {
+                "index": index,
+                "batch_position": batch_position,
+                "outlier": prediction_scores < threshold,
+                "train_size" : len(training_scores),
+                "train_time" : self.data["train_time"],
+                "threshold" : threshold,
+                "score": prediction_scores,
+                "confidence" : abs((prediction_scores / threshold)).round(2),
+            }
+        )
+        outliers = self._assign_class_labels(outliers)
+
+        if show_scores:
+            score_plot = self.plot_scores(threshold)
+
+        return {
+                "result_dict" : {f"{index}_{model_number+1}": outliers},
+                "score_plot" : score_plot
+                }
 
     def test_prediction_outliers(self, threshold: float | str = "auto", n_tests: int = None, show_scores : bool = False) -> pd.DataFrame:
         """
@@ -324,16 +387,42 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
                                     If "min" it is set to the smallest value in training scores.
             n_tests (int): The number of times a sample should be scored using decision_function(). This mitigates poor model generalization with small datasets. 
                                     If None, defaults to a dynamically assigned value based on the train size (see _get_num_tests()).
-            show_scores (bool): If True, the method plots the anomaly scores for each of the [n_tests] test runs.
+            show_scores (bool): If True, the method returns the anomaly scores plot for each of the [n_tests] test runs along with outliers.
 
         Returns:
-            outliers (pd.DataFrame): A DataFrame containing the details of the predictions, including the confidence level of the classification. 
+            dict(
+                outliers (pd.DataFrame): A DataFrame containing the details of the predictions, including the confidence level of the classification.
+                score_plots (list(go.Figure)): A list of graph_objects figures.
+            )
+             
         """  
-        if n_tests is None or n_tests == 0:
-            n_tests = self._get_num_tests()
+        if n_tests is None:
+            if self.models == []:
+                n_tests = self._get_num_tests()
+                self.models = [copy.copy(self) for i in range(n_tests)]
+            else:
+                n_tests = len(self.models)
+        elif n_tests <= 0:
+            raise ValueError("Invalid input for n_tests. Must be a positive integer")
 
-        self.models = [copy.deepcopy(self) for i in range(n_tests)]
+        # create n_tests models for n_tests number of tests. 
+        if len(self.models) != n_tests:
+            self.models = [copy.copy(self) for i in range(n_tests)]
+
+        for model in self.models:
+            model.data["model"] = copy.deepcopy(self.data["model"])
         score_plots = []
+
+        #***If parallelized, follow the blocks within ### - ### below. 
+        # For small n_tests (< = 10), prefer a loop running sequential tests. For high n_tests, Multiprocessing is effective  
+
+        ### Parallel testing. If sequential, comment out this block within the ###'s and uncomment the following block. 
+        # result_list = Parallel(n_jobs=16, backend="threading" )(delayed(model._run_test)(i, threshold, show_scores) for i, model in enumerate(self.models))
+
+        # for result in result_list:
+        #     self.results.update(result["result_dict"])
+        #     score_plots.append(result["score_plot"])        
+        ###
 
         prediction_metadata = self.data.get("prediction_metadata")
 
@@ -383,16 +472,18 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
                     score_plot.update_layout(title = f"Test run {i + 1}")
                     score_plots.append(score_plot)
 
-            self.results[f"{prediction_metadata["index"].iloc[0]}_{i+1}"] = outliers
-            #if n_tests > 1 and i != n_tests - 1: # no need to train after last test since add_data already calls it
-            #    self.train()
+            self.results[f"{index}_{i+1}"] = outliers
 
         if n_tests > 1:
             result_list = []
             for key, data in self.results.items():
-                temp = data.copy()
-                temp["test_number"] = key 
-                result_list.append(temp)
+                #temp = data.copy()
+                data["test_number"] = key 
+                result_list.append(data)
+
+            ### set last test result as outliers in case of parallel execution
+            # outliers = data 
+            ###
 
             test_records = pd.concat(result_list, axis=0, ignore_index=True) 
             
@@ -403,6 +494,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
 
             true_classes = evaluator.get_true_classes()
             
+            # assign true class before returning
             outliers["class"] = true_classes.set_index("index").loc[outliers["index"].iloc[0], "class_true"]
 
         return {"outliers" : outliers,
