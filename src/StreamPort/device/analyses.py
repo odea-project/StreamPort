@@ -6,10 +6,11 @@ import os
 import datetime
 import re
 import xml.etree.ElementTree as ET
+import rainbow as rb
 import pandas as pd
 import plotly.graph_objects as go
-from src.StreamPort.core import Analyses
-from src.StreamPort.utils import get_file_encoding
+from core import Analyses
+from utils import get_file_encoding
 
 
 def _read_pressure_curve_angi(fl: str, pc_template: dict) -> dict:
@@ -128,6 +129,25 @@ def _read_pressure_curve_angi(fl: str, pc_template: dict) -> dict:
 
     pc_fl["runtime"] = (max(pc_fl["time_var"]) - min(pc_fl["time_var"])) * 60
     return pc_fl
+
+
+def _read_ms_data_angi(fl: str) -> dict:
+    """
+    Reads MS data from a file
+    """
+    datadir = rb.read(fl)
+    datafiles = datadir.datafiles
+
+    datafiles = [file for file in datafiles if file.detector == "MS"]
+
+    ms_data = {}
+
+    for file in datafiles:
+        ms_data[f"{file.name}"] = {"rt" : file.x_labels, # 1-D retention time (minutes)
+                                   "mz" : file.ylabels, # 1-D mz/wavelength
+                                   "intensity" : file.data} # 2-D intensity # all np.ndarrays
+
+    return ms_data
 
 
 def _read_actuals_angi(fl: str) -> dict:
@@ -690,6 +710,234 @@ class PressureCurvesAnalyses(Analyses):
         return fig
 
 
+class MassSpecAnalyses(Analyses):
+    """
+    Class for analyzing Mass Spectrometry data.
+
+    Args:
+        files (list): List of paths to MS data files. Possible formats are .D.
+
+    Attributes:
+        data (list): List of dictionaries containing pressure curve data. Each dictionary contains the following
+            keys:
+            - index: Index of the pressure curve.
+            - name: Name of the pressure curve.
+            - path: Path to the pressure curve data file.
+            - batch: Batch name.
+            - batch_position: Position of the batch in the analysis.
+            - idle_time: Idle time of the pressure curve.
+            - sample: Sample name.
+            - method: Method name.
+            - timestamp: Timestamp of the pressure curve.
+            - detector: Detector name.
+            - pump: Pump name.
+            - start_time: Start time of the pressure curve.
+            - end_time: End time of the pressure curve.
+            - runtime: Runtime of the pressure curve in seconds.
+            - rt: Retention time in seconds.
+            - mz: Charge per mass ratio.
+            - intensity: Ion peak intensity.
+
+    Methods:
+        plot_pressure_curves: Plots the pressure curves for given indices.
+        plot_batches: Plots the batches of the pressure curves over the timestamps.
+        plot_methods: Plots the methods of the pressure curves over the timestamps.
+        plot_features_raw: Plots calculated raw data from features of the pressure curves over the time variable.
+        plot_features: Plots calculated features of the pressure curves.
+    """
+
+    def __init__(self, files: list = None):
+        super().__init__(data_type="MassSpecAnalyses", formats=[".D"])
+
+        self.data = []
+
+        pc_template = {
+            "index": None,
+            "name": None,
+            "path": None,
+            "batch": None,
+            "batch_position": None,
+            "idle_time": None,
+            "sample": None,
+            "method": None,
+            "timestamp": None,
+            "detector": None,
+            "pump": None,
+            "start_time": None,
+            "end_time": None,
+            "runtime": None,
+            "rt": None,
+            "mz": None,
+            "intensity": None
+        }
+
+        if files is None:
+            return
+
+        if len(files) == 0:
+            raise ValueError("No data provided for PressureCurvesAnalyses analysis.")
+
+        if not isinstance(files, list):
+            if isinstance(files, str):
+                files = [files]
+            else:
+                raise TypeError("Files should be a list of file paths.")
+
+        for fl in files:
+            if not os.path.exists(fl):
+                raise FileNotFoundError(f"File not found: {fl}")
+
+            filename = os.path.basename(fl)
+            batch = os.path.basename(os.path.dirname(fl))
+            run = os.path.join(batch, filename)
+
+            fl_ext = os.path.splitext(fl)[1]
+
+            if fl_ext not in self.formats:
+                raise ValueError(
+                    f"Unsupported file format: {fl_ext}. Supported formats are: {self.formats}"
+                )
+
+            if fl_ext == ".D":
+                try:
+                    pc_fl = _read_ms_data_angi(fl, pc_template)
+                except ValueError:
+                    print("No data for this run: ", run)#error_lc. Corrupted .D files cannot be read with SignalExtraction
+                    continue
+            else:
+                raise ValueError(
+                    f"Unsupported file format: {fl_ext}. Supported formats are: {self.formats}"
+                )
+
+            self.data.append(pc_fl)
+
+        self.data = sorted(self.data, key=lambda x: x["start_time"])
+
+        #remove StandBy samples in case of error-lc data
+        self.data = [pc for pc in self.data if pc["sample"].lower() != "standby"]
+
+        for i, pc in enumerate(self.data):
+            pc["index"] = i
+
+            if i == 0:
+                pc["idle_time"] = 0
+                pc["batch_position"] = 1
+                continue
+
+            pc["idle_time"] = (
+                pc["start_time"] - self.data[i - 1]["end_time"]
+            ).total_seconds()
+
+            if (
+                pc["method"] == self.data[i - 1]["method"]# error_lc batch position assignment broke here. Fixed.
+                and pc["batch"] == self.data[i - 1]["batch"]
+            ):
+                pc["batch_position"] = self.data[i - 1]["batch_position"] + 1
+            else:
+                pc["batch_position"] = 1
+
+            self.data[i] = pc
+
+    def __str__(self):
+        """
+        Return a string representation of the PressureCurvesAnalyses object.
+        """
+        str_data = ""
+        if len(self.data) > 0:
+            for i, item in enumerate(self.data):
+                if isinstance(item, dict):
+                    str_data += f"    {i + 1}. {item["name"]} ({item["path"]})\n"
+        else:
+            str_data += "  No pressure curves data available."
+
+        return (
+            f"\n{type(self).__name__} \n"
+            f"  data: {len(self.data)} \n"
+            f"{str_data} \n"
+        )
+
+    def get_methods(self) -> list[str]:
+        """
+        Get the methods of the pressure curves.
+
+        Returns:
+            list: List of unique methods used in the pressure curves.
+        """
+        methods = [item["method"] for item in self.data if "method" in item]
+        return list(set(methods))
+
+    def get_batches(self) -> list[str]:
+        """
+        Get the batches of the pressure curves.
+
+        Returns:
+            list: List of unique batches used in the pressure curves.
+        """
+        batches = [item["batch"] for item in self.data if "batch" in item]
+        return list(set(batches))
+
+    def get_method_indices(self, method: str) -> list[int]:
+        """
+        Get the indices of the pressure curves for a given method.
+
+        Args:
+            method (str): Method name to filter the pressure curves.
+
+        Returns:
+            list: List of indices of the pressure curves for the given method.
+        """
+        if not isinstance(method, str):
+            raise TypeError("Method should be a string.")
+
+        indices = [i for i, item in enumerate(self.data) if item["method"] == method]
+        return indices
+
+    def get_batch_indices(self, batch: str) -> list[int]:
+        """
+        Get the indices of the pressure curves for a given batch.
+
+        Args:
+            batch (str): Batch name to filter the pressure curves.
+
+        Returns:
+            list: List of indices of the pressure curves for the given batch.
+        """
+        if not isinstance(batch, str):
+            raise TypeError("Batch should be a string.")
+
+        indices = [i for i, item in enumerate(self.data) if item["batch"] == batch]
+        return indices
+
+    def get_metadata(self, indices: list = None) -> pd.DataFrame:
+        """
+        Get a DataFrame of the metadata of the pressure curves.
+
+        Args:
+            indices (list): List of indices of the pressure curves to include in the DataFrame. If None, all curves are included.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the metadata of the pressure curves.
+        """
+
+        if indices is None:
+            indices = list(range(len(self.data)))
+        elif isinstance(indices, int):
+            indices = [indices]
+        if not isinstance(indices, list):
+            raise TypeError("Indices should be a list of integers.")
+        if len(indices) == 0:
+            raise ValueError("No indices provided for DataFrame creation.")
+
+        metadata = []
+        for i in indices:
+            pc = self.data[i].copy()
+            for key in ["time_var", "pressure_var", "features", "features_raw"]:
+                pc.pop(key, None)
+            metadata.append(pc)
+
+        return pd.DataFrame(metadata)
+
+
 class ActualsAnalyses(Analyses):
     """
     Class for analyzing device Actuals to be used in combination with pressure signal readings
@@ -709,7 +957,7 @@ class ActualsAnalyses(Analyses):
             - timestamp: Timestamp of the actuals data used to identify and connect to pressure data.
             - start_time: Start time of the actuals file.
             - end_time: End time of the actuals file.
-            - module_id: Name of the module/sensor (THM, DAD, ...)
+            - module_id: Name of the module/sensor (THM, DAD, ...).
             - temperature_var: Temperature signal reading.
             - valve_position: Valve position entry.
             - error_state: Entry on any discovered errors.
