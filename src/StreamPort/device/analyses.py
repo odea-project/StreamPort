@@ -9,8 +9,8 @@ import xml.etree.ElementTree as ET
 import rainbow as rb
 import pandas as pd
 import plotly.graph_objects as go
-from core import Analyses
-from utils import get_file_encoding
+from src.StreamPort.core import Analyses
+from src.StreamPort.utils import get_file_encoding
 
 
 def _read_pressure_curve_angi(fl: str, pc_template: dict) -> dict:
@@ -129,56 +129,6 @@ def _read_pressure_curve_angi(fl: str, pc_template: dict) -> dict:
 
     pc_fl["runtime"] = (max(pc_fl["time_var"]) - min(pc_fl["time_var"])) * 60
     return pc_fl
-
-
-def _read_ms_data_angi(fl: str) -> dict:
-    """
-    Reads MS data from a file
-    """
-    datadir = rb.read(fl)
-    datafiles = datadir.datafiles
-
-    datafiles = [file for file in datafiles if file.detector == "MS"]
-
-    ms_data = {}
-
-    for file in datafiles:
-        ms_data[f"{file.name}"] = {"rt" : file.x_labels, # 1-D retention time (minutes)
-                                   "mz" : file.ylabels, # 1-D mz/wavelength
-                                   "intensity" : file.data} # 2-D intensity # all np.ndarrays
-
-    return ms_data
-
-
-def _read_actuals_angi(fl: str) -> dict:
-    """
-    Reads actuals from a file
-    """
-    return_object = {
-        "actuals" : None,
-        "ac_types" : None
-    }
-    actuals = None
-    ac_types = None
-
-    actuals_file = pd.read_csv(
-        fl,
-        low_memory=False,
-        sep=";",
-        decimal="."
-    )
-    #INCOMPLETE
-    actuals = actuals_file.dropna(axis=1, how="all")
-
-    ac_type = actuals["ModuleId"][0]
-    ac_keys = actuals.columns.tolist()
-    
-    ac_types = {ac_type : ac_keys}
-
-    return_object["actuals"] = actuals
-    return_object["ac_types"] = ac_types
-
-    return return_object
 
 
 class PressureCurvesAnalyses(Analyses):
@@ -710,6 +660,95 @@ class PressureCurvesAnalyses(Analyses):
         return fig
 
 
+def _read_ms_data_rainbow(fl: str, ms_template: dict) -> dict:
+    """
+    Reads MS data from a file
+    """
+    datetime_format = "%H:%M:%S %m/%d/%y"
+    datetime_pattern = re.compile(r"(\d{2}:\d{2}:\d{2} \d{1,2}/\d{1,2}/\d{2})")
+
+    datadir = rb.read(fl) # .D dir
+    metadata = datadir.metadata
+    datafiles = datadir.datafiles
+
+    ms_file = [file for file in datafiles if file.name == "MSD1.MS"] # compatible types UV, CH, MS
+    ms_file = ms_file[0]
+    file_metadata = ms_file.metadata
+
+    if ms_file is None:
+#        raise ValueError(f"No MS data found in directory: {fl}")
+        print("no ms data here: ", fl)
+
+    files_list = os.listdir(fl)
+    files_list = [os.path.join(fl, f) for f in files_list]
+
+    sample_xml = [file for file in files_list if "SAMPLE.XML" in file]
+    sample_xml = sample_xml[0]
+    
+    log_file = [file for file in files_list if "RUN.LOG" in file] # run logs for metadata
+    log_file = log_file[0]
+
+    if log_file is None:
+#        raise ValueError(f"No RUN.LOG file found in directory: {fl}")
+        print("no log data here: ", fl)
+    sample = file_metadata.pop("notebook", None)
+    if sample is None:
+        tree = ET.parse(sample_xml)
+        root = tree.getroot()
+
+        sample_name = root.find(".//Name")
+        if sample_name is not None:
+            sample = sample_name.text
+        else:
+#            raise ValueError("No sample name found in SAMPLE.XML file.")    
+            print("No sample data here: ", fl)
+
+    ms_data = ms_template.copy()
+    ms_data["sample"] = sample
+    ms_data["vial_position"] = metadata.get("vialpos")
+    ms_data["name"] = os.path.splitext(os.path.basename(fl))[0]
+    ms_data["path"] = fl
+    ms_data["batch"] = os.path.basename(os.path.dirname(fl))
+    ms_data["detector"] = ms_file.detector
+
+    ms_data.update({"rt" : ms_file.xlabels, # 1-D retention time (minutes)
+                    "mz" : ms_file.ylabels, # 1-D mz/wavelength
+                    "intensity" : ms_file.data # 2-D intensity # all np.ndarrays
+                    }) 
+    
+    ms_data.update(file_metadata)
+    
+    #handle error_lc ### Not a permanent fix. Discuss with others and correct here and in pressure_curves!!!
+    if "D2F" in ms_data["name"]:
+        ms_data["method"] = "error_lc"
+    #/handle error_lc done
+
+    with open(log_file, encoding=get_file_encoding(log_file)) as f:
+        for line in f:
+            if "Method started:" in line and ms_data["timestamp"] is None:
+                timestamp = datetime_pattern.search(line).group()
+                timestamp = datetime.datetime.strptime(timestamp, datetime_format)
+                ms_data["timestamp"] = timestamp
+
+            if "Run" in line and ms_data["start_time"] is None:
+                start_time = datetime_pattern.search(line).group()
+                start_time = datetime.datetime.strptime(start_time, datetime_format)
+                ms_data["start_time"] = start_time
+
+            if "Postrun" in line and ms_data["end_time"] is None:
+                end_time = datetime_pattern.search(line).group()
+                end_time = datetime.datetime.strptime(end_time, datetime_format)
+                ms_data["end_time"] = end_time
+
+                match_key = re.match(r"(\S+)", line)
+                if match_key:
+                    ms_data["pump"] = match_key.group(1)
+
+    ms_data["runtime"] = (max(ms_data["rt"]) - min(ms_data["rt"])) * 60
+
+    return ms_data
+
+
 class MassSpecAnalyses(Analyses):
     """
     Class for analyzing Mass Spectrometry data.
@@ -720,23 +759,27 @@ class MassSpecAnalyses(Analyses):
     Attributes:
         data (list): List of dictionaries containing pressure curve data. Each dictionary contains the following
             keys:
-            - index: Index of the pressure curve.
-            - name: Name of the pressure curve.
-            - path: Path to the pressure curve data file.
+            - index: Index of the run.
+            - name: Name of the run.
+            - path: Path to the ms data file.
             - batch: Batch name.
             - batch_position: Position of the batch in the analysis.
-            - idle_time: Idle time of the pressure curve.
-            - sample: Sample name.
+            - idle_time: Idle time of the (instrument before the) run.
+            - sample: Sample name, whether the run was a Flush, Sample or Blank.
             - method: Method name.
-            - timestamp: Timestamp of the pressure curve.
+            - timestamp: Timestamp of the run.
+            - unit: Unit.
+            - instrument: Type of instrument (device)
+            - signal: Signal.
             - detector: Detector name.
             - pump: Pump name.
-            - start_time: Start time of the pressure curve.
-            - end_time: End time of the pressure curve.
-            - runtime: Runtime of the pressure curve in seconds.
-            - rt: Retention time in seconds.
-            - mz: Charge per mass ratio.
-            - intensity: Ion peak intensity.
+            - vial_position: Vial Position entry of the run.
+            - start_time: Start time of the run.
+            - end_time: End time of the run.
+            - runtime: Runtime.
+            - rt: Retention time in minutes.
+            - mz: Charge per mass ratio/wavelength.
+            - intensity: Ion peak intensity/absorbance.
 
     Methods:
         plot_pressure_curves: Plots the pressure curves for given indices.
@@ -751,7 +794,7 @@ class MassSpecAnalyses(Analyses):
 
         self.data = []
 
-        pc_template = {
+        ms_template = {
             "index": None,
             "name": None,
             "path": None,
@@ -761,8 +804,12 @@ class MassSpecAnalyses(Analyses):
             "sample": None,
             "method": None,
             "timestamp": None,
+            "unit": None,
+            "instrument": None,
+            "signal": None,
             "detector": None,
             "pump": None,
+            "vial_position": None, 
             "start_time": None,
             "end_time": None,
             "runtime": None,
@@ -770,12 +817,13 @@ class MassSpecAnalyses(Analyses):
             "mz": None,
             "intensity": None
         }
+        ms_data = ms_template.copy()
 
         if files is None:
             return
 
         if len(files) == 0:
-            raise ValueError("No data provided for PressureCurvesAnalyses analysis.")
+            raise ValueError("No data provided for MassSpecAnalyses analysis.")
 
         if not isinstance(files, list):
             if isinstance(files, str):
@@ -800,47 +848,47 @@ class MassSpecAnalyses(Analyses):
 
             if fl_ext == ".D":
                 try:
-                    pc_fl = _read_ms_data_angi(fl, pc_template)
+                    ms_data = _read_ms_data_rainbow(fl, ms_template)
                 except ValueError:
-                    print("No data for this run: ", run)#error_lc. Corrupted .D files cannot be read with SignalExtraction
+                    print("No data for this run: ", run) # error_lc. Corrupted .D files cannot be read with SignalExtraction
                     continue
             else:
                 raise ValueError(
                     f"Unsupported file format: {fl_ext}. Supported formats are: {self.formats}"
                 )
 
-            self.data.append(pc_fl)
+            self.data.append(ms_data)
 
         self.data = sorted(self.data, key=lambda x: x["start_time"])
 
         #remove StandBy samples in case of error-lc data
-        self.data = [pc for pc in self.data if pc["sample"].lower() != "standby"]
+        self.data = [msd for msd in self.data if msd["sample"].lower() != "standby"]
 
-        for i, pc in enumerate(self.data):
-            pc["index"] = i
+        for i, msd in enumerate(self.data):
+            msd["index"] = i
 
             if i == 0:
-                pc["idle_time"] = 0
-                pc["batch_position"] = 1
+                msd["idle_time"] = 0
+                msd["batch_position"] = 1
                 continue
 
-            pc["idle_time"] = (
-                pc["start_time"] - self.data[i - 1]["end_time"]
+            msd["idle_time"] = (
+                msd["start_time"] - self.data[i - 1]["end_time"]
             ).total_seconds()
 
             if (
-                pc["method"] == self.data[i - 1]["method"]# error_lc batch position assignment broke here. Fixed.
-                and pc["batch"] == self.data[i - 1]["batch"]
+                msd["method"] == self.data[i - 1]["method"]# error_lc batch position assignment broke here. Patched (?) by setting all error_lc methods to same value.
+                and msd["batch"] == self.data[i - 1]["batch"]
             ):
-                pc["batch_position"] = self.data[i - 1]["batch_position"] + 1
+                msd["batch_position"] = self.data[i - 1]["batch_position"] + 1
             else:
-                pc["batch_position"] = 1
+                msd["batch_position"] = 1
 
-            self.data[i] = pc
+            self.data[i] = msd
 
     def __str__(self):
         """
-        Return a string representation of the PressureCurvesAnalyses object.
+        Return a string representation of the MassSpecAnalyses object.
         """
         str_data = ""
         if len(self.data) > 0:
@@ -848,7 +896,7 @@ class MassSpecAnalyses(Analyses):
                 if isinstance(item, dict):
                     str_data += f"    {i + 1}. {item["name"]} ({item["path"]})\n"
         else:
-            str_data += "  No pressure curves data available."
+            str_data += "  No MS data available."
 
         return (
             f"\n{type(self).__name__} \n"
@@ -858,33 +906,33 @@ class MassSpecAnalyses(Analyses):
 
     def get_methods(self) -> list[str]:
         """
-        Get the methods of the pressure curves.
+        Get the methods of the ms data.
 
         Returns:
-            list: List of unique methods used in the pressure curves.
+            list: List of unique methods used in the data.
         """
         methods = [item["method"] for item in self.data if "method" in item]
         return list(set(methods))
 
     def get_batches(self) -> list[str]:
         """
-        Get the batches of the pressure curves.
+        Get the batches of the ms data.
 
         Returns:
-            list: List of unique batches used in the pressure curves.
+            list: List of unique batches used in the data.
         """
         batches = [item["batch"] for item in self.data if "batch" in item]
         return list(set(batches))
 
     def get_method_indices(self, method: str) -> list[int]:
         """
-        Get the indices of the pressure curves for a given method.
+        Get the indices of the ms data for a given method.
 
         Args:
-            method (str): Method name to filter the pressure curves.
+            method (str): Method name to filter the data.
 
         Returns:
-            list: List of indices of the pressure curves for the given method.
+            list: List of indices of the ms data for the given method.
         """
         if not isinstance(method, str):
             raise TypeError("Method should be a string.")
@@ -894,13 +942,13 @@ class MassSpecAnalyses(Analyses):
 
     def get_batch_indices(self, batch: str) -> list[int]:
         """
-        Get the indices of the pressure curves for a given batch.
+        Get the indices of the ms_data for a given batch.
 
         Args:
-            batch (str): Batch name to filter the pressure curves.
+            batch (str): Batch name to filter the data.
 
         Returns:
-            list: List of indices of the pressure curves for the given batch.
+            list: List of indices of the ms data for the given batch.
         """
         if not isinstance(batch, str):
             raise TypeError("Batch should be a string.")
@@ -910,13 +958,13 @@ class MassSpecAnalyses(Analyses):
 
     def get_metadata(self, indices: list = None) -> pd.DataFrame:
         """
-        Get a DataFrame of the metadata of the pressure curves.
+        Get a DataFrame of the metadata of the MS data.
 
         Args:
-            indices (list): List of indices of the pressure curves to include in the DataFrame. If None, all curves are included.
+            indices (list): List of indices of the data to include in the DataFrame. If None, all curves are included.
 
         Returns:
-            pd.DataFrame: DataFrame containing the metadata of the pressure curves.
+            pd.DataFrame: DataFrame containing the metadata of the ms chromatograms.
         """
 
         if indices is None:
@@ -931,11 +979,85 @@ class MassSpecAnalyses(Analyses):
         metadata = []
         for i in indices:
             pc = self.data[i].copy()
-            for key in ["time_var", "pressure_var", "features", "features_raw"]:
+            for key in ["rt", "mz", "intensity", "features", "features_raw"]:
                 pc.pop(key, None)
             metadata.append(pc)
 
         return pd.DataFrame(metadata)
+    
+    def plot_data(self, indices: int = None, mz: int = None) -> go.Figure:
+        """
+        Plot the chromatograms of the MS data. If mz label is not provided, the plot for the first mz entry is returned.
+        """
+        if indices is None:
+            indices = list(range(len(self.data)))
+        elif isinstance(indices, int):
+            indices = [indices]
+        elif isinstance(indices, tuple):
+            indices = list(indices)
+        if not isinstance(indices, list):
+            raise TypeError("Indices should be a list of integers.")
+        if len(indices) == 0:
+            raise ValueError("No indices provided for DataFrame creation.")
+        
+        fig = go.Figure()
+        for i in indices:            
+            msd = self.data[i]
+            if mz is not None:
+                mz_index = msd["mz"].tolist().index(mz)
+            else:
+                mz_index = 0
+            mt = self.get_metadata([i]).to_dict(orient="records")[0]
+            text = "<br>".join(f"<b>{k}</b>: {v}" for k, v in mt.items())
+            fig.add_trace(
+                go.Scatter(
+                    x=msd["rt"],
+                    y=msd["intensity"][:, mz_index],
+                    mode="lines",
+                    name=f"{msd['name']} ({msd['sample']})",
+                    text=text,
+                    hovertemplate=f"{text}<br><b>m/z: {str(mz)}<br><b>Time: </b>%{{x}}<br><b>Intensity: </b>%{{y}}<extra></extra>",
+                )
+            )
+
+        fig.update_layout(
+            xaxis_title="Retention time (min)",
+            yaxis_title="Intensity",
+            template="simple_white",
+        )
+
+        return fig
+
+
+def _read_actuals_angi(fl: str) -> dict:
+    """
+    Reads actuals from a file.
+    """
+    return_object = {
+        "actuals" : None,
+        "ac_types" : None
+    }
+    actuals = None
+    ac_types = None
+
+    actuals_file = pd.read_csv(
+        fl,
+        low_memory=False,
+        sep=";",
+        decimal="."
+    )
+    #INCOMPLETE
+    actuals = actuals_file.dropna(axis=1, how="all")
+
+    ac_type = actuals["ModuleId"][0]
+    ac_keys = actuals.columns.tolist()
+    
+    ac_types = {ac_type : ac_keys}
+
+    return_object["actuals"] = actuals
+    return_object["ac_types"] = ac_types
+
+    return return_object
 
 
 class ActualsAnalyses(Analyses):

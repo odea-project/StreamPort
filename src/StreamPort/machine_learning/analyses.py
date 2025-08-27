@@ -414,7 +414,7 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
         score_plots = []
 
         #***If parallelized, follow the blocks within ### - ### below. 
-        # For small n_tests (< = 10), prefer a loop running sequential tests. For high n_tests, Multiprocessing is effective  
+        # For small n_tests (< = 50), prefer a loop running sequential tests. For high n_tests, Multiprocessing is effective  
 
         ### Parallel testing. If sequential, comment out this block within the ###'s and uncomment the following block. 
         # result_list = Parallel(n_jobs=16, backend="threading" )(delayed(model._run_test)(i, threshold, show_scores) for i, model in enumerate(self.models))

@@ -4,7 +4,7 @@ import streamlit as st
 import os
 import time
 
-from device.analyses import PressureCurvesAnalyses ##this requires a change in import statements in device and ml
+from src.StreamPort.device.analyses import PressureCurvesAnalyses ##this requires a change in import statements in device and ml
 #from device.methods import PressureCurvesMethodExtractFeaturesNative
 
 #from machine_learning.analyses import MachineLearningAnalyses
