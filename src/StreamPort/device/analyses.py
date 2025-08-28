@@ -680,16 +680,13 @@ def _read_ms_data_rainbow(fl: str, ms_template: dict) -> dict:
     metadata = datadir.metadata # run metadata including vendor
     ms_data["vial_position"] = metadata.get("vialpos")
 
-    datafiles = datadir.datafiles
-    ms_files = [file for file in datafiles if file.detector == "MS"] # compatible types UV, CH, MS
+    try:
+        ms1 = datadir.get_file("MSD1.MS") # compatible types UV, CH, MS
+        ms2 = datadir.get_file("MSD2.MS")
+    except Exception: # possible that MSD2 does not exist
+        ms2 = None
+        pass
 
-    ms1, ms2 = None, None
-    for file in ms_files:
-        if file.name == "MSD1.MS":
-            ms1 = file
-        if file.name == "MSD2.MS":
-            ms2 = file
-    
     if ms1 is None:
         print(f"No MS1 data found in directory: {fl}")
         ms_data["ms1"] = None
@@ -724,13 +721,13 @@ def _read_ms_data_rainbow(fl: str, ms_template: dict) -> dict:
     sample_xml = sample_xml[0]
 
     if sample_xml is None:
-        raise ValueError(f"No SAMPLE.XML file found in directory: {fl}")
+        raise FileNotFoundError(f"No SAMPLE.XML file found in directory: {fl}")
     
     log_file = [file for file in files_list if "RUN.LOG" in file] # run logs for metadata
     log_file = log_file[0]
 
     if log_file is None:
-       raise ValueError(f"No RUN.LOG file found in directory: {fl}")
+       raise FileNotFoundError(f"No RUN.LOG file found in directory: {fl}")
 
     tree = ET.parse(sample_xml)
     root = tree.getroot()
@@ -1011,15 +1008,17 @@ class MassSpecAnalyses(Analyses):
 
         return pd.DataFrame(metadata)
     
-    def plot_data(self, indices: int = None, data: str = None, mz: int = None, dim: int = None) -> go.Figure:
+    def plot_data(self, indices: int = None, data: str = None, dim: int = None, mz: int = None, rt: float=None) -> go.Figure: # find out if mz needs to be float. Data has only int values
         """
-        Plot the chromatograms of the MS data. If mz label is not provided, the plot for the first mz entry is returned.
+        Plot the chromatograms of the MS data.
 
         Args:
-            indices (int|list): Index identifiers to samples to plot. Defaults to None - all samples are plotted.
+            indices (int | list): Index identifiers of samples to plot. Defaults to None - all samples are plotted.
             data (str): Choice of whether "MS1" or "MS2" data should be retrieved. Defaults to "MS1".
+            dim (int): Dimensions to plot. If 3, creates a 3D plot of the entire matrix and negates the "mz" and "rt" arguments. Defaults to None - 2D plot.
             mz (int): In case of 2-D plot, fix the mz value for which the correspnding rt-intensity graph is created. Defaults to None - sets mz to mz[0]
-            dim (int): Dimensions to plot. If 3, creates a 3D plot of the entire matrix and negates the "mz" argument. Defaults to None - 2D plot.  
+            rt (float): In case of 2-D plot, fix the rt value and show the corresponding intensity graph for the given mz. Defaults to None - entire rt range.
+                Note that When passing an rt value, the plot will scale down the remaining intensities in the array to emphasise the given rt.  
         """
         if indices is None:
             indices = list(range(len(self.data)))
@@ -1040,29 +1039,46 @@ class MassSpecAnalyses(Analyses):
         fig = go.Figure()
         for i in indices:            
             msd = self.data[i]
+            if msd[entry] is None:
+                raise ValueError(f"There is no MSD2 data available for file index {i} located at {msd['path']}")
+            
+            data = msd[entry]
+
             if mz is not None:
-                mz_index = msd[entry]["mz"].tolist().index(mz)
+                mz_index = data["mz"].tolist().index(mz) # find the index of the given mz
             else:
                 mz_index = 0
+                mz = data["mz"][0]
+
+            if rt is not None:
+                rt_array = data["rt"]
+                # find closest value to given rt and plot it
+                rt_index = abs(rt_array - rt).argmin() # returns index of closest rt to rt argument 
+                y = (data["intensity"][:, mz_index]) * 1e-4
+                y[rt_index] = data["intensity"][rt_index, mz_index]  
+            else:
+                y = data["intensity"][:, mz_index]               
+   
+
             mt = self.get_metadata([i]).to_dict(orient="records")[0]
             text = "<br>".join(f"<b>{k}</b>: {v}" for k, v in mt.items())
             
             if dim == 3:
                 fig.add_trace(
                     go.Surface(
-                        z=msd[entry]["intensity"], 
-                        x=msd[entry]["rt"],
-                        y=msd[entry]["mz"],
+                        z=data["intensity"], 
+                        x=data["rt"],
+                        y=data["mz"],
                         name=f"{msd['name']} ({msd['sample']})",
                         text=text,
-                        hovertemplate=f"{text}<br><b>m/z: {str(mz)}<br><b>Time: </b>%{{x}}<br><b>Intensity: </b>%{{y}}<extra></extra>",
+                        hovertemplate=f"{text}<br><b>Intensity: %{{z}}<br><b>Time: </b>%{{x}}<br><b>m/z: </b>%{{y}}<extra></extra>",
                     )
                 )
             else:
                 fig.add_trace(
                     go.Scatter(
-                        x=msd[entry]["rt"],
-                        y=msd[entry]["intensity"][:, mz_index],
+                        x=data["rt"],
+                        y=y,
                         mode="lines",
                         name=f"{msd['name']} ({msd['sample']})",
                         text=text,
@@ -1070,12 +1086,39 @@ class MassSpecAnalyses(Analyses):
                     )
                 )
 
-        fig.update_layout(
-            title=f"{entry.capitalize()} Traces",
-            xaxis_title="Retention time (min)",
-            yaxis_title="Intensity",
-            template="simple_white",
-        )
+                if rt is not None:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=[data["rt"][rt_index]],
+                            y=[float(data["intensity"][rt_index, mz_index])],
+                            mode="markers",
+                            marker=dict(color="red", size=8),
+                            name="Selected RT",
+                            hovertemplate=f"{text}<br><b>m/z: {str(mz)}<br><b>Time: </b>%{{x}}<br><b>Intensity: </b>%{{y}}<extra></extra>",
+                        )
+                    )
+
+        title=f"{entry.upper()} Traces"
+        template="simple_white"
+        xaxis="rt (min)"
+
+        if dim == 3:
+            fig.update_layout(
+                title=title,
+                scene=dict(
+                    xaxis_title=xaxis,
+                    yaxis_title="m/z",
+                    zaxis_title="Intensity",
+                ),
+                template=template,
+            )
+        else:
+            fig.update_layout(
+                title=title,
+                xaxis_title=xaxis,
+                yaxis_title="Intensity",
+                template=template,
+            )
 
         return fig
     
