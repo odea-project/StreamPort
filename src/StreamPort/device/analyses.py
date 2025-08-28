@@ -662,63 +662,91 @@ class PressureCurvesAnalyses(Analyses):
 
 def _read_ms_data_rainbow(fl: str, ms_template: dict) -> dict:
     """
-    Reads MS data from a file
+    Reads MS data from a file using the Rainbow API
+
+    Args:
+        fl (str): The .D file to read data from
+        ms_template (dict): The template containing ordered MS data entries 
+
+    Returns:
+        ms_data (dict): The extracted and grouped MS data for an individual run.
     """
     datetime_format = "%H:%M:%S %m/%d/%y"
     datetime_pattern = re.compile(r"(\d{2}:\d{2}:\d{2} \d{1,2}/\d{1,2}/\d{2})")
+    ms_data = ms_template.copy()
 
-    datadir = rb.read(fl) # .D dir
-    metadata = datadir.metadata
+    datadir = rb.read(fl) # create .D directory object
+
+    metadata = datadir.metadata # run metadata including vendor
+    ms_data["vial_position"] = metadata.get("vialpos")
+
     datafiles = datadir.datafiles
+    ms_files = [file for file in datafiles if file.detector == "MS"] # compatible types UV, CH, MS
 
-    ms_file = [file for file in datafiles if file.name == "MSD1.MS"] # compatible types UV, CH, MS
-    ms_file = ms_file[0]
-    file_metadata = ms_file.metadata
+    ms1, ms2 = None, None
+    for file in ms_files:
+        if file.name == "MSD1.MS":
+            ms1 = file
+        if file.name == "MSD2.MS":
+            ms2 = file
+    
+    if ms1 is None:
+        print(f"No MS1 data found in directory: {fl}")
+        ms_data["ms1"] = None
+    else:
+        ms_data["ms1"] = {
+                            "rt" : ms1.xlabels, # 1-D retention time (minutes)
+                            "mz" : ms1.ylabels, # 1-D mz/wavelength
+                            "intensity" : ms1.data # 2-D intensity # all np.ndarrays
+                        }
 
-    if ms_file is None:
-#        raise ValueError(f"No MS data found in directory: {fl}")
-        print("no ms data here: ", fl)
+    if ms2 is None:
+        print(f"No MS2 data found in directory: {fl}")
+        ms_data["ms2"] = None 
+    else:               
+        ms_data["ms2"] = {
+                            "rt" : ms2.xlabels, # 1-D retention time (minutes)
+                            "mz" : ms2.ylabels, # 1-D mz/wavelength
+                            "intensity" : ms2.data # 2-D intensity # all np.ndarrays
+                        }
+        
+    if not(ms1 is None or ms2 is None) and ms1.metadata != ms2.metadata:
+        raise ValueError("The metadata pairs for this run do not match.")
+    file_metadata = ms1.metadata # MS file metadata including date and method
+    
+    # add date string, unit, e.g. as metadata. Timestamp will still be used for operations
+    ms_data.update(file_metadata)
 
-    files_list = os.listdir(fl)
+    files_list = os.listdir(fl) # read other files not read by rainbow
     files_list = [os.path.join(fl, f) for f in files_list]
 
     sample_xml = [file for file in files_list if "SAMPLE.XML" in file]
     sample_xml = sample_xml[0]
+
+    if sample_xml is None:
+        raise ValueError(f"No SAMPLE.XML file found in directory: {fl}")
     
     log_file = [file for file in files_list if "RUN.LOG" in file] # run logs for metadata
     log_file = log_file[0]
 
     if log_file is None:
-#        raise ValueError(f"No RUN.LOG file found in directory: {fl}")
-        print("no log data here: ", fl)
-    sample = file_metadata.pop("notebook", None)
-    if sample is None:
-        tree = ET.parse(sample_xml)
-        root = tree.getroot()
+       raise ValueError(f"No RUN.LOG file found in directory: {fl}")
 
-        sample_name = root.find(".//Name")
-        if sample_name is not None:
-            sample = sample_name.text
-        else:
-#            raise ValueError("No sample name found in SAMPLE.XML file.")    
-            print("No sample data here: ", fl)
-
-    ms_data = ms_template.copy()
+    tree = ET.parse(sample_xml)
+    root = tree.getroot()
+    sample_name = root.find(".//Name")
+    if sample_name is not None:
+        sample = sample_name.text
+    else:
+        raise ValueError("No sample name found in SAMPLE.XML file.")    
     ms_data["sample"] = sample
-    ms_data["vial_position"] = metadata.get("vialpos")
+
     ms_data["name"] = os.path.splitext(os.path.basename(fl))[0]
     ms_data["path"] = fl
     ms_data["batch"] = os.path.basename(os.path.dirname(fl))
-    ms_data["detector"] = ms_file.detector
+    ms_data["detector"] = ms1.detector
 
-    ms_data.update({"rt" : ms_file.xlabels, # 1-D retention time (minutes)
-                    "mz" : ms_file.ylabels, # 1-D mz/wavelength
-                    "intensity" : ms_file.data # 2-D intensity # all np.ndarrays
-                    }) 
-    
-    ms_data.update(file_metadata)
-    
-    #handle error_lc ### Not a permanent fix. Discuss with others and correct here and in pressure_curves!!!
+    #handle error_lc ### Not a permanent fix. Discuss and correct here and in pressure_curves!!!
     if "D2F" in ms_data["name"]:
         ms_data["method"] = "error_lc"
     #/handle error_lc done
@@ -744,7 +772,7 @@ def _read_ms_data_rainbow(fl: str, ms_template: dict) -> dict:
                 if match_key:
                     ms_data["pump"] = match_key.group(1)
 
-    ms_data["runtime"] = (max(ms_data["rt"]) - min(ms_data["rt"])) * 60
+    ms_data["runtime"] = (max(ms1.xlabels) - min(ms1.xlabels)) * 60
 
     return ms_data
 
@@ -777,9 +805,8 @@ class MassSpecAnalyses(Analyses):
             - start_time: Start time of the run.
             - end_time: End time of the run.
             - runtime: Runtime.
-            - rt: Retention time in minutes.
-            - mz: Charge per mass ratio/wavelength.
-            - intensity: Ion peak intensity/absorbance.
+            - ms1: MS1 data dict containing the corresponding rt, mz and ansorbances.
+            - ms2: MS2 data dict.
 
     Methods:
         plot_pressure_curves: Plots the pressure curves for given indices.
@@ -813,9 +840,8 @@ class MassSpecAnalyses(Analyses):
             "start_time": None,
             "end_time": None,
             "runtime": None,
-            "rt": None,
-            "mz": None,
-            "intensity": None
+            "ms1": None,
+            "ms2": None
         }
         ms_data = ms_template.copy()
 
@@ -850,7 +876,7 @@ class MassSpecAnalyses(Analyses):
                 try:
                     ms_data = _read_ms_data_rainbow(fl, ms_template)
                 except ValueError:
-                    print("No data for this run: ", run) # error_lc. Corrupted .D files cannot be read with SignalExtraction
+                    print("No data for this run: ", run) # Corrupted .D files cannot be read with SignalExtraction and will not yield data
                     continue
             else:
                 raise ValueError(
@@ -979,15 +1005,21 @@ class MassSpecAnalyses(Analyses):
         metadata = []
         for i in indices:
             pc = self.data[i].copy()
-            for key in ["rt", "mz", "intensity", "features", "features_raw"]:
+            for key in ["ms1", "ms2", "features", "features_raw"]:
                 pc.pop(key, None)
             metadata.append(pc)
 
         return pd.DataFrame(metadata)
     
-    def plot_data(self, indices: int = None, mz: int = None) -> go.Figure:
+    def plot_data(self, indices: int = None, data: str = None, mz: int = None, dim: int = None) -> go.Figure:
         """
         Plot the chromatograms of the MS data. If mz label is not provided, the plot for the first mz entry is returned.
+
+        Args:
+            indices (int|list): Index identifiers to samples to plot. Defaults to None - all samples are plotted.
+            data (str): Choice of whether "MS1" or "MS2" data should be retrieved. Defaults to "MS1".
+            mz (int): In case of 2-D plot, fix the mz value for which the correspnding rt-intensity graph is created. Defaults to None - sets mz to mz[0]
+            dim (int): Dimensions to plot. If 3, creates a 3D plot of the entire matrix and negates the "mz" argument. Defaults to None - 2D plot.  
         """
         if indices is None:
             indices = list(range(len(self.data)))
@@ -1000,30 +1032,88 @@ class MassSpecAnalyses(Analyses):
         if len(indices) == 0:
             raise ValueError("No indices provided for DataFrame creation.")
         
+        if data.lower() == "ms2":
+            entry = "ms2"
+        else:
+            entry = "ms1"
+
         fig = go.Figure()
         for i in indices:            
             msd = self.data[i]
             if mz is not None:
-                mz_index = msd["mz"].tolist().index(mz)
+                mz_index = msd[entry]["mz"].tolist().index(mz)
             else:
                 mz_index = 0
             mt = self.get_metadata([i]).to_dict(orient="records")[0]
             text = "<br>".join(f"<b>{k}</b>: {v}" for k, v in mt.items())
-            fig.add_trace(
-                go.Scatter(
-                    x=msd["rt"],
-                    y=msd["intensity"][:, mz_index],
-                    mode="lines",
-                    name=f"{msd['name']} ({msd['sample']})",
-                    text=text,
-                    hovertemplate=f"{text}<br><b>m/z: {str(mz)}<br><b>Time: </b>%{{x}}<br><b>Intensity: </b>%{{y}}<extra></extra>",
+            
+            if dim == 3:
+                fig.add_trace(
+                    go.Surface(
+                        z=msd[entry]["intensity"], 
+                        x=msd[entry]["rt"],
+                        y=msd[entry]["mz"],
+                        name=f"{msd['name']} ({msd['sample']})",
+                        text=text,
+                        hovertemplate=f"{text}<br><b>m/z: {str(mz)}<br><b>Time: </b>%{{x}}<br><b>Intensity: </b>%{{y}}<extra></extra>",
+                    )
                 )
-            )
+            else:
+                fig.add_trace(
+                    go.Scatter(
+                        x=msd[entry]["rt"],
+                        y=msd[entry]["intensity"][:, mz_index],
+                        mode="lines",
+                        name=f"{msd['name']} ({msd['sample']})",
+                        text=text,
+                        hovertemplate=f"{text}<br><b>m/z: {str(mz)}<br><b>Time: </b>%{{x}}<br><b>Intensity: </b>%{{y}}<extra></extra>",
+                    )
+                )
 
         fig.update_layout(
+            title=f"{entry.capitalize()} Traces",
             xaxis_title="Retention time (min)",
             yaxis_title="Intensity",
             template="simple_white",
+        )
+
+        return fig
+    
+    def plot_batches(self, indices: list = None) -> go.Figure:
+        """
+        Plot the batches of the MS data over the timestamps.
+
+        Args:
+            indices (list): List of indices of the batches to plot. If None, all batches are plotted.
+        """
+
+        df = self.get_metadata(indices)
+        df = df.sort_values("timestamp")
+        batches_in_order = df["batch"].drop_duplicates().tolist()
+        fig = go.Figure()
+        for batch in batches_in_order:
+            mask = df["batch"] == batch
+            df_batch = df[mask]
+            text = [
+                "<br>".join(f"<b>{k}: </b>{v}" for k, v in row.items())
+                for row in df_batch.to_dict(orient="records")
+            ]
+            fig.add_trace(
+                go.Scatter(
+                    x=df_batch["timestamp"],
+                    y=df_batch["batch_position"],
+                    mode="markers",
+                    name=batch,
+                    legendgroup=batch,
+                    text=text,
+                    hovertemplate=text,
+                )
+            )
+        fig.update_layout(
+            xaxis_title="Timestamp",
+            yaxis_title="Batch Position",
+            template="simple_white",
+            legend_title="Batches",
         )
 
         return fig
