@@ -5,7 +5,9 @@ This module contains processing methods for device analyses data.
 import pandas as pd
 import numpy as np
 from statsmodels.tsa.seasonal import seasonal_decompose
-from scipy.signal import savgol_filter 
+#from scipy.signal import savgol_filter 
+from scipy.signal import find_peaks
+from scipy.optimize import curve_fit
 from sklearn import preprocessing as scaler
 from src.StreamPort.core import ProcessingMethod
 from src.StreamPort.device.analyses import PressureCurvesAnalyses
@@ -88,7 +90,8 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             - runtime: The runtime of the analysis.
             - residual_mean: The mean of the residuals from seasonal decomposition.
             - residual_std: The standard deviation of the residuals from seasonal decomposition.
-            - relc
+            - relc: Relative change of the pressure at time intervals.
+            - roc: Rate of change of the pressure at time intervals.
             - abs_deviation: The absolute deviation of the pressure values in each bin.
         The "features_raw" include:
             - trend: The trend component from seasonal decomposition.
@@ -193,8 +196,9 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             # smoothed_vector = savgol_filter(pressure_vector, self.parameters["window_size"], poly_order)
 
             """
-            SNIP(Statistical Non-linear Iterative Peak)
-            -  
+            SNIP(Statistical Non-linear Iterative Peak-clipping)
+            - Iteratively estimates and removes the broad background trends from sharp spectral features of a signal, like peaks
+            - Useful for spectra with overlapping peaks or variable baselines.
             """
             # apply a double logarithm transformation to the pressure vector
             lls_vector = np.log(np.log(np.sqrt(pressure_vector + 1) + 1) + 1)
@@ -399,18 +403,38 @@ class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
     Method to extract features from ms data using a native algorithm.
 
     Args:
-        bins (int): The number of bins for peak analysis and feature extraction (FFT). Default is 7 (Retention time range).
+        data (str): "sim" or "tic" based on user's choice. Defaults to sim, and targets the closest mz if the mz input parameter is invalid.
+        rt (float): The retention time for the target to be analysed.
+        mz (float): The mz for the target.
+        rt_window (int): The minimum distance by seconds/number of rt entries before and after current one to be considered when finding peaks (default = 10s). Any peaks within this distance from each other will be disregarded.
+        mz_window (int): Number of adjacent mzs to be considered for 2D tile/window creation. Defaults to 1 (mz adjacent to the current one, totalling 2 mzs).
+        smooth (int | bool): User may provide a window size and choose whether the signal must be pretreated using smoothing to improve peak detection and quality of data. Default is False (no smoothing).
+
+    Methods:
+        - _gaussian_2d: Performs gaussian fitting for a 2D peak space.
+        - _fit_gaussian: Fits the 1D signal to a gaussian curve and optimizes the values A, mu, sigma using the ADAM optimizer.      
+        - _get_rmse: Calculates the rsquared value from the optimized fit values.
 
     Details:
-        The method extracts features from ms data, adding entries named "features" to each dict in the data list of the MassSpecAnalyses instance.
-        The "features" include:
-            - peak_area: Area under the peak within the bin.
-            - peak_amplitude: Height of the peak. 
-            - peak_mean: Mean/Center of the curve. Denoted by mu.
-            - peak_width: Width of the peak. Denoted by sigma.
+        The method extracts features from ms data matrix, for each selected target (rt, mz), adding entries named "features" to each dict in the data list of the MassSpecAnalyses instance.
+        The "features" per target include:
+            2D features:
+            - peak_height: Height of the peak. 
+            - peak_rt: Location/rt at which the peak occurs.
+            - peak_mz: Location/mz at which the peak occurs.
+            - peak_area_2d: Area under the peak within the region.
+            - peak_volume: Volume of the peak region.
+            - peak_fit_2d: Quality of to the 2d gaussian.
+            - peak_a/n_error: Ratio between Volume and 2D Area as a measure of noise. 
+            - peak_s/n_2d: 2D S/N ratio.
+            - peak_mean: Mean/Center of the signal around the peak.
+            1D features:
+            - peak_fwhm: Full Width at Half Maximum of the peak.
+            - peak_s/n: Signal to Noise (S/N) ratio of the signal around the peak.
+            - peak_fit_quality: The rsquared error of a gaussian fit on the signal.
     """
 
-    def __init__(self, period: int = 10, window_size: int = 7, bins: int = 4, crop: int = 2):
+    def __init__(self, data: str = "sim", rt: float = None, mz: float = None, rt_window: int = 10, mz_window: int = 1, smooth: int|bool = False):
         super().__init__()
         self.data_type = "MassSpecAnalyses"
         self.method = "ExtractFeatures"
@@ -418,8 +442,145 @@ class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
         self.input_instance = dict
         self.output_instance = dict
         self.number_permitted = 1
-        self.parameters = {"bins": bins}
+        self.parameters = {
+            "data" : data,
+            "target_rt" : rt,
+            "target_mz" : mz,
+            "rt_window" : rt_window,
+            "mz_window": mz_window,
+            "smooth": smooth
+            }
         
+    def _gaussian_2d(self, coords, A, mux, muy, sigx, sigy):
+        x, y = coords
+        return A * np.exp(
+            -(((x - mux) ** 2) / (2 * sigx ** 2) + ((y - muy) ** 2) / (2 * sigy ** 2))
+        ).ravel()
+
+    def _fit_gaussian(self, x, y, A_init, mu_init, sigma_init):
+        # adam optimizer parameters
+        alpha = 0.01
+        beta1 = 0.9
+        beta2 = 0.999
+        epsilon = 1e-8
+        max_iterations = 300
+
+        # initialize parameters
+        A, mu, sigma = A_init, mu_init, sigma_init
+        m_A = v_A = m_mu = v_mu = m_sigma = v_sigma = 0
+
+        x = np.array(x, dtype=np.float32)
+        y = np.array(y, dtype=np.float32)
+
+        for i in range(1, max_iterations + 1):
+            grad_A = grad_mu = grad_sigma = 0.0
+
+            # compute gradients
+            exp_term = np.exp(-((x - mu) ** 2) / (2 * sigma ** 2))
+            y_pred = A * exp_term
+            error = y - y_pred
+
+            grad_A = -2 * np.sum(error * exp_term)
+            grad_mu = -2 * np.sum(error * A * exp_term * (x - mu) / (sigma ** 2))
+            grad_sigma = -2 * np.sum(error * A * exp_term * ((x - mu) ** 2) / (sigma ** 3))
+
+            # update A
+            m_A = beta1 * m_A + (1 - beta1) * grad_A
+            v_A = beta2 * v_A + (1 - beta2) * grad_A ** 2
+            m_A_hat = m_A / (1 - beta1 ** i)
+            v_A_hat = v_A / (1 - beta2 ** i)
+            A -= alpha * m_A_hat / (np.sqrt(v_A_hat) + epsilon)
+
+            # update mu
+            m_mu = beta1 * m_mu + (1 - beta1) * grad_mu
+            v_mu = beta2 * v_mu + (1 - beta2) * grad_mu ** 2
+            m_mu_hat = m_mu / (1 - beta1 ** i)
+            v_mu_hat = v_mu / (1 - beta2 ** i)
+            mu -= alpha * m_mu_hat / (np.sqrt(v_mu_hat) + epsilon)
+
+            # update sigma
+            m_sigma = beta1 * m_sigma + (1 - beta1) * grad_sigma
+            v_sigma = beta2 * v_sigma + (1 - beta2) * grad_sigma ** 2
+            m_sigma_hat = m_sigma / (1 - beta1 ** i)
+            v_sigma_hat = v_sigma / (1 - beta2 ** i)
+            sigma -= alpha * m_sigma_hat / (np.sqrt(v_sigma_hat) + epsilon)
+
+            # limit sigma range
+            sigma = np.clip(sigma, 2.0, 10.0)
+
+        return A, mu, sigma
+    
+    def _get_rmse(self, x, y, A, mu, sigma):
+        # predicted values from the Gaussian model
+        y_pred = A * np.exp(-((x - mu) ** 2) / (2 * sigma ** 2))
+        
+        # Residual sum of squares
+        ss_res = np.sum((y - y_pred) ** 2)
+        
+        # Total sum of squares
+        ss_tot = np.sum((y - np.mean(y)) ** 2)
+        
+        # R-squared
+        r_squared = 1 - (ss_res / ss_tot if ss_tot != 0 else 0)
+
+        return r_squared
+
+    def _show_tile_debug_plot(self, region_rt, region_mz, peak_tile, fit_surface=None, title="Peak Tile Debug"):
+        """
+        Shows the peak tile as a heatmap with an optional Gaussian fit overlay (3D surface).
+        
+        Args:
+            region_rt (1D np.array): Retention time values.
+            region_mz (1D np.array): m/z values.
+            peak_tile (2D np.array): Intensity matrix.
+            fit_surface (2D np.array): Optional Gaussian fit surface with same shape as peak_tile.
+            title (str): Plot title.
+        """
+        import plotly.graph_objects as go
+        fig = go.Figure()
+
+        # Add original peak tile as heatmap (intensity map)
+        fig.add_trace(
+            go.Heatmap(
+                z=peak_tile,
+                x=region_mz,
+                y=region_rt,
+                colorscale="Viridis",
+                colorbar=dict(title="Intensity"),
+                name="Original Tile",
+                hovertemplate="rt: %{y:.3f}<br>mz: %{x:.3f}<br>Intensity: %{z:.2f}<extra></extra>",
+            )
+        )
+
+        # Optionally add 3D fit surface
+        if fit_surface is not None:
+            fig.add_trace(
+                go.Surface(
+                    z=fit_surface,
+                    x=region_mz,
+                    y=region_rt,
+                    colorscale="Reds",
+                    opacity=0.6,
+                    showscale=False,
+                    name="Gaussian Fit Surface",
+                    hovertemplate="rt: %{y:.3f}<br>mz: %{x:.3f}<br>Fit Intensity: %{z:.2f}<extra></extra>",
+                )
+            )
+
+        fig.update_layout(
+            title=title,
+            scene=dict(
+                xaxis_title="m/z",
+                yaxis_title="rt (min)",
+                zaxis_title="Intensity",
+            ),
+            autosize=True,
+            height=600,
+        )
+
+        fig.show()
+
+
     def run(self, analyses: MassSpecAnalyses) -> MassSpecAnalyses:
         """
         Extracts features from MS data.
@@ -433,27 +594,170 @@ class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
         if len(data) == 0:
             print("No data to process.")
             return analyses
-
+        
         features_template = {
-            "peak_area": None,
-            "peak_amplitude": None,
-            "mu": None,
-            "sigma": None,
-            "s/n": None,
+            "peak_height" : None,  
+            "peak_rt" : None,
+            "peak_mz" : None,
+            "peak_area_2d" : None,
+            "peak_volume" : None,
+            "peak_fit_2d" : None,
+            "peak_a/n_error" : None,
+            "peak_s/n_2d" : None,
+            "peak_mean" : None,
+            "peak_fwhm" : None,
+            "peak_s/n" : None,
+            "peak_fit_quality" : None
         }
 
-        for i, msd in enumerate(data): # currently for ms1 data. 
+        entry = self.parameters["data"].lower()
+        
+        target_rt = self.parameters["target_rt"]
+        target_mz = self.parameters["target_mz"]
 
-            feat = features_template.copy()      
+        rt_window = self.parameters["rt_window"] 
+        mz_window = self.parameters["mz_window"]
+
+        for i, msd in enumerate(data): # currently for sim data.  
+            feat = features_template.copy()
+
+            chroma = msd[entry] # choose sim or tic
+
+            if chroma is None: # if tic selected but no data available
+                msd["features"] = feat
+                data[i] = msd
+                continue
             
-            ms1 = msd["ms1"]
-            rt = ms1["rt"]
-            mz = ms1["mz"]
-            intensity = ms1["intensity"]
+            rt = chroma["rt"]
+            mz = chroma["mz"]
+            intensity = chroma["intensity"]
 
-            binned_rt = np.linspace(0, len(rt), self.parameters["bins"] + 1, dtype=int)
+            if target_rt is not None and target_rt not in rt.tolist():
+                rt_index = abs(rt - target_rt).argmin() # position of closest rt to given rt
+            elif target_rt is None:
+                rt_index = 0
+            else:
+                rt_index = rt.tolist().index(target_rt)
+            
+            if target_mz is not None and target_mz not in mz.tolist():
+                mz_index = abs(mz - target_mz).argmin()
+            elif target_mz is None:
+                mz_index = 0
+            else:
+                mz_index = mz.tolist().index(target_mz)
 
-            msd["features"] = feat
+            # prep rt window
+            rt_in_seconds = rt * 60
+
+            rt_lower_bound = rt_in_seconds[rt_index] - rt_window # adjust window by adding/subtracting rt_window seconds
+            rt_start = max(0, abs(rt_in_seconds - rt_lower_bound).argmin()) # find position of true rt that is rt_window lower/higher than current target
+
+            rt_upper_bound = rt_in_seconds[rt_index] + rt_window
+            rt_end = min(len(rt), abs(rt_in_seconds - rt_upper_bound).argmin())
+            
+            # prep mz window
+            mz_start = max(0, mz_index - mz_window)
+            mz_end = min(len(mz), mz_index + mz_window)
+
+            rt_window = rt[rt_start : rt_end]
+            mz_window = mz[mz_start : mz_end]
+
+            intensity_tile = intensity[rt_start : rt_end, mz_start : mz_end]
+            target_label = f"peak_rt[{rt_window[0]}:{rt_window[-1]}]_mz[{mz_window[0]}:{mz_window[-1]}]"
+
+            ## Peak Height
+            peak = np.max(intensity_tile) # amplitude/height of peak
+            feat[f"{target_label}_height"] = peak # peak amplitude
+            peak_position = np.argmax(intensity_tile) # index position of peak in 2D array
+            peak_rt, peak_mz = np.unravel_index(peak_position, intensity_tile.shape)
+            
+            ## RT, MZ position at Peak
+            feat[f"{target_label}_rt"] = rt_window[peak_rt]
+            feat[f"{target_label}_mz"] = mz_window[peak_mz]
+
+            ## 2D area under Peak. Will show anomalous value if peak is noisy
+            peak_area_mz = np.trapz(intensity_tile, x=mz_window, axis=1)
+            peak_area = np.trapz(peak_area_mz, x=rt_window)
+            feat[f"{target_label}_area_2d"] = peak_area
+
+            ## Peak volume. More robust estimate of peak ion count. Can be combined with area to identify S/N ratio
+            rt_grid, mz_grid = np.meshgrid(rt_window, mz_window, indexing = 'ij')
+            coords = (rt_grid.ravel(), mz_grid.ravel())
+            tile = intensity_tile.ravel()
+
+            A0 = peak
+            mux0 = rt_window[np.argmax(np.sum(intensity_tile, axis=1))] # where it's brightest in RT
+            muy0 = mz_window[np.argmax(np.sum(intensity_tile, axis=0))] # brightest in m/z
+            sigx0 = (rt_window[-1] - rt_window[0]) / 4
+            sigy0 = (mz_window[-1] - mz_window[0]) / 4
+
+            p0 = [A0, mux0, muy0, sigx0, sigy0]
+
+            try:
+                popt, pcov = curve_fit(self._gaussian_2d, coords, tile, p0=p0)
+            except RuntimeError as e:
+                print(f"[WARNING] Gaussian fit failed for tile (rt[{rt_window[0]}:{rt_window[-1]}], mz[{mz_window[0]}:{mz_window[-1]}]: {e}. Returning the debug_figure.")
+
+                debug_fig = self._show_tile_debug_plot(region_rt=rt_window, 
+                                                    region_mz=mz_window, 
+                                                    peak_tile=intensity_tile, 
+                                                    title="Debug: Failed fit")
+                input("Inspect tile. Press Enter to continue...")
+                continue
+
+            A, mux, muy, sigx, sigy = popt
+            volume = A * 2 * np.pi * sigx * sigy
+            feat[f"{target_label}_volume"] = volume
+
+            ## Peak 2D gaussian fit
+            fitted = self._gaussian_2d(coords, *popt)
+            residuals = intensity_tile - fitted
+            rmse_2d = np.sqrt(np.mean(residuals**2))
+            feat[f"{target_label}_fit_2d"] = rmse_2d
+
+            ## Area vs Noise error. A clean peak should show minimum deviation between the 2D area and peak volume values
+            feat[f"{target_label}_a/n_error"] = volume/peak_area
+
+            ## S/N 2D
+            noise_std_2d = np.std(residuals)
+            if noise_std_2d == 0:
+                noise_std_2d = 1e-4
+            signal_2d = A
+            snr_2d = signal_2d / noise_std_2d
+            feat[f"{target_label}_s/n_2d"] = snr_2d
+
+            ## Peak FWHM along RT
+            target_vector = intensity[rt_window, mz_start + peak_mz]
+            peak_pos_1d = np.argmax(target_vector)
+            peak_half_max = peak/2 # autocast to float
+
+            left_indices = np.where(target_vector[: peak_pos_1d] < peak_half_max)[0] # backward from peak
+            left_cross = left_indices[-1] if len(left_indices) > 0 else 0
+
+            right_indices = np.where(target_vector[peak_pos_1d :] < peak_half_max)[0] # search forward from peak
+            right_cross = peak_pos_1d + (right_indices[0] if len(right_indices) > 0 else len(target_vector) - peak_pos_1d - 1)
+
+            fwhm_rt = rt[right_cross] - rt[left_cross] # full width at half max by rt entries           
+            feat[f"{target_label}_fwhm_rt"] = fwhm_rt
+
+            ## 1D gaussian fitting error
+            sigma_1d = fwhm_rt/2.355
+            A, mu, sigma = self._fit_gaussian(rt_window, target_vector, A_init=peak, mu_init=rt_window[peak_rt], sigma_init=sigma_1d)
+            rmse = self._get_rmse(rt_window, target_vector, A, mu, sigma)
+            feat[f"{target_label}_fit_quality_rt"] = rmse
+
+            ## S/N 
+            noise_region = np.delete(target_vector, peak_pos_1d) # remove the peak
+            noise_std = np.std(noise_region) if np.std(noise_region) != 0 else 1e-4
+            snr = peak/noise_std
+            feat[f"{target_label}_s/n"] = snr
+
+            ## Mean
+            feat[f"{target_label}_mean"] = np.mean(intensity_tile) # average around peak     
+
+            features = pd.DataFrame(feat)
+
+            msd["features"] = features
 
             data[i] = msd
 

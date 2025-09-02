@@ -99,7 +99,7 @@ def _read_pressure_curve_angi(fl: str, pc_template: dict) -> dict:
     
     #handle error_lc
     if "D2F" in pc_fl["name"]:
-        pc_fl["method"] = "error_lc"
+       pc_fl["method"] = "error_lc"
     #/handle error_lc done
 
     with open(log_file, encoding=get_file_encoding(log_file)) as f:
@@ -682,16 +682,17 @@ def _read_ms_data_rainbow(fl: str, ms_template: dict) -> dict:
 
     try:
         ms1 = datadir.get_file("MSD1.MS") # compatible types UV, CH, MS
-        ms2 = datadir.get_file("MSD2.MS")
+        ms2 = datadir.get_file("MSD2.MS") # MSD1 corresponds to SIM data, MSD2 to TIC
     except Exception: # possible that MSD2 does not exist
         ms2 = None
         pass
 
     if ms1 is None:
-        print(f"No MS1 data found in directory: {fl}")
-        ms_data["ms1"] = None
+        ms_data["sim"] = None
+        raise FileNotFoundError(f"No MS1 data found in directory: {fl}")
+        #print(f"No MS1 data found in directory: {fl}")
     else:
-        ms_data["ms1"] = {
+        ms_data["sim"] = {
                             "rt" : ms1.xlabels, # 1-D retention time (minutes)
                             "mz" : ms1.ylabels, # 1-D mz/wavelength
                             "intensity" : ms1.data # 2-D intensity # all np.ndarrays
@@ -699,9 +700,9 @@ def _read_ms_data_rainbow(fl: str, ms_template: dict) -> dict:
 
     if ms2 is None:
         print(f"No MS2 data found in directory: {fl}")
-        ms_data["ms2"] = None 
+        ms_data["tic"] = None 
     else:               
-        ms_data["ms2"] = {
+        ms_data["tic"] = {
                             "rt" : ms2.xlabels, # 1-D retention time (minutes)
                             "mz" : ms2.ylabels, # 1-D mz/wavelength
                             "intensity" : ms2.data # 2-D intensity # all np.ndarrays
@@ -728,6 +729,12 @@ def _read_ms_data_rainbow(fl: str, ms_template: dict) -> dict:
 
     if log_file is None:
        raise FileNotFoundError(f"No RUN.LOG file found in directory: {fl}")
+    
+    acq_file = [file for file in files_list if "acq.txt" in file] # acquisition files for compound details
+    acq_file = acq_file[0]
+
+    if acq_file is None:
+        raise FileNotFoundError(f"No acq.txt file found in directory: {fl}")
 
     tree = ET.parse(sample_xml)
     root = tree.getroot()
@@ -742,12 +749,14 @@ def _read_ms_data_rainbow(fl: str, ms_template: dict) -> dict:
     ms_data["path"] = fl
     ms_data["batch"] = os.path.basename(os.path.dirname(fl))
     ms_data["detector"] = ms1.detector
+    ms_data["runtime"] = (max(ms1.xlabels) - min(ms1.xlabels)) * 60
 
-    #handle error_lc ### Not a permanent fix. Discuss and correct here and in pressure_curves!!!
+    # handle error_lc ### Not a permanent fix. Discuss and correct here and in pressure_curves!!!
     if "D2F" in ms_data["name"]:
         ms_data["method"] = "error_lc"
-    #/handle error_lc done
+    # /handle error_lc done
 
+    # read run logs 
     with open(log_file, encoding=get_file_encoding(log_file)) as f:
         for line in f:
             if "Method started:" in line and ms_data["timestamp"] is None:
@@ -769,7 +778,89 @@ def _read_ms_data_rainbow(fl: str, ms_template: dict) -> dict:
                 if match_key:
                     ms_data["pump"] = match_key.group(1)
 
-    ms_data["runtime"] = (max(ms1.xlabels) - min(ms1.xlabels)) * 60
+    # read acquisition logs
+    with open(acq_file, encoding=get_file_encoding(acq_file)) as f:
+        content = f.readlines()
+
+    sim_found = False
+    table_head_found = False
+
+    for idx, line in enumerate(content):
+        if sim_found == False:
+            if "Sim Parameters" in line:
+                sim_found = True    
+            continue
+        
+        if not table_head_found:
+            if "Time" in line and "|" in line: # beginning of the table
+                table_head_found = True
+                table_pipes_at = [i for i, c in enumerate(line) if c == "|"] # pipes separate columns
+                break   
+
+    # idx is now at table head
+    
+    sim_ready = False
+    comp_ready = False
+    while not(sim_ready and comp_ready):
+        line = content[idx]
+        if sim_ready == False:
+            sim_head = line.find("SIM")
+            if sim_head != -1:
+                sim_ready = True
+        if comp_ready == False:
+            comp_head = line.find("Compound")
+            if comp_head != -1:
+                comp_ready = True
+        idx += 1
+
+    # idx is now at dashed line
+
+    while True:
+        line = content[idx]
+        if re.match(r'^[-|\s]+$', line.strip()):    
+            dashes_pipes_at = [i for i, c in enumerate(line) if c == "|"]
+            break
+        idx += 1
+        
+    if table_pipes_at != dashes_pipes_at:
+        print("Table pipes: ", table_pipes_at)
+        print("\n")
+        print("Dash pipes: ", dashes_pipes_at)       
+        raise ValueError("Parsing failed")
+
+    for i in range(len(table_pipes_at) - 1):
+        if table_pipes_at[i] < sim_head < table_pipes_at[i + 1]:
+            sim_slice = (table_pipes_at[i], table_pipes_at[i + 1])
+        if table_pipes_at[i] < comp_head < table_pipes_at[i + 1]:
+            comp_slice = (table_pipes_at[i], table_pipes_at[i + 1])
+            istd_start = table_pipes_at[i + 1]
+
+    idx += 1
+
+    # idx is now at beginning of table entries 
+    mzs = []
+    compounds = []
+    standards = []
+    for i in range(len(ms1.ylabels)): # sim ion entries are the same as mzs corresponding to compounds
+        entry = content[idx]
+        sim = int(float(entry[sim_slice[0] : sim_slice[1]].strip()))
+        mzs.append(sim)
+
+        compound = entry[comp_slice[0] : comp_slice[1]].strip()
+        compounds.append(compound)
+
+        standard = int(entry[istd_start : ].strip())
+        standards.append(standard)
+
+        idx += 1
+    
+    if mzs != ms1.ylabels.tolist():
+        raise ValueError("SIM m/z values from file do not match")
+
+    ms_data["sim"].update({
+                            "compound" : compounds,
+                            "int_standard" : standards
+                        })
 
     return ms_data
 
@@ -794,23 +885,20 @@ class MassSpecAnalyses(Analyses):
             - method: Method name.
             - timestamp: Timestamp of the run.
             - unit: Unit.
-            - instrument: Type of instrument (device)
+            - instrument: Type of instrument (device).
             - signal: Signal.
+            - date: Stringified date entry of MS run. Timestamp is still used for analysis.
             - detector: Detector name.
             - pump: Pump name.
             - vial_position: Vial Position entry of the run.
             - start_time: Start time of the run.
             - end_time: End time of the run.
             - runtime: Runtime.
-            - ms1: MS1 data dict containing the corresponding rt, mz and ansorbances.
-            - ms2: MS2 data dict.
+            - sim: Selected Ion Monitoring data dict containing the corresponding rt, mz and ansorbances.
+            - tic: Total Ion Chromatogram data dict.
 
     Methods:
-        plot_pressure_curves: Plots the pressure curves for given indices.
-        plot_batches: Plots the batches of the pressure curves over the timestamps.
-        plot_methods: Plots the methods of the pressure curves over the timestamps.
-        plot_features_raw: Plots calculated raw data from features of the pressure curves over the time variable.
-        plot_features: Plots calculated features of the pressure curves.
+
     """
 
     def __init__(self, files: list = None):
@@ -831,14 +919,15 @@ class MassSpecAnalyses(Analyses):
             "unit": None,
             "instrument": None,
             "signal": None,
+            "date": None,
             "detector": None,
             "pump": None,
             "vial_position": None, 
             "start_time": None,
             "end_time": None,
             "runtime": None,
-            "ms1": None,
-            "ms2": None
+            "sim": None,
+            "tic": None
         }
         ms_data = ms_template.copy()
 
@@ -979,6 +1068,33 @@ class MassSpecAnalyses(Analyses):
         indices = [i for i, item in enumerate(self.data) if item["batch"] == batch]
         return indices
 
+    def get_features(self, indices: list = None) -> pd.DataFrame:
+        """
+        Get a DataFrame of the features of the pressure curves.
+
+        Args:
+            indices (list): List of indices of the pressure curves to include in the DataFrame. If None, all curves are included.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the features of the pressure curves.
+        """
+
+        if indices is None:
+            indices = list(range(len(self.data)))
+        elif isinstance(indices, int):
+            indices = [indices]
+        if not isinstance(indices, list):
+            raise TypeError("Indices should be a list of integers.")
+        if len(indices) == 0:
+            raise ValueError("No indices provided for DataFrame creation.")
+
+        features = []
+        for i in indices:
+            msd = self.data[i]
+            features.append(msd["features"])
+
+        return pd.DataFrame(features)
+
     def get_metadata(self, indices: list = None) -> pd.DataFrame:
         """
         Get a DataFrame of the metadata of the MS data.
@@ -1001,10 +1117,10 @@ class MassSpecAnalyses(Analyses):
 
         metadata = []
         for i in indices:
-            pc = self.data[i].copy()
-            for key in ["ms1", "ms2", "features", "features_raw"]:
-                pc.pop(key, None)
-            metadata.append(pc)
+            msd = self.data[i].copy()
+            for key in ["sim", "tic", "features"]:
+                msd.pop(key, None)
+            metadata.append(msd)
 
         return pd.DataFrame(metadata)
     
@@ -1014,9 +1130,9 @@ class MassSpecAnalyses(Analyses):
 
         Args:
             indices (int | list): Index identifiers of samples to plot. Defaults to None - all samples are plotted.
-            data (str): Choice of whether "MS1" or "MS2" data should be retrieved. Defaults to "MS1".
-            dim (int): Dimensions to plot. If 3, creates a 3D plot of the entire matrix and negates the "mz" and "rt" arguments. Defaults to None - 2D plot.
-            mz (int): In case of 2-D plot, fix the mz value for which the correspnding rt-intensity graph is created. Defaults to None - sets mz to mz[0]
+            data (str): Choice of whether "SIM" or "TIC" data should be retrieved. Defaults to "SIM".
+            dim (int): Dimensions to plot. If 3, creates a 3D plot of the entire matrix and negates the mz/rt arguments unless both are given. Defaults to None - 2D plot.
+            mz (int): In case of 2-D plot, fix the mz value for which the correspnding rt-intensity graph is created. Defaults to None - sets mz to mz[0].
             rt (float): In case of 2-D plot, fix the rt value and show the corresponding intensity graph for the given mz. Defaults to None - entire rt range.
                 Note that When passing an rt value, the plot will scale down the remaining intensities in the array to emphasise the given rt.  
         """
@@ -1031,10 +1147,10 @@ class MassSpecAnalyses(Analyses):
         if len(indices) == 0:
             raise ValueError("No indices provided for DataFrame creation.")
         
-        if data.lower() == "ms2":
-            entry = "ms2"
+        if data.lower() == "tic":
+            entry = "tic"
         else:
-            entry = "ms1"
+            entry = "sim"
 
         fig = go.Figure()
         for i in indices:            
@@ -1044,21 +1160,16 @@ class MassSpecAnalyses(Analyses):
             
             data = msd[entry]
 
-            if mz is not None:
+            if mz is not None and mz >= min(data["mz"]) and mz <= max(data["mz"]):
                 mz_index = data["mz"].tolist().index(mz) # find the index of the given mz
             else:
                 mz_index = 0
-                mz = data["mz"][0]
 
+            y = data["intensity"][:, mz_index] 
             if rt is not None:
                 rt_array = data["rt"]
                 # find closest value to given rt and plot it
                 rt_index = abs(rt_array - rt).argmin() # returns index of closest rt to rt argument 
-                y = (data["intensity"][:, mz_index]) * 1e-4
-                y[rt_index] = data["intensity"][rt_index, mz_index]  
-            else:
-                y = data["intensity"][:, mz_index]               
-   
 
             mt = self.get_metadata([i]).to_dict(orient="records")[0]
             text = "<br>".join(f"<b>{k}</b>: {v}" for k, v in mt.items())
@@ -1067,13 +1178,26 @@ class MassSpecAnalyses(Analyses):
                 fig.add_trace(
                     go.Surface(
                         z=data["intensity"], 
-                        x=data["rt"],
-                        y=data["mz"],
+                        x=data["mz"],
+                        y=data["rt"],
                         name=f"{msd['name']} ({msd['sample']})",
                         text=text,
-                        hovertemplate=f"{text}<br><b>Intensity: %{{z}}<br><b>Time: </b>%{{x}}<br><b>m/z: </b>%{{y}}<extra></extra>",
+                        hovertemplate=f"{text}<br><b>Intensity: %{{z}}<br><b>Time: </b>%{{y}}<br><b>m/z: </b>%{{x}}<extra></extra>",
                     )
                 )
+
+                if not(rt is None or mz is None):
+                    fig.add_trace(
+                        go.Scatter3d(
+                            z=[float(data["intensity"][rt_index, mz_index])],
+                            x=[float(data["mz"][mz_index])],
+                            y=[float(rt_array[rt_index])],
+                            mode="markers",
+                            marker=dict(size=6, color='red'),
+                            #name=f"(rt:%{{y}}, mz:%{{x}}, int:%{{z}})",
+                            hovertemplate=f"{text}<br><b>Intensity: %{{z}}<br><b>Time: </b>%{{y}}<br><b>m/z: </b>%{{x}}<extra></extra>",  
+                        )
+                    )
             else:
                 fig.add_trace(
                     go.Scatter(
@@ -1082,7 +1206,7 @@ class MassSpecAnalyses(Analyses):
                         mode="lines",
                         name=f"{msd['name']} ({msd['sample']})",
                         text=text,
-                        hovertemplate=f"{text}<br><b>m/z: {str(mz)}<br><b>Time: </b>%{{x}}<br><b>Intensity: </b>%{{y}}<extra></extra>",
+                        hovertemplate=f"{text}<br><b>m/z: {str(data["mz"][mz_index])}<br><b>Time: </b>%{{x}}<br><b>Intensity: </b>%{{y}}<extra></extra>",
                     )
                 )
 
@@ -1093,29 +1217,31 @@ class MassSpecAnalyses(Analyses):
                             y=[float(data["intensity"][rt_index, mz_index])],
                             mode="markers",
                             marker=dict(color="red", size=8),
-                            name="Selected RT",
-                            hovertemplate=f"{text}<br><b>m/z: {str(mz)}<br><b>Time: </b>%{{x}}<br><b>Intensity: </b>%{{y}}<extra></extra>",
+                            #name="(rt:%{x}, int:%{y})",
+                            hovertemplate=f"{text}<br><b>m/z: {str(data["mz"][mz_index])}<br><b>Time: </b>%{{x}}<br><b>Intensity: </b>%{{y}}<extra></extra>",
                         )
                     )
 
         title=f"{entry.upper()} Traces"
         template="simple_white"
-        xaxis="rt (min)"
 
         if dim == 3:
             fig.update_layout(
                 title=title,
                 scene=dict(
-                    xaxis_title=xaxis,
-                    yaxis_title="m/z",
+                    xaxis_title="m/z",
+                    yaxis_title="rt (min)",
                     zaxis_title="Intensity",
                 ),
+                autosize=False, 
+                width=1350, 
+                height=700,
                 template=template,
             )
         else:
             fig.update_layout(
                 title=title,
-                xaxis_title=xaxis,
+                xaxis_title="rt (min)",
                 yaxis_title="Intensity",
                 template=template,
             )
@@ -1157,6 +1283,58 @@ class MassSpecAnalyses(Analyses):
             yaxis_title="Batch Position",
             template="simple_white",
             legend_title="Batches",
+        )
+
+        return fig
+    
+    def plot_features(self, indices: list = None, normalize: bool = True) -> go.Figure:
+        """
+        Plot calculated features of the MS chromatograms.
+
+        Args:
+            indices (list): List of indices of the data to plot. If None, features for all data are plotted.
+        """
+        mt = self.get_metadata(indices).to_dict(orient="records")
+
+        ft = self.get_features(indices)
+        if normalize:
+            # normalize each column of the DataFrame while handling NaN values
+            ft = ft.fillna(0)  # Replace NaN with 0 
+            for col in ft.columns:
+                if ft[col].dtype in [int, float] and ft[col].max() != 0:
+                    ft[col] = ft[col] / ft[col].max()
+                    #ft[col] = (ft[col] - ft[col].min()) / (ft[col].max() - ft[col].min())
+    
+        ft = ft.to_dict(orient="records")
+
+        text = ["<br>".join(f"<b>{k}: </b>{v}" for k, v in row.items()) for row in mt]
+
+        fig = go.Figure()
+        for i, fti in enumerate(ft):
+            fti = ft[i]
+            mti = mt[i]
+
+            fig.add_trace(
+                go.Scatter(
+                    x=list(fti.keys()),
+                    y=list(fti.values()),
+                    mode="markers+lines",
+                    name=f"{mti['name']} ({mti['sample']})",
+                    text=text[i],
+                    hovertemplate=(
+                        f"<b>{mti['name']} ({mti['sample']})</b><br>"
+                        + "%{{x}}<br>"
+                        + "%{{y}}<extra></extra>"
+                        if text is None
+                        else f"{text[i]}<br><b>x: </b>%{{x}}<br><b>y: </b>%{{y}}<extra></extra>"
+                    ),
+                )
+            )
+
+        fig.update_layout(
+            xaxis_title=None,
+            yaxis_title="U.A.",
+            template="simple_white",
         )
 
         return fig
