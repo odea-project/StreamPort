@@ -896,15 +896,21 @@ class MassSpecAnalyses(Analyses):
             - runtime: Runtime.
             - sim: Selected Ion Monitoring data dict containing the corresponding rt, mz and ansorbances.
             - tic: Total Ion Chromatogram data dict.
-
+        plotter (plotly.graph_objects): An instance of the Plotly graph objects class.
+    
     Methods:
-
+        plot_chromatogram: Plots EIC/TIC for the MS data.
+        plot_3d: Creates a 3D Surface plot/2D Heatmap for the MS data.
+        plot_bpc: Plots the Base Peak Intensity across rts.
+        plot_ms: Plots the Mass Spectrum for a fixed rt across mzs.
+        plot_features: Plots the spread of extracted feature values.
     """
 
     def __init__(self, files: list = None):
         super().__init__(data_type="MassSpecAnalyses", formats=[".D"])
 
         self.data = []
+        self.plotter = go
 
         ms_template = {
             "index": None,
@@ -1124,17 +1130,17 @@ class MassSpecAnalyses(Analyses):
 
         return pd.DataFrame(metadata)
     
-    def plot_data(self, indices: int = None, data: str = None, dim: int = None, mz: int = None, rt: float=None) -> go.Figure: # find out if mz needs to be float. Data has only int values
+    def plot_chromatogram(self, indices=None, data: str = "SIM", mz: int = None) -> go.Figure:
         """
-        Plot the chromatograms of the MS data.
+        Plot TIC or Extracted Ion Chromatogram (XIC/SIM).
 
         Args:
-            indices (int | list): Index identifiers of samples to plot. Defaults to None - all samples are plotted.
-            data (str): Choice of whether "SIM" or "TIC" data should be retrieved. Defaults to "SIM".
-            dim (int): Dimensions to plot. If 3, creates a 3D plot of the entire matrix and negates the mz/rt arguments unless both are given. Defaults to None - 2D plot.
-            mz (int): In case of 2-D plot, fix the mz value for which the correspnding rt-intensity graph is created. Defaults to None - sets mz to mz[0].
-            rt (float): In case of 2-D plot, fix the rt value and show the corresponding intensity graph for the given mz. Defaults to None - entire rt range.
-                Note that When passing an rt value, the plot will scale down the remaining intensities in the array to emphasise the given rt.  
+            indices (int | list): Sample indices to plot. Defaults to all.
+            data (str): "SIM" for extracted ion chromatogram, "TIC" for total ion chromatogram. Defaults to "SIM".
+            mz (int): If data="SIM", the m/z value to extract. Defaults to the first m/z in the data.
+        
+        Returns:
+            go.Figure: Plotly figure with chromatograms.
         """
         if indices is None:
             indices = list(range(len(self.data)))
@@ -1145,109 +1151,309 @@ class MassSpecAnalyses(Analyses):
         if not isinstance(indices, list):
             raise TypeError("Indices should be a list of integers.")
         if len(indices) == 0:
-            raise ValueError("No indices provided for DataFrame creation.")
-        
+            raise ValueError("No indices provided for plotting.")
+
+        data_key = "tic" if data.lower() == "tic" else "sim"
+
+        fig = self.plotter.Figure()
+        for i in indices:
+            msd = self.data[i]
+            if msd[data_key] is None:
+                raise ValueError(f"No {data_key.upper()} data available for sample index {i} at {msd['path']}")
+
+            dataset = msd[data_key]
+
+            if data_key == "sim":  # Extracted Ion Chromatogram
+                if mz is not None and mz in dataset["mz"]:
+                    mz_index = dataset["mz"].tolist().index(mz)
+                else:
+                    mz_index = 0
+                y = dataset["intensity"][:, mz_index]
+            else:  # TIC data
+                y = dataset["intensity"]
+
+            metadata = self.get_metadata([i]).to_dict(orient="records")[0]
+            text = "<br>".join(f"<b>{k}</b>: {v}" for k, v in metadata.items())
+
+            fig.add_trace(
+                self.plotter.Scatter(
+                    x=dataset["rt"],
+                    y=y,
+                    mode="lines",
+                    name=f"{msd['name']} ({msd['sample']})",
+                    text=text,
+                    hovertemplate=f"{text}<br><b>Time: </b>%{{x}}<br><b>Intensity: </b>%{{y}}<extra></extra>",
+                )
+            )
+
+        title = f"{data_key.upper()} Chromatograms"
+        fig.update_layout(
+            title=title,
+            xaxis_title="Retention Time (min)",
+            yaxis_title="Intensity",
+            template="simple_white",
+        )
+        return fig
+
+    def plot_3d(self, indices: int = None, data: str = "sim", mz_range: tuple = None, rt_range: tuple = None, 
+                plot_type: str = "surface", downsample: int = 5, mz: int = None, rt: float = None) -> go.Figure:
+        """
+        Plot a 3D visualization of the MS intensity matrix.
+
+        Args:
+            indices (int | list[int]): Index of sample to plot. Only one sample allowed. Defaults to None (first sample).
+            data (str): "sim" or "tic" data to plot. Defaults to "sim".
+            mz_range (tuple(float, float), optional): Range of m/z values to plot (min_mz, max_mz). Defaults to None (full range).
+            rt_range (tuple(float, float), optional): Range of retention times to plot (min_rt, max_rt). Defaults to None (full range).
+            plot_type (str): "surface" (default) for 3D surface plot or "heatmap" for 2D heatmap plot.
+            downsample (int): Factor by which to downsample data along mz and rt axes. Defaults to 5.
+                Increasing this value reduces plot resolution but improves performance and stability.
+            mz (int, optional): Specific m/z value to highlight with marker (only for surface plot). Defaults to None.
+            rt (float, optional): Specific retention time to highlight with marker (only for surface plot). Defaults to None.
+
+        Returns:
+            go.Figure: Plotly figure object.
+
+        Notes:
+            - Downsampling reduces the number of points plotted, trading off surface detail for performance.
+            Higher downsample factor values make the plot faster and less memory intensive but coarser.
+            - Restricting mz_range and rt_range to smaller windows can focus on regions of interest and reduce data size,
+            allowing finer detail at manageable performance cost.
+            - Plotting large LC-MS datasets at full resolution in 3D surface plots can crash or freeze the notebook/browser.
+            Use downsampling and zooming options to avoid this.
+        """
+        if indices is None:
+            indices = 0
+        if isinstance(indices, (list, tuple)):
+            if len(indices) != 1:
+                raise ValueError("plot_3d only supports plotting one sample at a time.")
+            indices = indices[0]
+        if not isinstance(indices, int):
+            raise TypeError("Index must be an integer.")
+
         if data.lower() == "tic":
             entry = "tic"
         else:
             entry = "sim"
 
-        fig = go.Figure()
-        for i in indices:            
-            msd = self.data[i]
-            if msd[entry] is None:
-                raise ValueError(f"There is no MSD2 data available for file index {i} located at {msd['path']}")
-            
-            data = msd[entry]
+        msd = self.data[indices]
+        if msd[entry] is None:
+            raise ValueError(f"No {entry.upper()} data available for sample index {indices}")
 
-            if mz is not None and mz >= min(data["mz"]) and mz <= max(data["mz"]):
-                mz_index = data["mz"].tolist().index(mz) # find the index of the given mz
-            else:
-                mz_index = 0
+        intensity = msd[entry]["intensity"]  
+        mz_values = msd[entry]["mz"]         
+        rt_values = msd[entry]["rt"]         
 
-            y = data["intensity"][:, mz_index] 
-            if rt is not None:
-                rt_array = data["rt"]
-                # find closest value to given rt and plot it
-                rt_index = abs(rt_array - rt).argmin() # returns index of closest rt to rt argument 
+        # filter mz indices based on mz_range
+        mz_indices = [i for i, mzv in enumerate(mz_values) if (mz_range is None or (mz_range[0] <= mzv <= mz_range[1]))]
+        # filter rt indices based on rt_range
+        rt_indices = [i for i, rtv in enumerate(rt_values) if (rt_range is None or (rt_range[0] <= rtv <= rt_range[1]))]
 
-            mt = self.get_metadata([i]).to_dict(orient="records")[0]
-            text = "<br>".join(f"<b>{k}</b>: {v}" for k, v in mt.items())
-            
-            if dim == 3:
-                fig.add_trace(
-                    go.Surface(
-                        z=data["intensity"], 
-                        x=data["mz"],
-                        y=data["rt"],
-                        name=f"{msd['name']} ({msd['sample']})",
-                        text=text,
-                        hovertemplate=f"{text}<br><b>Intensity: %{{z}}<br><b>Time: </b>%{{y}}<br><b>m/z: </b>%{{x}}<extra></extra>",
-                    )
-                )
+        # filter mz and rt values
+        mz_filtered = [mz_values[i] for i in mz_indices]
+        rt_filtered = [rt_values[i] for i in rt_indices]
 
-                if not(rt is None or mz is None):
-                    fig.add_trace(
-                        go.Scatter3d(
-                            z=[float(data["intensity"][rt_index, mz_index])],
-                            x=[float(data["mz"][mz_index])],
-                            y=[float(rt_array[rt_index])],
-                            mode="markers",
-                            marker=dict(size=6, color='red'),
-                            #name=f"(rt:%{{y}}, mz:%{{x}}, int:%{{z}})",
-                            hovertemplate=f"{text}<br><b>Intensity: %{{z}}<br><b>Time: </b>%{{y}}<br><b>m/z: </b>%{{x}}<extra></extra>",  
-                        )
-                    )
-            else:
-                fig.add_trace(
-                    go.Scatter(
-                        x=data["rt"],
-                        y=y,
-                        mode="lines",
-                        name=f"{msd['name']} ({msd['sample']})",
-                        text=text,
-                        hovertemplate=f"{text}<br><b>m/z: {str(data["mz"][mz_index])}<br><b>Time: </b>%{{x}}<br><b>Intensity: </b>%{{y}}<extra></extra>",
-                    )
-                )
+        # filter intensity matrix with nested list comprehension (simulate np.ix_)
+        intensity_filtered = [
+            [intensity[rt_i][mz_i] for mz_i in mz_indices]
+            for rt_i in rt_indices
+        ]
 
-                if rt is not None:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=[data["rt"][rt_index]],
-                            y=[float(data["intensity"][rt_index, mz_index])],
-                            mode="markers",
-                            marker=dict(color="red", size=8),
-                            #name="(rt:%{x}, int:%{y})",
-                            hovertemplate=f"{text}<br><b>m/z: {str(data["mz"][mz_index])}<br><b>Time: </b>%{{x}}<br><b>Intensity: </b>%{{y}}<extra></extra>",
-                        )
-                    )
+        # downsample indices
+        mz_ds = mz_filtered[::downsample]
+        rt_ds = rt_filtered[::downsample]
+        intensity_ds = [
+            row[::downsample]
+            for row in intensity_filtered[::downsample]
+        ]
 
-        title=f"{entry.upper()} Traces"
-        template="simple_white"
+        fig = self.plotter.Figure()
+        metadata = self.get_metadata([indices]).to_dict(orient="records")[0]
+        text = "<br>".join(f"<b>{k}</b>: {v}" for k, v in metadata.items())
 
-        if dim == 3:
+        if plot_type.lower() == "surface":
+            fig.add_trace(self.plotter.Surface(
+                z=intensity_ds,
+                x=mz_ds,
+                y=rt_ds,
+                name=f"{msd['name']} ({msd['sample']})",
+                text=text,
+                hovertemplate=f"{text}<br><b>Intensity:</b> %{{z}}<br><b>RT:</b> %{{y}}<br><b>m/z:</b> %{{x}}<extra></extra>"
+            ))
+
+            # highlight specific mz and rt if given
+            if mz is not None and rt is not None:
+                # find closest mz index
+                mz_idx = min(range(len(mz_ds)), key=lambda i: abs(mz_ds[i] - mz))
+                # find closest rt index
+                rt_idx = min(range(len(rt_ds)), key=lambda i: abs(rt_ds[i] - rt))
+                intensity_val = float(intensity_ds[rt_idx][mz_idx])
+
+                fig.add_trace(self.plotter.Scatter3d(
+                    x=[mz_ds[mz_idx]],
+                    y=[rt_ds[rt_idx]],
+                    z=[intensity_val],
+                    mode='markers',
+                    marker=dict(size=6, color='red'),
+                    name="Selected Point",
+                    hovertemplate=f"{text}<br><b>Intensity:</b> {intensity_val}<br><b>RT:</b> {rt_ds[rt_idx]}<br><b>m/z:</b> {mz_ds[mz_idx]}<extra></extra>"
+                ))
+
             fig.update_layout(
-                title=title,
+                title=f"3D Surface Plot ({entry.upper()})",
                 scene=dict(
                     xaxis_title="m/z",
-                    yaxis_title="rt (min)",
-                    zaxis_title="Intensity",
+                    yaxis_title="RT (min)",
+                    zaxis_title="Intensity"
                 ),
-                autosize=False, 
-                width=1350, 
+                width=1000,
                 height=700,
-                template=template,
-            )
-        else:
-            fig.update_layout(
-                title=title,
-                xaxis_title="rt (min)",
-                yaxis_title="Intensity",
-                template=template,
+                template="simple_white"
             )
 
+        elif plot_type.lower() == "heatmap":
+            fig.add_trace(self.plotter.Heatmap(
+                z=intensity_ds,
+                x=mz_ds,
+                y=rt_ds,
+                colorscale="Viridis",
+                colorbar=dict(title="Intensity"),
+                hoverongaps=False
+            ))
+            fig.update_layout(
+                title=f"2D Heatmap Plot ({entry.upper()})",
+                xaxis_title="m/z",
+                yaxis_title="RT (min)",
+                width=1000,
+                height=700,
+                template="simple_white"
+            )
+
+        else:
+            raise ValueError(f"Invalid plot_type '{plot_type}'. Choose 'surface' or 'heatmap'.")
+
         return fig
-    
+
+    def plot_bpc(self, indices=None) -> go.Figure:
+        """
+        Plot Base Peak Chromatogram (BPC) for given samples.
+
+        Args:
+            indices (int | list): Sample indices to plot. Defaults to all.
+
+        Returns:
+            go.Figure: BPC plot over retention time.
+        """
+        if indices is None:
+            indices = list(range(len(self.data)))
+        elif isinstance(indices, int):
+            indices = [indices]
+        elif isinstance(indices, tuple):
+            indices = list(indices)
+        if not isinstance(indices, list):
+            raise TypeError("Indices should be a list of integers.")
+        if len(indices) == 0:
+            raise ValueError("No indices provided for plotting.")
+
+        fig = self.plotter.Figure()
+
+        for i in indices:
+            msd = self.data[i]
+            # use SIM data (intensity matrix) to find base peak
+            dataset = msd.get("sim", None)
+            if dataset is None:
+                raise ValueError(f"No SIM data available for sample index {i} at {msd['path']}")
+
+            intensity_matrix = dataset["intensity"]  # shape: (rt, mz)
+            base_peak_intensity = intensity_matrix.max(axis=1)  # max intensity per retention time
+
+            metadata = self.get_metadata([i]).to_dict(orient="records")[0]
+            text = "<br>".join(f"<b>{k}</b>: {v}" for k, v in metadata.items())
+
+            fig.add_trace(
+                self.plotter.Scatter(
+                    x=dataset["rt"],
+                    y=base_peak_intensity,
+                    mode="lines",
+                    name=f"{msd['name']} ({msd['sample']})",
+                    text=text,
+                    hovertemplate=f"{text}<br><b>Retention Time: %{{x}}<br><b>Base Peak Intensity: %{{y}}<extra></extra>",
+                )
+            )
+
+        fig.update_layout(
+            title="Base Peak Chromatogram (BPC)",
+            xaxis_title="Retention Time (min)",
+            yaxis_title="Intensity",
+            template="simple_white",
+        )
+        return fig
+
+    def plot_ms(self, indices=None, data: str = "SIM", rt: float = None) -> go.Figure:
+        """
+        Plot Mass Spectrum (intensity vs m/z) at a fixed retention time.
+
+        Args:
+            indices (int | list): Sample indices to plot. Defaults to all.
+            data (str): "SIM" or "TIC". Defaults to "SIM".
+            rt (float): Retention time at which to extract the mass spectrum. If None, uses the first RT.
+
+        Returns:
+            go.Figure: Mass spectrum plot.
+        """
+        if indices is None:
+            indices = list(range(len(self.data)))
+        elif isinstance(indices, int):
+            indices = [indices]
+        elif isinstance(indices, tuple):
+            indices = list(indices)
+        if not isinstance(indices, list):
+            raise TypeError("Indices should be a list of integers.")
+        if len(indices) == 0:
+            raise ValueError("No indices provided for plotting.")
+
+        data_key = "tic" if data.lower() == "tic" else "sim"
+
+        fig = self.plotter.Figure()
+
+        for i in indices:
+            msd = self.data[i]
+            dataset = msd.get(data_key, None)
+            if dataset is None:
+                raise ValueError(f"No {data_key.upper()} data available for sample index {i} at {msd['path']}")
+
+            rt_array = dataset["rt"]
+            if rt is not None:
+                rt_index = abs(rt_array - rt).argmin()
+            else:
+                rt_index = 0
+
+            mz_array = dataset["mz"]
+
+            intensity = dataset["intensity"][rt_index, :] if data_key == "sim" else dataset["intensity"]  # TIC might be 1D
+
+            metadata = self.get_metadata([i]).to_dict(orient="records")[0]
+            text = "<br>".join(f"<b>{k}</b>: {v}" for k, v in metadata.items())
+
+            fig.add_trace(
+                self.plotter.Scatter(
+                    x=mz_array,
+                    y=intensity,
+                    mode="lines",
+                    name=f"{msd['name']} ({msd['sample']})",
+                    text=text,
+                    hovertemplate=f"{text}<br><b>m/z: %{{x}}<br><b>Intensity: %{{y}}<extra></extra>",
+                )
+            )
+
+        fig.update_layout(
+            title=f"{data_key.upper()} Mass Spectrum at RT={rt if rt else rt_array[0]:.2f}",
+            xaxis_title="m/z",
+            yaxis_title="Intensity",
+            template="simple_white",
+        )
+        return fig
+
     def plot_batches(self, indices: list = None) -> go.Figure:
         """
         Plot the batches of the MS data over the timestamps.
@@ -1259,7 +1465,7 @@ class MassSpecAnalyses(Analyses):
         df = self.get_metadata(indices)
         df = df.sort_values("timestamp")
         batches_in_order = df["batch"].drop_duplicates().tolist()
-        fig = go.Figure()
+        fig = self.plotter.Figure()
         for batch in batches_in_order:
             mask = df["batch"] == batch
             df_batch = df[mask]
@@ -1268,7 +1474,7 @@ class MassSpecAnalyses(Analyses):
                 for row in df_batch.to_dict(orient="records")
             ]
             fig.add_trace(
-                go.Scatter(
+                self.plotter.Scatter(
                     x=df_batch["timestamp"],
                     y=df_batch["batch_position"],
                     mode="markers",
@@ -1309,13 +1515,13 @@ class MassSpecAnalyses(Analyses):
 
         text = ["<br>".join(f"<b>{k}: </b>{v}" for k, v in row.items()) for row in mt]
 
-        fig = go.Figure()
+        fig = self.plotter.Figure()
         for i, fti in enumerate(ft):
             fti = ft[i]
             mti = mt[i]
 
             fig.add_trace(
-                go.Scatter(
+                self.plotter.Scatter(
                     x=list(fti.keys()),
                     y=list(fti.values()),
                     mode="markers+lines",
