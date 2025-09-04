@@ -5,8 +5,10 @@ This module contains processing methods for device analyses data.
 import pandas as pd
 import numpy as np
 from statsmodels.tsa.seasonal import seasonal_decompose
-#from scipy.signal import savgol_filter 
+#from scipy.signal import savgol_filter
+from scipy.signal import convolve2d 
 from scipy.optimize import curve_fit
+#from scipy.optimize import least_squares #better alternative to curve_fit in case of high noise content in MSD
 from sklearn import preprocessing as scaler
 from src.StreamPort.core import ProcessingMethod
 from src.StreamPort.device.analyses import PressureCurvesAnalyses
@@ -198,33 +200,34 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             SNIP(Statistical Non-linear Iterative Peak-clipping)
             - Iteratively estimates and removes the broad background trends from sharp spectral features of a signal, like peaks
             - Useful for spectra with overlapping peaks or variable baselines.
+            ### Baseline Correction is expensive and unused except for calculating abs_deviation. Uncomment when needed.
             """
-            # apply a double logarithm transformation to the pressure vector
-            lls_vector = np.log(np.log(np.sqrt(pressure_vector + 1) + 1) + 1)
-            # Define a function to compute the minimum filter
-            def min_filter(lls_vector, m):
-                """Applies the SNIP minimum filter"""
-                lls_filtered = np.copy(lls_vector)
-                for i in range(m, len(lls_vector) - m):
-                    lls_filtered[i] = min(lls_vector[i], (lls_vector[i-m] + lls_vector[i + m])/2)
-                return lls_filtered
+            # # apply a double logarithm transformation to the pressure vector
+            # lls_vector = np.log(np.log(np.sqrt(pressure_vector + 1) + 1) + 1)
+            # # Define a function to compute the minimum filter
+            # def min_filter(lls_vector, m):
+            #     """Applies the SNIP minimum filter"""
+            #     lls_filtered = np.copy(lls_vector)
+            #     for i in range(m, len(lls_vector) - m):
+            #         lls_filtered[i] = min(lls_vector[i], (lls_vector[i-m] + lls_vector[i + m])/2)
+            #     return lls_filtered
 
-            # Apply the filter for the first 5 iterations
-            lls_filtered = np.copy(lls_vector)
-            for m in range(5):
-                lls_filtered = min_filter(lls_vector, m)
+            # # Apply the filter for the first 5 iterations
+            # lls_filtered = np.copy(lls_vector)
+            # for m in range(5):
+            #     lls_filtered = min_filter(lls_vector, m)
 
-            smoothed_vector = (np.exp(np.exp(lls_filtered) - 1) - 1) ** 2 - 1
+            # smoothed_vector = (np.exp(np.exp(lls_filtered) - 1) - 1) ** 2 - 1
 
-            # subtract the smoothed vector from the original vector to remove the baseline
-            baseline_corrected_vector = pressure_vector - smoothed_vector
+            # # subtract the smoothed vector from the original vector to remove the baseline
+            # baseline_corrected_vector = pressure_vector - smoothed_vector
             
-            # baseline correction or any such operation may introduce NaN values
-            baseline_corrected_vector = np.nan_to_num(baseline_corrected_vector, 
-                                                      posinf = np.max(baseline_corrected_vector), 
-                                                      neginf = np.min(baseline_corrected_vector))
+            # # baseline correction or any such operation may introduce NaN values
+            # baseline_corrected_vector = np.nan_to_num(baseline_corrected_vector, 
+            #                                           posinf = np.max(baseline_corrected_vector), 
+            #                                           neginf = np.min(baseline_corrected_vector))
 
-            featrawi["pressure_baseline_corrected"] = baseline_corrected_vector
+            # featrawi["pressure_baseline_corrected"] = baseline_corrected_vector
             # baseline correction done
 
             decomp = seasonal_decompose(
@@ -397,7 +400,7 @@ class PressureCurvesMethodScaleFeaturesScalerSklearn(ProcessingMethod):
         return analyses
 
 
-class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
+class MassSpecMethodExtractFeaturesNative(ProcessingMethod):
     """
     Method to extract features from ms data using a native algorithm.
 
@@ -405,14 +408,18 @@ class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
         data (str): "sim" or "tic" based on user's choice. Defaults to sim, and targets the closest mz if the mz input parameter is invalid.
         rt (float): The retention time for the target to be analysed.
         mz (float): The mz for the target.
-        rt_window (int): The minimum distance by seconds/number of rt entries before and after current one to be considered when finding peaks (default = 10s). Any peaks within this distance from each other will be disregarded.
-        mz_window (int): Number of adjacent mzs to be considered for 2D tile/window creation. Defaults to 1 (mz adjacent to the current one, totalling 3 mzs).
-        smooth (int | bool): User may provide a window size and choose whether the signal must be pretreated using smoothing to improve peak detection and quality of data. Default is False (no smoothing).
+        rt_window (int): The minimum distance by seconds/number of rt entries before and after current one to be considered when finding peaks (default = 8s). Any peaks within this distance from each other will be disregarded.
+        mz_window (float): Range of adjacent mz value to be considered for 2D tile/window creation. Defaults to 1.0 Da (mz(s) within 1.0 to the current one, here, totalling 1 mz before and after the target).
+        smooth (int | bool): User may provide a window size and choose whether the signal must be pre-treated using smoothing. Default is None(False). Note: If an int n is passed, the window will be nxn over the 2D intensity array, where n is always automatically limited to the values 3, 5, and 7.
+        exclude (int): Choice of whether to exclude 0 (Flush), 1 (Blank) or 2 (Both). This will set the features for the respective samples to None, without removing the samples.
 
     Methods:
+        - _apply_gaussian_filter: Performs gaussian smoothing on the 2D intensity matrix before feature extraction with a default 3x3 kernel.
         - _gaussian_2d: Performs gaussian fitting for a 2D peak space.
         - _fit_gaussian: Fits the 1D signal to a gaussian curve and optimizes the values A, mu, sigma using the ADAM optimizer.      
         - _get_r2: Calculates the rsquared value from the optimized fit values.
+        - _show_tile_debug_plot: Plots the target window/tile selected by the user, along with the gaussian surface (red) fit to it. Returns plots for all failed fits for debugging and a plot of the last sample when fit is successful.
+        - run: Uses the helper functions to extract features from the analyses based on the target selected by the user and returns the analyses with the features.
 
     Details:
         The method extracts features from ms data matrix, for each selected target (rt, mz), adding entries named "features" to each dict in the data list of the MassSpecAnalyses instance.
@@ -428,12 +435,19 @@ class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
             - peak_s/n_2d: 2D S/N ratio.
             - peak_mean: Mean/Center of the signal around the peak.
             1D features:
-            - peak_fwhm: Full Width at Half Maximum of the peak.
+            - peak_fwhm: Full Width at Half Maximum of the peak along rt.
             - peak_s/n: Signal to Noise (S/N) ratio of the signal around the peak.
             - peak_fit_quality: The rsquared error of a gaussian fit on the signal.
     """
 
-    def __init__(self, data: str = "sim", rt: float = None, mz: float = None, rt_window_size: int = 15, mz_window_size: int = 1, smooth: int|bool = False):
+    def __init__(self, 
+                 data: str = "sim", 
+                 rt: float = None, 
+                 mz: float = None, 
+                 rt_window_size: int = 8, 
+                 mz_window_size: float = 1.0, 
+                 smooth: int|bool = None,
+                 exclude: int = None):
         super().__init__()
         self.data_type = "MassSpecAnalyses"
         self.method = "ExtractFeatures"
@@ -446,10 +460,37 @@ class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
             "target_rt" : rt,
             "target_mz" : mz,
             "rt_window_size" : rt_window_size,
-            "mz_window_size": mz_window_size,
-            "smooth": smooth
+            "mz_window_size" : mz_window_size,
+            "smooth" : smooth,
+            "exclude" : exclude
             }
+    
+    def _apply_gaussian_filter(self, matrix, kernel_size, sigma, mode = 0): # scipy alternative is much faster.
+
+        assert kernel_size % 2 == 1, "Kernel size must be odd."
+
+        # generate a 2D gaussian kernel
+        ax = np.linspace(-(kernel_size // 2), kernel_size // 2, kernel_size)
         
+        if mode == 0: # isotropic Gaussian if the resolutions along rt and mz axes are comparable
+            gauss = np.exp(-ax**2 / (2. * sigma**2))
+            kernel = np.outer(gauss, gauss)
+        else:
+            sigma_rt = sigma + 0.5 # sim data has higher resolution along rt, so larger sigma
+            sigma_mz = max(0.1, sigma - 0.5)
+
+            gauss_rt = np.exp(-0.5 * (ax / sigma_rt) ** 2)
+            gauss_mz = np.exp(-0.5 * (ax / sigma_mz) ** 2)
+
+            kernel = np.outer(gauss_rt, gauss_mz)
+
+        # normalize kernel
+        kernel /= np.sum(kernel)
+
+        result = convolve2d(matrix, kernel, mode='same', boundary='symm') # mode=same maintains the shape of the matrix, boundary=symm mirrors edge values within and without the kernel boundary
+        
+        return result 
+
     def _gaussian_2d(self, coords, A, mux, muy, sigx, sigy):
         x, y = coords
         return A * np.exp(
@@ -513,18 +554,18 @@ class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
         # predicted values from the Gaussian model
         y_pred = A * np.exp(-((x - mu) ** 2) / (2 * sigma ** 2))
         
-        # Residual sum of squares
+        # residual sum of squares
         ss_res = np.sum((y - y_pred) ** 2)
         
-        # Total sum of squares
+        # total sum of squares
         ss_tot = np.sum((y - np.mean(y)) ** 2)
         
-        # R-squared
+        # r-squared
         r_squared = 1 - (ss_res / ss_tot if ss_tot != 0 else 0)
 
         return r_squared
 
-    def _show_tile_debug_plot(self, region_rt, region_mz, peak_tile, fit_surface=None, title="Peak Tile Debug"):
+    def _show_tile_debug_plot(self, plotter, region_rt, region_mz, peak_tile, fit_surface=None, title="Peak Tile Debug"):
         """
         Shows the peak tile as a 3D surface, with optional Gaussian fit overlay.
         
@@ -535,16 +576,15 @@ class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
             fit_surface (2D np.array): Optional Gaussian fit surface with same shape as peak_tile.
             title (str): Plot title.
         """
-        import plotly.graph_objects as go
 
         # Create meshgrid for RT and m/z axes
         MZ_grid, RT_grid = np.meshgrid(region_mz, region_rt)  # note: x = mz, y = rt
 
-        fig = go.Figure()
+        fig = plotter.Figure()
 
         # Add peak tile as a 3D surface
         fig.add_trace(
-            go.Surface(
+            plotter.Surface(
                 z=peak_tile,
                 x=MZ_grid,
                 y=RT_grid,
@@ -560,7 +600,7 @@ class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
         # Add fit surface if available
         if fit_surface is not None:
             fig.add_trace(
-                go.Surface(
+                plotter.Surface(
                     z=fit_surface,
                     x=MZ_grid,
                     y=RT_grid,
@@ -592,7 +632,7 @@ class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
             height=650,
         )
 
-        fig.show()
+        return fig
 
     def run(self, analyses: MassSpecAnalyses) -> MassSpecAnalyses:
         """
@@ -607,6 +647,7 @@ class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
         if len(data) == 0:
             print("No data to process.")
             return analyses
+        plotter = analyses.plotter
         
         features_template = {
             "peak_height" : None,  
@@ -623,6 +664,13 @@ class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
             "peak_fit_quality_rt" : None
         }
 
+        if self.parameters["exclude"] is not None and self.parameters["exclude"] in [0, 1, 2]:
+            to_remove = {
+                0 : ["flush"],
+                1 : ["blank"], 
+                2 : ["flush", "blank"]
+                }
+
         entry = self.parameters["data"].lower()
         
         target_rt = self.parameters["target_rt"]
@@ -631,7 +679,7 @@ class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
         rt_window_size = self.parameters["rt_window_size"] 
         mz_window_size = self.parameters["mz_window_size"]
 
-        for i, msd in enumerate(data): # currently for sim data.  
+        for i, msd in enumerate(data): # by default for sim data.  
             feat = features_template.copy()
 
             chroma = msd[entry] # choose sim or tic
@@ -639,11 +687,33 @@ class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
             if chroma is None: # if tic selected but no data available
                 msd["features"] = feat
                 data[i] = msd
+
+                last_good_index = i - 1
+                last_good_sample = data[last_good_index].get("name", "N/A")
+                print(f"WARNING: This sample index {i} {msd["name"]} does not have TIC data. Skipping this iteration...")
                 continue
-            
+            elif to_remove:
+                # only for exact matches like "blank" and not "matrix blank" 
+                if any(string == msd["sample"].lower() for string in to_remove[self.parameters["exclude"]]):
+                    print(f"{msd["sample"]} found at index {i}, Skipping extraction...")
+                    msd["features"] = feat
+                    continue
+
             rt = chroma["rt"]
             mz = chroma["mz"]
             intensity = chroma["intensity"]
+
+            if self.parameters["smooth"]:
+                if isinstance(self.parameters["smooth"], int) and self.parameters["smooth"] in [3, 5, 7]: # small choice of kernel_size to avoid over-smoothing
+                    kernel_size = self.parameters["smooth"]
+                else:
+                    kernel_size = 3 # bind it to a 3x3 kernel 
+                
+                if entry == "sim": # choose anisotropic kernel creation when rts >> mzs (466, 19)
+                    mode = 1
+                else:
+                    mode = 0
+                intensity = self._apply_gaussian_filter(matrix=intensity, kernel_size=kernel_size, sigma=1.0, mode=mode) # higher sigma causes higher blur
 
             if target_rt is not None: 
                 rt_index = np.argmin(np.abs(rt - target_rt)) # position of exact match or closest rt to given rt
@@ -665,24 +735,38 @@ class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
             rt_end = min(len(rt), np.argmin(np.abs(rt_in_seconds - rt_upper_bound)))
             
             # prep mz window
-            mz_start = max(0, mz_index - mz_window_size)
-            mz_end = min(len(mz), mz_index + mz_window_size)
+            mz_mask = (mz >= mz[mz_index] - mz_window_size) & (mz <= mz[mz_index] + mz_window_size)
+            if not np.any(mz_mask):
+                mz_mask[mz_index] = True
 
+            # when only whole number mz's ensure window is atleast 3 columns wide for 2D ops
+            if np.sum(mz_mask) < 3:
+                mz_start = max(0, mz_index - 1)
+                mz_end = min(len(mz), mz_index + 2)
+                mz_mask = np.zeros_like(mz, dtype=bool)
+                mz_mask[mz_start:mz_end] = True
+            
             rt_window = rt[rt_start : rt_end]
-            mz_window = mz[mz_start : mz_end]
+            mz_window = mz[mz_mask]
 
-            intensity_tile = intensity[rt_start : rt_end, mz_start : mz_end]
-            target_label = f"_rt[{rt_window[0]}:{rt_window[-1]}]_mz[{mz_window[0]}:{mz_window[-1]}]"
+            intensity_tile = intensity[rt_start : rt_end, mz_mask]
+            # target_label = f"_rt[{rt_window[0]}:{rt_window[-1]}]_mz[{mz_window[0]}:{mz_window[-1]}]" # save this for when the features should be named according to the target picked
 
             ## Peak Height
             peak = np.max(intensity_tile) # amplitude/height of peak
             feat[f"peak_height"] = peak # peak amplitude
             peak_position = np.argmax(intensity_tile) # index position of peak in 2D array
             peak_rt, peak_mz = np.unravel_index(peak_position, intensity_tile.shape)
+
+            # if peak is at the edge of the tile, fitting will be poor
+            if peak_rt < 1 or peak_rt > len(rt_window) - 2 or peak_mz < 1 or peak_mz > len(mz_window) - 2:
+                print(f"Sample index {i} Warning: Peak near window edge at rt:{rt[rt_start + peak_rt]}, mz:{mz[mz_mask[0] + peak_mz]}")
             
             ## RT, MZ position at Peak
             feat[f"peak_rt"] = rt_window[peak_rt]
-            feat[f"peak_mz"] = mz_window[peak_mz]
+            peak_mz_value = mz_window[peak_mz]
+            feat[f"peak_mz"] = peak_mz_value
+            closest_mz_idx = np.argmin(np.abs(mz - peak_mz_value))
 
             ## 2D area under Peak. Will show anomalous value if peak is noisy
             peak_area_mz = np.trapz(intensity_tile, x=mz_window, axis=1)
@@ -690,22 +774,44 @@ class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
             feat[f"peak_area_2d"] = peak_area
 
             rt_grid, mz_grid = np.meshgrid(rt_window, mz_window, indexing = 'ij')
-            coords = (rt_grid.ravel(), mz_grid.ravel())
+            coords = (rt_grid.ravel(), mz_grid.ravel()) # coordinate grids for peak fitting
             tile = intensity_tile.ravel()
+            assert intensity_tile.shape == rt_grid.shape == mz_grid.shape, "Shape mismatch between tile and coordinate grid"
 
+            # initial conditions for 2D peak fitting
             A0 = peak
             mux0 = rt_window[np.argmax(np.sum(intensity_tile, axis=1))] # where it's brightest in RT
             muy0 = mz_window[np.argmax(np.sum(intensity_tile, axis=0))] # brightest in m/z
-            sigx0 = (rt_window[-1] - rt_window[0]) / 4
-            sigy0 = (mz_window[-1] - mz_window[0]) / 4
+            #sigx0 = (rt_window[-1] - rt_window[0]) / 6 
+            #sigy0 = (mz_window[-1] - mz_window[0]) / 6 # better fit than np.std()
+            sigx0 = np.sqrt(np.average((rt_window - mux0)**2, weights=np.sum(intensity_tile, axis=1)))
+            sigy0 = np.sqrt(np.average((mz_window - muy0)**2, weights=np.sum(intensity_tile, axis=0)))
 
             init_params = [A0, mux0, muy0, sigx0, sigy0]
 
-            try:
-                ## Peak volume. More robust estimate of peak ion count. Can be combined with area to identify S/N ratio in terms of effective peak area/volume
-                optimized_params, params_covariance = curve_fit(self._gaussian_2d, coords, tile, p0=init_params)
+            # constraints on params to avoid noisy fits
+            bounds_lower = [0, rt_window[0], mz_window[0], 0.01, 0.01]  # A, mux, muy, sigx, sigy
+            bounds_upper = [np.max(tile)*2, rt_window[-1], mz_window[-1], 
+                            (rt_window[-1] - rt_window[0]), 
+                            (mz_window[-1] - mz_window[0])]
+
+            try:# try least_squares instead of curve_fit. More robust to noise and custom loss functions
+                optimized_params, params_covariance = curve_fit(self._gaussian_2d, coords, tile, p0=init_params, bounds=(bounds_lower, bounds_upper))
                 fitted = self._gaussian_2d(coords, *optimized_params).reshape(intensity_tile.shape)
                 A, mux, muy, sigx, sigy = optimized_params
+                #print(f"Fitted A={A:.2f}, mux={mux:.2f}, muy={muy:.2f}, sigx={sigx:.2f}, sigy={sigy:.2f}")
+
+                good_fit_plot = self._show_tile_debug_plot(
+                    plotter=plotter,
+                    region_rt=rt_window, 
+                    region_mz=mz_window, 
+                    peak_tile=intensity_tile,
+                    fit_surface=fitted, 
+                    title=f"Index {i}, {msd["name"]}: Fit successful.")
+                
+                msd["fit_plot"] = good_fit_plot
+
+                ## Peak volume. More robust estimate of peak ion count. Can be combined with area to identify S/N ratio in terms of effective peak area/volume
                 volume = A * 2 * np.pi * sigx * sigy
                 feat[f"peak_volume"] = volume
 
@@ -715,7 +821,7 @@ class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
                 feat[f"peak_fit_2d"] = r2_2d
 
                 ## Area vs Noise error. A clean peak should show minimum deviation between the 2D area and peak volume values
-                feat[f"peak_a/n_error"] = volume/peak_area
+                feat[f"peak_v/a_error"] = volume/peak_area
 
                 ## S/N 2D
                 noise_std_2d = np.std(residuals)
@@ -723,22 +829,29 @@ class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
                     noise_std_2d = 1e-4
                 signal_2d = A
                 snr_2d = signal_2d / noise_std_2d
-                feat[f"peak_s/n_2d"] = snr_2d
+                feat[f"peak_s/n_2d"] = snr_2d  
 
             except RuntimeError as e:
                 fallback_fit = self._gaussian_2d(coords, *init_params).reshape(intensity_tile.shape)
-                print(f"[WARNING] Gaussian fit failed for analysis index {i} {msd["name"]} tile (rt[{rt_window[0]}:{rt_window[-1]}], mz[{mz_window[0]}:{mz_window[-1]}]: {e}. Returning debug_figure with initial fit estimates.")
+                print(f"[WARNING] Gaussian fit failed for analysis index {i} {msd["name"]} tile (rt[{rt_window[0]}:{rt_window[-1]}], mz[{mz_window[0]}:{mz_window[-1]}]: {e}.")
+                print("\n")
+                print("Returning debug_figure with initial fit estimates.")
 
-                debug_fig = self._show_tile_debug_plot(region_rt=rt_window, 
-                                                    region_mz=mz_window, 
-                                                    peak_tile=intensity_tile,
-                                                    fit_surface=fallback_fit, 
-                                                    title="Debug: Failed fit")
+                # plot failed fit for debugging
+                debug_plot = self._show_tile_debug_plot(
+                                        plotter=plotter,
+                                        region_rt=rt_window, 
+                                        region_mz=mz_window, 
+                                        peak_tile=intensity_tile,
+                                        fit_surface=fallback_fit, 
+                                        title="Debug: Failed fit")
+                debug_plot.show()
                 input("Inspect tile. Press Enter to continue...")
+                msd["fit_plot"] = debug_plot
                 continue
 
             ## Peak FWHM along RT
-            target_vector = intensity[rt_start : rt_end, mz_start + peak_mz]
+            target_vector = intensity[rt_start : rt_end, closest_mz_idx]
             peak_pos_1d = np.argmax(target_vector)
             peak_half_max = peak/2 # autocast to float
 
@@ -766,11 +879,18 @@ class MassSpecDataMethodExtractFeaturesNative(ProcessingMethod):
             ## Mean
             feat[f"peak_mean"] = np.mean(intensity_tile) # average around peak     
 
-            features = pd.DataFrame([feat])
-
-            msd["features"] = features
+            msd["features"] = feat
 
             data[i] = msd
-
+        
+        # plot last successful fit once
+        last_good_fit_plot = self._show_tile_debug_plot(
+                            plotter=plotter,
+                            region_rt=rt_window, 
+                            region_mz=mz_window, 
+                            peak_tile=intensity_tile,
+                            fit_surface=fitted, 
+                            title=f"Index {last_good_index}, {last_good_sample}: Fit successful.")              
+        last_good_fit_plot.show()
         analyses.data = data
         return analyses

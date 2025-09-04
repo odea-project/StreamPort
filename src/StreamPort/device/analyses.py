@@ -903,6 +903,7 @@ class MassSpecAnalyses(Analyses):
         plot_3d: Creates a 3D Surface plot/2D Heatmap for the MS data.
         plot_bpc: Plots the Base Peak Intensity across rts.
         plot_ms: Plots the Mass Spectrum for a fixed rt across mzs.
+        plot_gaussian_fit: Plots the gaussian fit created for the target window during feature extraction.
         plot_features: Plots the spread of extracted feature values.
     """
 
@@ -1124,20 +1125,60 @@ class MassSpecAnalyses(Analyses):
         metadata = []
         for i in indices:
             msd = self.data[i].copy()
-            for key in ["sim", "tic", "features"]:
+            for key in ["sim", "tic", "features", "fit_plot"]:
                 msd.pop(key, None)
             metadata.append(msd)
 
         return pd.DataFrame(metadata)
     
-    def plot_chromatogram(self, indices=None, data: str = "SIM", mz: int = None) -> go.Figure:
+    def plot_batches(self, indices: list = None) -> go.Figure:
+        """
+        Plot the batches of the MS data over the timestamps.
+
+        Args:
+            indices (list): List of indices of the batches to plot. If None, all batches are plotted.
+        """
+
+        df = self.get_metadata(indices)
+        df = df.sort_values("timestamp")
+        batches_in_order = df["batch"].drop_duplicates().tolist()
+        fig = self.plotter.Figure()
+        for batch in batches_in_order:
+            mask = df["batch"] == batch
+            df_batch = df[mask]
+            text = [
+                "<br>".join(f"<b>{k}: </b>{v}" for k, v in row.items())
+                for row in df_batch.to_dict(orient="records")
+            ]
+            fig.add_trace(
+                self.plotter.Scatter(
+                    x=df_batch["timestamp"],
+                    y=df_batch["batch_position"],
+                    mode="markers",
+                    name=batch,
+                    legendgroup=batch,
+                    text=text,
+                    hovertemplate=text,
+                )
+            )
+        fig.update_layout(
+            xaxis_title="Timestamp",
+            yaxis_title="Batch Position",
+            template="simple_white",
+            legend_title="Batches",
+        )
+
+        return fig
+    
+    def plot_chromatogram(self, indices=None, data: str = "SIM", mz: int = None, metric: str = "sum") -> go.Figure:
         """
         Plot TIC or Extracted Ion Chromatogram (XIC/SIM).
 
         Args:
             indices (int | list): Sample indices to plot. Defaults to all.
             data (str): "SIM" for extracted ion chromatogram, "TIC" for total ion chromatogram. Defaults to "SIM".
-            mz (int): If data="SIM", the m/z value to extract. Defaults to the first m/z in the data.
+            mz (int): If data="SIM", the m/z value to extract. Defaults to the first m/z in the data mz[0].
+            metric (str): If data="TIC", choose whether to plot "sum" or "mean" (MIC) over all intensities. Defaults to "sum"
         
         Returns:
             go.Figure: Plotly figure with chromatograms.
@@ -1170,7 +1211,7 @@ class MassSpecAnalyses(Analyses):
                     mz_index = 0
                 y = dataset["intensity"][:, mz_index]
             else:  # TIC data
-                y = dataset["intensity"]
+                y = dataset["intensity"].sum(axis=1) if metric == "sum" else dataset["intensity"].mean(axis=1)
 
             metadata = self.get_metadata([i]).to_dict(orient="records")[0]
             text = "<br>".join(f"<b>{k}</b>: {v}" for k, v in metadata.items())
@@ -1186,9 +1227,9 @@ class MassSpecAnalyses(Analyses):
                 )
             )
 
-        title = f"{data_key.upper()} Chromatograms"
+        title = f"{data_key.upper()} Chromatograms "
         fig.update_layout(
-            title=title,
+            title=title + f"{metric}" if data=="tic" else title,
             xaxis_title="Retention Time (min)",
             yaxis_title="Intensity",
             template="simple_white",
@@ -1336,13 +1377,13 @@ class MassSpecAnalyses(Analyses):
 
     def plot_bpc(self, indices=None) -> go.Figure:
         """
-        Plot Base Peak Chromatogram (BPC) for given samples.
+        Plot Base Peak Chromatogram (BPC) for given samples by picking the highest peak across all mzs for each rt.
 
         Args:
             indices (int | list): Sample indices to plot. Defaults to all.
 
         Returns:
-            go.Figure: BPC plot over retention time.
+            go.Figure: BPC intensity plot over retention time.
         """
         if indices is None:
             indices = list(range(len(self.data)))
@@ -1454,44 +1495,43 @@ class MassSpecAnalyses(Analyses):
         )
         return fig
 
-    def plot_batches(self, indices: list = None) -> go.Figure:
+    def plot_gaussian_fit(self, indices: int | list = None) -> go.Figure | dict:
         """
-        Plot the batches of the MS data over the timestamps.
+        Plot the gaussian fit for the given indices created during feature extraction.
 
         Args:
-            indices (list): List of indices of the batches to plot. If None, all batches are plotted.
+            indices (int|list): Single integer or list of integer index values(s) of data to plot. Plotting for all indices is computationally inefficient. 
+            See MassSpecMethodExtractFeaturesNative args for remaining details. 
+
+        Returns:
+            go.Figure | dict({index : go.Figure}): A plot object or a dict of such objects linked on the passed indices.
         """
+        if indices is None:
+            indices = list(range(len(self.data)))
+        elif isinstance(indices, int):
+            indices = [indices]
+        elif isinstance(indices, tuple):
+            indices = list(indices)
+        if not isinstance(indices, list) or not isinstance(indices[0], int):
+            raise TypeError("Indices should be a list of integers.")
+        if len(indices) == 0:
+            raise ValueError("No indices provided for plotting.")
+        
+        if self.data is None or len(self.data) == 0:
+            raise ValueError("No data available.")
 
-        df = self.get_metadata(indices)
-        df = df.sort_values("timestamp")
-        batches_in_order = df["batch"].drop_duplicates().tolist()
-        fig = self.plotter.Figure()
-        for batch in batches_in_order:
-            mask = df["batch"] == batch
-            df_batch = df[mask]
-            text = [
-                "<br>".join(f"<b>{k}: </b>{v}" for k, v in row.items())
-                for row in df_batch.to_dict(orient="records")
-            ]
-            fig.add_trace(
-                self.plotter.Scatter(
-                    x=df_batch["timestamp"],
-                    y=df_batch["batch_position"],
-                    mode="markers",
-                    name=batch,
-                    legendgroup=batch,
-                    text=text,
-                    hovertemplate=text,
-                )
-            )
-        fig.update_layout(
-            xaxis_title="Timestamp",
-            yaxis_title="Batch Position",
-            template="simple_white",
-            legend_title="Batches",
-        )
+        figs = {}
+        for i in indices:
+            msd = self.data[i]
+            plot = msd.get("fit_plot")
+            if plot is None:
+                print("No features have been extracted for this sample") 
+            figs[i] = plot
 
-        return fig
+        if len(list(figs)) == 1:
+            return plot
+
+        return figs
     
     def plot_features(self, indices: list = None, normalize: bool = True) -> go.Figure:
         """

@@ -177,9 +177,9 @@ class MachineLearningScaleFeaturesScalerSklearn(ProcessingMethod):
         """
         Scales features of pressure curves using a scaler from sklearn.
         Args:
-            analyses (PressureCurvesAnalyses): The PressureCurvesAnalyses instance to process.
+            analyses (MachineLearningAnalyses): The MachineLearningAnalyses instance to process.
         Returns:
-            PressureCurvesAnalyses: The processed PressureCurvesAnalyses instance with scaled features.
+            MachineLearningAnalyses: The processed MachineLearningAnalyses instance with scaled features.
         """
         data = analyses.data
         if len(data) == 0:
