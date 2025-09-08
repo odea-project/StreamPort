@@ -647,8 +647,11 @@ class MassSpecMethodExtractFeaturesNative(ProcessingMethod):
         if len(data) == 0:
             print("No data to process.")
             return analyses
-        plotter = analyses.plotter
         
+        plotter = analyses.plotter
+
+        to_remove = None
+
         features_template = {
             "peak_height" : None,  
             "peak_rt" : None,
@@ -656,7 +659,7 @@ class MassSpecMethodExtractFeaturesNative(ProcessingMethod):
             "peak_area_2d" : None,
             "peak_volume" : None,
             "peak_fit_2d" : None,
-            "peak_a/n_error" : None,
+            "peak_v/a_error" : None,
             "peak_s/n_2d" : None,
             "peak_mean" : None,
             "peak_fwhm_rt" : None,
@@ -687,9 +690,6 @@ class MassSpecMethodExtractFeaturesNative(ProcessingMethod):
             if chroma is None: # if tic selected but no data available
                 msd["features"] = feat
                 data[i] = msd
-
-                last_good_index = i - 1
-                last_good_sample = data[last_good_index].get("name", "N/A")
                 print(f"WARNING: This sample index {i} {msd["name"]} does not have TIC data. Skipping this iteration...")
                 continue
             elif to_remove:
@@ -760,7 +760,7 @@ class MassSpecMethodExtractFeaturesNative(ProcessingMethod):
 
             # if peak is at the edge of the tile, fitting will be poor
             if peak_rt < 1 or peak_rt > len(rt_window) - 2 or peak_mz < 1 or peak_mz > len(mz_window) - 2:
-                print(f"Sample index {i} Warning: Peak near window edge at rt:{rt[rt_start + peak_rt]}, mz:{mz[mz_mask[0] + peak_mz]}")
+                print(f"Sample index {i} Warning: Peak near window edge at rt:{rt[rt_start + peak_rt]}, mz:{mz[mz_mask[0] + peak_mz]}") # debug this, mz value is still off in diag prints
             
             ## RT, MZ position at Peak
             feat[f"peak_rt"] = rt_window[peak_rt]
@@ -883,14 +883,5 @@ class MassSpecMethodExtractFeaturesNative(ProcessingMethod):
 
             data[i] = msd
         
-        # plot last successful fit once
-        last_good_fit_plot = self._show_tile_debug_plot(
-                            plotter=plotter,
-                            region_rt=rt_window, 
-                            region_mz=mz_window, 
-                            peak_tile=intensity_tile,
-                            fit_surface=fitted, 
-                            title=f"Index {last_good_index}, {last_good_sample}: Fit successful.")              
-        last_good_fit_plot.show()
         analyses.data = data
         return analyses

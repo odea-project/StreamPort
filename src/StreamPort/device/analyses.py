@@ -1075,12 +1075,13 @@ class MassSpecAnalyses(Analyses):
         indices = [i for i, item in enumerate(self.data) if item["batch"] == batch]
         return indices
 
-    def get_features(self, indices: list = None) -> pd.DataFrame:
+    def get_features(self, indices: list = None, filter_none: bool = True) -> pd.DataFrame:
         """
         Get a DataFrame of the features of the pressure curves.
 
         Args:
             indices (list): List of indices of the pressure curves to include in the DataFrame. If None, all curves are included.
+            filter (bool): Filter out samples with None values in the feature matrix. 
 
         Returns:
             pd.DataFrame: DataFrame containing the features of the pressure curves.
@@ -1098,7 +1099,11 @@ class MassSpecAnalyses(Analyses):
         features = []
         for i in indices:
             msd = self.data[i]
-            features.append(msd["features"])
+            features_dict = msd["features"]
+            if filter_none and any(value is None for value in features_dict.values()):
+                print(f"None type features found for sample {i}. Skipping...")
+                continue
+            features.append(features_dict)
 
         return pd.DataFrame(features)
 
@@ -1525,7 +1530,7 @@ class MassSpecAnalyses(Analyses):
             msd = self.data[i]
             plot = msd.get("fit_plot")
             if plot is None:
-                print("No features have been extracted for this sample") 
+                print(f"No features have been extracted for sample {i}") 
             figs[i] = plot
 
         if len(list(figs)) == 1:
@@ -1540,9 +1545,14 @@ class MassSpecAnalyses(Analyses):
         Args:
             indices (list): List of indices of the data to plot. If None, features for all data are plotted.
         """
+        ft = self.get_features(indices, filter_none = False).to_dict(orient = "records")
         mt = self.get_metadata(indices).to_dict(orient="records")
 
-        ft = self.get_features(indices)
+        valid = [(ft_row, mt_row) for ft_row, mt_row in zip(ft, mt)
+            if all(value is not None for value in ft_row.values())]
+        
+        ft = pd.DataFrame([f for f, _ in valid])
+
         if normalize:
             # normalize each column of the DataFrame while handling NaN values
             ft = ft.fillna(0)  # Replace NaN with 0 
