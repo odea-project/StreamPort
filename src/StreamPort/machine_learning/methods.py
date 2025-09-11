@@ -16,10 +16,10 @@ from sklearn import preprocessing as scaler
 from sklearn.model_selection import GridSearchCV #train_test_split
 #from sklearn.metrics import accuracy_score
 
-from src.StreamPort.core import ProcessingMethod
-from src.StreamPort.machine_learning.analyses import MachineLearningAnalyses
-from src.StreamPort.machine_learning.analyses import IsolationForestAnalyses
-from src.StreamPort.machine_learning.analyses import NearestNeighboursAnalyses
+from core import ProcessingMethod
+from machine_learning.analyses import MachineLearningAnalyses
+from machine_learning.analyses import IsolationForestAnalyses
+from machine_learning.analyses import NearestNeighboursAnalyses
 
 
 class MachineLearningMethodIsolationForestSklearn(ProcessingMethod):

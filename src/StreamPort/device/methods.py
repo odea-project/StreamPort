@@ -4,15 +4,16 @@ This module contains processing methods for device analyses data.
 
 import pandas as pd
 import numpy as np
+import re
 from statsmodels.tsa.seasonal import seasonal_decompose
 #from scipy.signal import savgol_filter
 from scipy.signal import convolve2d 
 from scipy.optimize import curve_fit
 #from scipy.optimize import least_squares #better alternative to curve_fit in case of high noise content in MSD
 from sklearn import preprocessing as scaler
-from src.StreamPort.core import ProcessingMethod
-from src.StreamPort.device.analyses import PressureCurvesAnalyses
-from src.StreamPort.device.analyses import MassSpecAnalyses
+from core import ProcessingMethod
+from device.analyses import PressureCurvesAnalyses
+from device.analyses import MassSpecAnalyses
 
 
 class PressureCurvesMethodAssignBatchPositionNative(ProcessingMethod):
@@ -411,7 +412,7 @@ class MassSpecMethodExtractFeaturesNative(ProcessingMethod):
         rt_window (int): The minimum distance by seconds/number of rt entries before and after current one to be considered when finding peaks (default = 8s). Any peaks within this distance from each other will be disregarded.
         mz_window (float): Range of adjacent mz value to be considered for 2D tile/window creation. Defaults to 1.0 Da (mz(s) within 1.0 to the current one, here, totalling 1 mz before and after the target).
         smooth (int | bool): User may provide a window size and choose whether the signal must be pre-treated using smoothing. Default is None(False). Note: If an int n is passed, the window will be nxn over the 2D intensity array, where n is always automatically limited to the values 3, 5, and 7.
-        exclude (int): Choice of whether to exclude 0 (Flush), 1 (Blank) or 2 (Both). This will set the features for the respective samples to None, without removing the samples.
+        exclude (list | str): Choice of whether to exclude "Flush", "Blank" or other such runs from the analysis. This will set the features for the respective samples to None, without removing the samples.
 
     Methods:
         - _apply_gaussian_filter: Performs gaussian smoothing on the 2D intensity matrix before feature extraction with a default 3x3 kernel.
@@ -447,7 +448,7 @@ class MassSpecMethodExtractFeaturesNative(ProcessingMethod):
                  rt_window_size: int = 8, 
                  mz_window_size: float = 1.0, 
                  smooth: int|bool = None,
-                 exclude: int = None):
+                 exclude: str = None): # regex for this. 
         super().__init__()
         self.data_type = "MassSpecAnalyses"
         self.method = "ExtractFeatures"
@@ -667,12 +668,14 @@ class MassSpecMethodExtractFeaturesNative(ProcessingMethod):
             "peak_fit_quality_rt" : None
         }
 
-        if self.parameters["exclude"] is not None and self.parameters["exclude"] in [0, 1, 2]:
-            to_remove = {
-                0 : ["flush"],
-                1 : ["blank"], 
-                2 : ["flush", "blank"]
-                }
+        if self.parameters["exclude"] is not None: 
+            if isinstance(self.parameters["exclude"], list):
+                if all(isinstance(item, str) for item in self.parameters["exclude"]):
+                    to_remove = self.parameters["exclude"]
+                else:
+                    raise TypeError("Invalid inputs. Input only strings like 'Flush' that must be removed")
+            elif isinstance(self.parameters["exclude"], str):
+                to_remove = [self.parameters["exclude"]]
 
         entry = self.parameters["data"].lower()
         
@@ -692,9 +695,13 @@ class MassSpecMethodExtractFeaturesNative(ProcessingMethod):
                 data[i] = msd
                 print(f"WARNING: This sample index {i} {msd["name"]} does not have TIC data. Skipping this iteration...")
                 continue
-            elif to_remove:
-                # only for exact matches like "blank" and not "matrix blank" 
-                if any(string == msd["sample"].lower() for string in to_remove[self.parameters["exclude"]]):
+            if to_remove:
+                """
+                EXTEND FOR OTHER STRINGS AS NEEDED
+                """ 
+                for string in to_remove:
+                    pattern = re.compile(f"^{re.escape(string)}$", flags=re.IGNORECASE)
+                if pattern.match(msd["sample"]):
                     print(f"{msd["sample"]} found at index {i}, Skipping extraction...")
                     msd["features"] = feat
                     continue
