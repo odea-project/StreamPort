@@ -16,6 +16,12 @@ from core import Analyses
 class MachineLearningAnalyses(Analyses):
     """
     This class is a child of the Analyses class and is used to perform machine learning analysis.
+
+    Attributes:
+        data (dict): A dict of DataFrames. variables is the feature matrix of the training data and metadata is the metadata.
+
+    Methods:
+        plot_data (go.Figure): Renders and returns a plot of the scaled train data.
     """
 
     def __init__(self, variables: pd.DataFrame = None, metadata: pd.DataFrame = None):
@@ -163,6 +169,19 @@ class MachineLearningAnalyses(Analyses):
 class IsolationForestAnalyses(MachineLearningAnalyses):
     """
     This class extends the MachineLearningAnalyses class and is used to perform Isolation Forest analysis.
+    
+    Attributes:
+        models (list): List of alternate models that are created to run concurrent tests.
+        results (dict): A dictionary of the results of all outlier prediction runs by this object.
+        evaluator (methods.MachineLearningMethodEvaluateModelMetricsNative): An uninitiated reference to the Evaluation object used to track model performance.
+        evaluation_object (methods.MachineLearningMethodEvaluateModelMetricsNative): The Evaluation object initialized with the IForest Analyses data.
+
+    Methods:
+        plot_scores: Plots the anomaly scores of the data.
+        plot_confidence_variation: Plots the variation in confidence about the detection threshold for a sample.
+        plot_threshold_variation: Change in detection threshold over test runs and train_set size.
+        plot_model_stability: Plots the stability in confidence over train_size and required n_tests.
+        plot_train_time:Plots the training time of the model over training set size.
     """
 
     def __init__(self, evaluator = None):

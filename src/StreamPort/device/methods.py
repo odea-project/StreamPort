@@ -185,12 +185,11 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
                     "Pressure vector and time variable must have the same length!"
                 )
 
-            # """
-            # Savitzky-Golay Filter
-            # - applies a polynomial smoothing filter to the data, which is particularly effective for preserving features of the data while reducing noise
-            # - uses a sliding window to fit a polynomial to the data points within the window, and then replaces the central point with the value of the polynomial at that point
-            # """
-            # #savgol_filter - to be manually implemented
+            """
+            Savitzky-Golay Filter
+            - applies a polynomial smoothing filter to the data, which is particularly effective for preserving features of the data while reducing noise
+            - uses a sliding window to fit a polynomial to the data points within the window, and then replaces the central point with the value of the polynomial at that point
+            """
             # if self.parameters["window_size"] % 2 == 0:
             #     self.parameters["window_size"] += 1  # Must be odd
 
@@ -201,7 +200,7 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             SNIP(Statistical Non-linear Iterative Peak-clipping)
             - Iteratively estimates and removes the broad background trends from sharp spectral features of a signal, like peaks
             - Useful for spectra with overlapping peaks or variable baselines.
-            ### Baseline Correction is expensive and unused except for calculating abs_deviation. Uncomment when needed.
+            ## Baseline Correction is expensive and unused except for calculating abs_deviation. Uncomment when needed.
             """
             # # apply a double logarithm transformation to the pressure vector
             # lls_vector = np.log(np.log(np.sqrt(pressure_vector + 1) + 1) + 1)
@@ -229,7 +228,7 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             #                                           neginf = np.min(baseline_corrected_vector))
 
             # featrawi["pressure_baseline_corrected"] = baseline_corrected_vector
-            # baseline correction done
+            # # baseline correction done
 
             decomp = seasonal_decompose(
                 pd.to_numeric(pressure_vector),

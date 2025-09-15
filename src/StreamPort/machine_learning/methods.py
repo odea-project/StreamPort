@@ -185,6 +185,9 @@ class MachineLearningScaleFeaturesScalerSklearn(ProcessingMethod):
         if len(data) == 0:
             print("No data to process.")
             return analyses
+        
+        if self.parameters["type"] is None:
+            self.parameters["type"] = "StandardScaler"
 
         scaler_type = self.parameters["type"]
         if scaler_type == "MinMaxScaler":
