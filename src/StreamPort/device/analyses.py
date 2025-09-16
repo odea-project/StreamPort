@@ -9,8 +9,8 @@ import xml.etree.ElementTree as ET
 import rainbow as rb
 import pandas as pd
 import plotly.graph_objects as go
-from core import Analyses
-from utils import get_file_encoding
+from src.StreamPort.core import Analyses
+from src.StreamPort.utils import get_file_encoding
 
 
 def _read_pressure_curve_angi(fl: str, pc_template: dict) -> dict:

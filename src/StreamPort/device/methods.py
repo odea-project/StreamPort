@@ -11,9 +11,9 @@ from scipy.signal import convolve2d
 from scipy.optimize import curve_fit
 #from scipy.optimize import least_squares #better alternative to curve_fit in case of high noise content in MSD
 from sklearn import preprocessing as scaler
-from core import ProcessingMethod
-from device.analyses import PressureCurvesAnalyses
-from device.analyses import MassSpecAnalyses
+from src.StreamPort.core import ProcessingMethod
+from src.StreamPort.device.analyses import PressureCurvesAnalyses
+from src.StreamPort.device.analyses import MassSpecAnalyses
 
 
 class PressureCurvesMethodAssignBatchPositionNative(ProcessingMethod):
@@ -79,6 +79,7 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
         window_size (int): The window size/resolution for baseline correction. Default is 7.
         bins (int): The number of bins for feature extraction. Default is 4.
         crop (int): The number of elements to crop from the beginning and end of the pressure vector to remove unwanted artifacts. Default is 2.
+        exclude (list | str): Choice of whether to exclude "Flush", "Blank" or other such runs from the analysis. This will set the features for the respective samples to None, and additionally remove the samples once the applied workflow is run.
 
     Details:
         The method extracts features from pressure curves using seasonal decomposition and binning, adding entries named "features" and "features_raw" to each dict in the data list of the PressureCurvesAnalyses instance.
@@ -102,7 +103,7 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             - pressure_baseline_corrected: The pressure curve with its baseline removed.
     """
 
-    def __init__(self, period: int = 10, window_size: int = 7, bins: int = 4, crop: int = 2):
+    def __init__(self, period: int = 10, window_size: int = 7, bins: int = 4, crop: int = 2, exclude: str = None):
         super().__init__()
         self.data_type = "PressureCurvesAnalyses"
         self.method = "ExtractFeatures"
@@ -110,7 +111,7 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
         self.input_instance = dict
         self.output_instance = dict
         self.number_permitted = 1
-        self.parameters = {"period": period, "window_size": window_size, "bins": bins, "crop": crop}
+        self.parameters = {"period": period, "window_size": window_size, "bins": bins, "crop": crop, "exclude": exclude}
         
     def run(self, analyses: PressureCurvesAnalyses) -> PressureCurvesAnalyses:
         """
@@ -135,6 +136,18 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             "pressure_baseline_corrected": [],
         }
 
+        to_remove = None
+        removed = []
+
+        if self.parameters["exclude"] is not None: 
+            if isinstance(self.parameters["exclude"], list):
+                if all(isinstance(item, str) for item in self.parameters["exclude"]):
+                    to_remove = self.parameters["exclude"]
+                else:
+                    raise TypeError("Invalid inputs. Input only strings like 'Flush' that must be removed")
+            elif isinstance(self.parameters["exclude"], str):
+                to_remove = [self.parameters["exclude"]]
+
         # a small subset of curves from each method/batch is missing a datapoint. Could indicate an anomaly, may also be reflected in the true runtimes. 
         # pad all shorter curves for each unique method with zeros to indicate the run ended uncharacteristically and handle missing values to enforce a unified time axis.
         method_time_vars = {}
@@ -155,6 +168,23 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             method = pc["method"]
             time_var = np.array(pc["time_var"])
             pressure_vector = np.nan_to_num(np.array(pc["pressure_var"]), nan=0.0)
+
+            removable = False
+            if to_remove:
+                """
+                EXTEND OR MAKE SPECIFIC AS NEEDED. Currently set to match string patterns.
+                """ 
+                for string in to_remove:
+                    pattern = re.compile(f"^{re.escape(string)}$", flags=re.IGNORECASE)
+                    if pattern.match(pc["sample"]):
+                        print(f"{pc["sample"]} found at index {i}, Skipping extraction...")
+                        removed.append(i)
+                        pc["features"] = features_template
+                        removable = True
+                        break
+            if removable:
+                continue  
+
             target_time_var = method_time_vars[method]
 
             if len(time_var) < len(target_time_var):
@@ -326,6 +356,12 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
             pc["features_raw"] = featrawi
 
             data[i] = pc
+        
+        for i in removed:
+            data.pop(i)
+
+        for i, pc in enumerate(data):
+            pc["index"] = i
 
         analyses.data = data
         return analyses
@@ -411,7 +447,7 @@ class MassSpecMethodExtractFeaturesNative(ProcessingMethod):
         rt_window (int): The minimum distance by seconds/number of rt entries before and after current one to be considered when finding peaks (default = 8s). Any peaks within this distance from each other will be disregarded.
         mz_window (float): Range of adjacent mz value to be considered for 2D tile/window creation. Defaults to 1.0 Da (mz(s) within 1.0 to the current one, here, totalling 1 mz before and after the target).
         smooth (int | bool): User may provide a window size and choose whether the signal must be pre-treated using smoothing. Default is None(False). Note: If an int n is passed, the window will be nxn over the 2D intensity array, where n is always automatically limited to the values 3, 5, and 7.
-        exclude (list | str): Choice of whether to exclude "Flush", "Blank" or other such runs from the analysis. This will set the features for the respective samples to None, without removing the samples.
+        exclude (list | str): Choice of whether to exclude "Flush", "Blank" or other such runs from the analysis. This will set the features for the respective samples to None, and additionally remove the samples once the applied workflow is run.
 
     Methods:
         - _apply_gaussian_filter: Performs gaussian smoothing on the 2D intensity matrix before feature extraction with a default 3x3 kernel.
@@ -651,6 +687,7 @@ class MassSpecMethodExtractFeaturesNative(ProcessingMethod):
         plotter = analyses.plotter
 
         to_remove = None
+        removed = []
 
         features_template = {
             "peak_height" : None,  
@@ -694,17 +731,23 @@ class MassSpecMethodExtractFeaturesNative(ProcessingMethod):
                 data[i] = msd
                 print(f"WARNING: This sample index {i} {msd["name"]} does not have TIC data. Skipping this iteration...")
                 continue
+
+            removable = False
             if to_remove:
                 """
-                EXTEND FOR OTHER STRINGS AS NEEDED
+                EXTEND OR MAKE SPECIFIC AS NEEDED. Currently set to match string patterns.
                 """ 
                 for string in to_remove:
                     pattern = re.compile(f"^{re.escape(string)}$", flags=re.IGNORECASE)
-                if pattern.match(msd["sample"]):
-                    print(f"{msd["sample"]} found at index {i}, Skipping extraction...")
-                    msd["features"] = feat
-                    continue
-
+                    if pattern.match(msd["sample"]):
+                        print(f"{msd["sample"]} found at index {i}, Skipping extraction...")
+                        removed.append(i)
+                        msd["features"] = feat
+                        removable = True
+                        break
+            if removable:
+                continue            
+            
             rt = chroma["rt"]
             mz = chroma["mz"]
             intensity = chroma["intensity"]
@@ -888,6 +931,13 @@ class MassSpecMethodExtractFeaturesNative(ProcessingMethod):
             msd["features"] = feat
 
             data[i] = msd
+        
+        # remove excluded analyses from the object
+        for i in removed:
+            data.pop(i)
+        
+        for i, msd in enumerate(data):
+            msd["index"] = i
         
         analyses.data = data
         return analyses

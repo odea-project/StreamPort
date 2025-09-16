@@ -30,7 +30,7 @@ The streamPort is an experimental project under development. Below, we instruct 
 <br>
 ## Streamlit App
 - Install Streamlit version 1.48.1 or above (included in requirements);
-- Run app using `streamlit run src/StreamPort/Home.py`
+- Run app using `streamlit run src/StreamPort/app/Home.py`
 - Configure the page layout/design by editing the `.streamlit/config.toml` file
 
 <br>

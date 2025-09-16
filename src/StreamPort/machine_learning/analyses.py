@@ -10,7 +10,7 @@ from joblib import Parallel, delayed
 import copy
 import plotly.graph_objects as go
 import plotly.colors
-from core import Analyses
+from src.StreamPort.core import Analyses
 
 
 class MachineLearningAnalyses(Analyses):
