@@ -28,10 +28,16 @@ The streamPort is an experimental project under development. Below, we instruct 
 - Run the `dev_core.ipynb` for testing the setup;
 
 <br>
-## Streamlit App
+
+# Streamlit App
 - Install Streamlit version 1.48.1 or above (included in requirements);
-- Run app using `streamlit run src/StreamPort/app/Home.py`
 - Configure the page layout/design by editing the `.streamlit/config.toml` file
+- From the root directory, make all modules in the current path discoverable by setting PYTHONPATH:
+
+## CMD
+- `set PYTHONPATH=.`
+
+- Run app using `streamlit run src/StreamPort/app/Home.py`
 
 <br>
 
