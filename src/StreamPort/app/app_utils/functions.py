@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date, time as dtime
 import os
 
 ## Functions ##
@@ -34,7 +34,11 @@ def extract_features(engine, processor):
 
 #Train Set Selection
 def select_train_set_pc(engine, method='SAA_411_Pac.M', date_threshold_min=None):
-    date_threshold_min = datetime(2021, 8, 19) if date_threshold_min is None else date_threshold_min
+    if date_threshold_min is None:
+        date_threshold_min = datetime(2021, 8, 19)
+    elif isinstance(date_threshold_min, date) and not isinstance(date_threshold_min, datetime):
+        # Convert date to datetime at midnight
+        date_threshold_min = datetime.combine(date_threshold_min, dtime.min)
     indices = engine.analyses.get_method_indices(method)
     """
     Train Set
@@ -68,8 +72,11 @@ def select_train_set_pc(engine, method='SAA_411_Pac.M', date_threshold_min=None)
 
 def select_train_set_ms(engine, date_threshold_min=None):
     all_batches = engine.analyses.get_batches()
-    date_threshold = datetime(2025, 6, 20) if date_threshold_min is None else date_threshold_min
-    train_batch_names = [batch for batch in all_batches if datetime.strptime(" ".join(batch.split(" ")[-2:]), "%Y-%m-%d %H-%M-%S") < date_threshold]
+    if date_threshold_min is None:
+        date_threshold_min = datetime(2025, 6, 20)
+    elif isinstance(date_threshold_min, date) and not isinstance(date_threshold_min, datetime):
+        date_threshold_min = datetime.combine(date_threshold_min, dtime.min)
+    train_batch_names = [batch for batch in all_batches if datetime.strptime(" ".join(batch.split(" ")[-2:]), "%Y-%m-%d %H-%M-%S") < date_threshold_min]
 
     """
     Using the same train batch from PressureCurvesAnalyses
@@ -106,7 +113,7 @@ def select_train_set_ms(engine, date_threshold_min=None):
     )
 
     test_indices = []
-    date_threshold_old = date_threshold
+    date_threshold_old = date_threshold_min
     for batch in remaining_batches:
         batch_date = datetime.strptime(" ".join(batch.split(" ")[-2:]), "%Y-%m-%d %H-%M-%S") 
 
@@ -119,7 +126,7 @@ def select_train_set_ms(engine, date_threshold_min=None):
                 ft = engine.analyses.get_features(j)
                 if ft.empty:
                     continue
-                test_indices.append[j]
+                test_indices.append(j)
                 
     return train_indices, test_indices
 

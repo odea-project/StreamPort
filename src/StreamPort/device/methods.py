@@ -342,7 +342,8 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
                 """
                 # # rate of change. Absolute value used to avoid negative roc and relative change values
                 key_roc = f"roc_{start_time}_{end_time}"
-                feati[key_roc] = abs((pressure_vector[end_idx] - pressure_vector[start_idx]) / target_time_var[end_idx] - target_time_var[start_idx]) #abs((pressure_vector[end_idx] - pressure_vector[start_idx]) / target_time_var[end_idx] - target_time_var[start_idx])               
+                feati[key_roc] = abs((pressure_vector[end_idx] - pressure_vector[start_idx]) / (target_time_var[end_idx] - target_time_var[start_idx]))
+
                 
                 # # absolute value of minute fluctuations after baseline correction 
                 # key_dev = f"abs_deviation_{start_time}_{end_time}"  # absolute fluctuation in the bin without baseline pressure value to catch small deviations
@@ -357,8 +358,7 @@ class PressureCurvesMethodExtractFeaturesNative(ProcessingMethod):
 
             data[i] = pc
         
-        for i in removed:
-            data.pop(i)
+        data = [ana for idx, ana in enumerate(data) if idx not in set(removed)]
 
         for i, pc in enumerate(data):
             pc["index"] = i
@@ -933,8 +933,7 @@ class MassSpecMethodExtractFeaturesNative(ProcessingMethod):
             data[i] = msd
         
         # remove excluded analyses from the object
-        for i in removed:
-            data.pop(i)
+        data = [ana for idx, ana in enumerate(data) if idx not in set(removed)]
         
         for i, msd in enumerate(data):
             msd["index"] = i

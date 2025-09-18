@@ -1,65 +1,89 @@
 import streamlit as st
 import time
-import threading
+import copy
+from threading import Thread
 from app_utils.functions import *
-
+from app_utils.workflow_state import workflow_lock, shared_workflow_data
 
 st.set_page_config(page_title="Anomaly Detection - Workflow", layout="wide")
-
 
 ## Imports ##
 from src.StreamPort.core import Engine
 from src.StreamPort.device.methods import PressureCurvesMethodExtractFeaturesNative, MassSpecMethodExtractFeaturesNative
 
+# Function to run workflow in a background thread
+def run_workflow_thread(workflow_id, engine, ana_type, scaler_type, processor, date_threshold_min):
+
+    fail_flag = None    
+    with workflow_lock:
+        shared_workflow_data[workflow_id] = {
+            "status": "Running",
+            "progress": 0,
+            "ml": None,
+            "results": {}
+        }
+    
+    try:
+        fail_flag = "Feature Extraction"
+        extract_features(engine, processor)
+
+        if ana_type == "Pressure Curves":
+            fail_flag = "Train Selection PC"
+            train_indices, test_indices = select_train_set_pc(engine=engine, date_threshold_min=date_threshold_min)
+        elif ana_type == "Mass Spec":
+            fail_flag = "Train Selection MS"
+            train_indices, test_indices = select_train_set_ms(engine=engine, date_threshold_min=date_threshold_min)
+        else:
+            raise ValueError("Invalid analysis type")
+
+        fail_flag = "Data Scaling"
+        ml = scale_data(engine, train_indices, scaler_type)
+        fail_flag = "Iforest Creation"
+        ml = create_iforest(ml)
+
+        # currently follows the serial test pattern using known/available test cases. Update using sensor info for real-time testing
+        for i, index in enumerate(test_indices[:len(test_indices)//2]):
+            with workflow_lock:
+                if shared_workflow_data[workflow_id].get("cancel"):
+                    shared_workflow_data[workflow_id]["status"] = "Cancelled"
+                    return
+            fail_flag = "Testing"    
+            ml = test_sample(ml, engine, index, n_tests=5)
+            new_ml = copy.deepcopy(ml)
+            time.sleep(0.05)  # Simulate processing time
+
+            with workflow_lock:
+                shared_workflow_data[workflow_id]["ml"] = new_ml
+                shared_workflow_data[workflow_id]["progress"] = int(100 * (i + 1) // (len(test_indices) // 2))
+                shared_workflow_data[workflow_id]["results"][index] = {
+                    "ml": new_ml,
+                    "engine": engine
+                }
+
+        with workflow_lock:
+            shared_workflow_data[workflow_id]["status"] = "Completed"
+
+    except Exception as e:
+        with workflow_lock:
+            shared_workflow_data[workflow_id]["status"] = f"Failed: {str(e)} at {fail_flag}"
+        return
+
 # Initialize session state
 if "workflows" not in st.session_state:
     st.session_state["workflows"] = {}
 
-# Function to run workflow in a background thread
-def run_workflow_thread(workflow_id, engine, ana_type, scaler_type, processor, date_threshold_min):
-    wf = st.session_state["workflows"][workflow_id]
-    try:
-        wf["status"] = "Running"
-        wf["progress"] = 0
-
-        extract_features(engine, processor)
-
-        if ana_type == "Pressure Curves":
-            train_indices, test_indices = select_train_set_pc(engine=engine, date_threshold_min=date_threshold_min)
-        elif ana_type == "Mass Spec":
-            train_indices, test_indices = select_train_set_ms(engine=engine, date_threshold_min=date_threshold_min)
-        else:
-            wf["status"] = "Failed: Invalid analysis type"
-            return
-
-        ml = scale_data(engine, train_indices, scaler_type)
-        ml = create_iforest(ml)
-
-        # currently follows the serial test pattern using known/available test cases. Update using sensor info for real-time testing
-        for i, index in enumerate(test_indices):
-            wf = st.session_state["workflows"][workflow_id]
-            if wf.get("cancel"):
-                wf["status"] = "Cancelled"
-                st.session_state["workflows"][workflow_id] = wf
-                return
-            ml = test_sample(ml, engine, index)
-            time.sleep(0.05)  # Simulate processing time
-            wf["ml"] = ml
-            wf["progress"] = int(100 * (i + 1) / len(test_indices))
-            st.session_state["workflows"][workflow_id] = wf
-            st.session_state["results"][workflow_id][index] = {"ml": ml, 
-                                                               "engine": engine}
-
-        wf["status"] = "Completed"
-        st.session_state["workflows"][workflow_id] = wf
-
-    except Exception as e:
-        wf["status"] = f"Failed: {str(e)}"
+if "path" not in st.session_state:
+    st.session_state["last_path"] = None
+if "last_ana_type" not in st.session_state:
+    st.session_state["last_ana_type"] = None
+if "start_clicked" not in st.session_state:
+    st.session_state["start_clicked"] = False
 
 st.title("Anomaly Detection")
-st.markdown("The results of the analyses can be accessed when they are available")
 
-path = st.text_input("Input analyses path (plaintext, no quotes)")
+name = st.text_input("Name your workflow (optional)", value = None)
+
+path = st.text_input("Input analyses path (plaintext, no quotes). Files from the same path do not need to be reloaded on page refresh.")
 
 collect = False
 if st.button("Read files") or collect:
@@ -72,6 +96,7 @@ if st.button("Read files") or collect:
     else:
         if path and path != st.session_state["path"]:
             st.write("New path detected. Overwriting previous files...")
+            st.session_state["start_clicked"] = False
             st.session_state["path"] = path
             collect = True
         else:
@@ -94,18 +119,15 @@ if st.session_state.get("loaded"):
         st.info("Please select a valid analysis type to proceed.")
         st.stop()
 
-    type_has_changed = False
-    if "ana_type" in st.session_state:
-        type_has_changed = True
-    st.session_state["ana_type"] = ana_type
-
-    name = st.text_input("Name your workflow (optional)", value = None)
+    if ana_type != st.session_state.get("last_ana_type"):
+        st.session_state["start_clicked"] = False
+        st.session_state["last_ana_type"] = ana_type
 
     if st.button("Start"):
-
-        if "analyses" not in st.session_state or type_has_changed:
+        
+        if "analyses" not in st.session_state or not st.session_state["start_clicked"]:
             files = st.session_state["files"]
-            with st.spinner("Finding analysis data..."):
+            with st.spinner(f"Finding {ana_type} data..."):
                 analyses = create_analyses(files, ana_type)
             if name:
                 metadata={"name":name, "author":None, "path":None}
@@ -123,8 +145,9 @@ if st.session_state.get("loaded"):
             engine = st.session_state["engine"]
 
         st.write("Number of analyses:", len(analyses.data))
+        st.session_state["start_clicked"] = True
 
-    if "analyses" in st.session_state:
+    if st.session_state.get("start_clicked", False):
         processor = None
         scaler_type = None
         threshold = "auto"
@@ -163,27 +186,28 @@ if st.session_state.get("loaded"):
             threshold = st.number_input("Enter a float threshold value.")
             if not isinstance(threshold, float):
                 threshold = float(threshold)
+        else:
+            threshold = threshold.lower()
 
         if st.button("Run Workflow"):
             workflow_id = int(time.time() * 1000)
+
+            if "workflows" not in st.session_state:
+                st.session_state["workflows"] = {}
+
             st.session_state["workflows"][workflow_id] = {
                 "name": name if name else f"{ana_type} workflow {workflow_id}",
                 "start_time": time.time(),
-                "status": "Running",
-                "progress": 0,
-                "cancel": False,
-                "ml": None,
-                "engine": engine,
-                "analyses": analyses,  # optional for later reference
                 "type": ana_type,
                 "scaler": scaler_type,
                 "threshold": threshold,
                 "processor": processor,
             }
 
-            threading.Thread(
+            Thread(
                 target=run_workflow_thread,
                 args=(workflow_id, engine, ana_type, scaler_type, processor, date_threshold_min),
                 daemon=True
             ).start()
-            st.success(f"Workflow {name} started in background.")
+            st.success(f"Workflow {name if name else workflow_id} started in background.")
+            st.session_state["loaded"] = False
