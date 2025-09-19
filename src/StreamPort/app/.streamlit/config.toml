@@ -1,0 +1,8 @@
+#uncomment when needed
+[theme]
+base="dark"
+primaryColor="#f04a4aff"
+backgroundColor="#ffffffff"
+secondaryBackgroundColor="#c4c4c4ff"
+textColor="#000000ff"
+font="sans serif"  # or "serif", "monospace"
