@@ -33,12 +33,15 @@ def extract_features(engine, processor):
     engine.run() 
 
 #Train Set Selection
-def select_train_set_pc(engine, method='SAA_411_Pac.M', date_threshold_min=None):
+def select_train_set_pc(engine, method=None, date_threshold_min=None):
     if date_threshold_min is None:
         date_threshold_min = datetime(2021, 8, 19)
     elif isinstance(date_threshold_min, date) and not isinstance(date_threshold_min, datetime):
         # Convert date to datetime at midnight
         date_threshold_min = datetime.combine(date_threshold_min, dtime.min)
+
+    if method is None:
+        method = 'SAA_411_Pac.M'
     indices = engine.analyses.get_method_indices(method)
     """
     Train Set

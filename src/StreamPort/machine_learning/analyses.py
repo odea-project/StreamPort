@@ -591,21 +591,23 @@ class IsolationForestAnalyses(MachineLearningAnalyses):
                 train_size = ("train_size", "mean"),
                 normal_count = ("class", lambda x: (x == "normal").sum()),
                 outlier_count = ("class", lambda x: (x == "outlier").sum()),
+                avg_confidence = ("confidence", "mean"),
                 num_tests = ("test_number", "count")
             ).reset_index()
 
             summary = ""
 
             for row in group_stats.itertuples(index=False):
-                summary += "Index: " + str(row.index) + "\n"
-                summary += "Train size: " + str(int(row.train_size)) + "\n"
-                summary += "Num. Tests: " + str(row.num_tests) + "\n" 
-                summary += "Normal: " + str(row.normal_count) + "\n" 
-                summary += "Outlier: " + str(row.outlier_count) + "\n" 
-                summary += "\n"
+                summary += (
+                    f"Index: {row.index}\n"
+                    f"Train size: {int(row.train_size)}\n"
+                    f"Num. Tests: {row.num_tests}\n"
+                    f"Normal: {row.normal_count}\n"
+                    f"Outlier: {row.outlier_count}\n"
+                    f"Avg. Confidence: {row.avg_confidence:.3f}\n\n"
+                )
 
-            print(summary)
-            return None
+            return summary
 
         return results_df
     

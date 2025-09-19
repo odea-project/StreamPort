@@ -48,7 +48,10 @@ for idx, tab in enumerate(tabs):
         st.subheader(f"Workflow {wid} — {wf_shared['status']}")
         st.markdown(f"**Type:** {wf_meta['type']}")
         st.markdown(f"**Start Time:** {wf_meta.get('start_time', 'N/A')}")
-
+        with st.expander("Details", expanded=False):
+            st.dataframe(wf_meta.get("processor").parameters)
+            st.markdown("**Scaler:** " + str(wf_meta.get("scaler", "N/A")))
+            st.markdown("**Threshold:** " + str(wf_meta.get("threshold", "N/A")))
         # Progress bar if not completed
         if wf_shared["status"] != "Completed":
             st.progress(wf_shared.get("progress", 0))
@@ -73,6 +76,7 @@ for idx, tab in enumerate(tabs):
                 sample_indices,
                 key=f"index_select_{wid}"
             )
+            
             sample_result = results.get(selected_index)
             if sample_result:
                 sample_ml = sample_result.get("ml", None)
@@ -101,9 +105,9 @@ for idx, tab in enumerate(tabs):
             data_col, plot_col = st.columns([1, 2])
             with data_col:
                 st.markdown("### Data Summary")
-                ft = ml.data.get("variables", None)
+                ft = ml.get_results(summarize=True)
                 if ft is not None:
-                    st.dataframe(ft.describe())
+                    st.text_area("Summary of test results per index", ft, height = 500)
                 else:
                     st.info("No feature data found.")
 

@@ -12,7 +12,7 @@ from src.StreamPort.core import Engine
 from src.StreamPort.device.methods import PressureCurvesMethodExtractFeaturesNative, MassSpecMethodExtractFeaturesNative
 
 # Function to run workflow in a background thread
-def run_workflow_thread(workflow_id, engine, ana_type, scaler_type, processor, date_threshold_min):
+def run_workflow_thread(workflow_id, engine, ana_type, method, scaler_type, processor, date_threshold_min):
 
     fail_flag = None    
     with workflow_lock:
@@ -29,7 +29,7 @@ def run_workflow_thread(workflow_id, engine, ana_type, scaler_type, processor, d
 
         if ana_type == "Pressure Curves":
             fail_flag = "Train Selection PC"
-            train_indices, test_indices = select_train_set_pc(engine=engine, date_threshold_min=date_threshold_min)
+            train_indices, test_indices = select_train_set_pc(engine=engine, method=method, date_threshold_min=date_threshold_min)
         elif ana_type == "Mass Spec":
             fail_flag = "Train Selection MS"
             train_indices, test_indices = select_train_set_ms(engine=engine, date_threshold_min=date_threshold_min)
@@ -154,8 +154,11 @@ if st.session_state.get("loaded"):
         params = {}
         engine = st.session_state["engine"]
         analyses = st.session_state["analyses"]
+        method = None
 
         if ana_type == "Pressure Curves":
+            method = st.selectbox("Choose the method/substance to analyze. Default is SAA_411_Pac.M", engine.analyses.get_methods())
+
             params["period"] = st.slider("Period for seasonal decomposition of curves. Default is 10", 10, 30, step=10, value=10)
             params["window_size"] = st.slider("Window Size/Resolution for baseline correction. Default is 7", 5, 13, step=2, value=7)
             params["bins"] = st.slider("Number of Bins/Intervals for feature extraction. Default is 4", 2, 8, value=4)
@@ -206,7 +209,7 @@ if st.session_state.get("loaded"):
 
             Thread(
                 target=run_workflow_thread,
-                args=(workflow_id, engine, ana_type, scaler_type, processor, date_threshold_min),
+                args=(workflow_id, engine, ana_type, method, scaler_type, processor, date_threshold_min),
                 daemon=True
             ).start()
             st.success(f"Workflow {name if name else workflow_id} started in background.")

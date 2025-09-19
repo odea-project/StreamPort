@@ -118,6 +118,14 @@ def _read_pressure_curve_angi(fl: str, pc_template: dict) -> dict:
                 if match_key:
                     pc_fl["detector"] = match_key.group(1)
 
+            """
+            Data after 2025, device/analyses.py", line 247, in __init__
+            pc["start_time"] - self.data[i - 1]["end_time"]
+            TypeError: unsupported operand type(s) for -: 'datetime.datetime' and 'NoneType'
+
+            analyses after 2025 crash program
+            """
+
             if "Postrun" in line and pc_fl["end_time"] is None:
                 end_time = datetime_pattern.search(line).group()
                 end_time = datetime.datetime.strptime(end_time, datetime_format)
@@ -689,7 +697,7 @@ def _read_ms_data_rainbow(fl: str, ms_template: dict) -> dict:
 
     if ms1 is None:
         ms_data["sim"] = None
-        raise FileNotFoundError(f"No MS1 data found in directory: {fl}")
+        raise FileNotFoundError(f"No SIM data found in directory: {fl}")
         #print(f"No MS1 data found in directory: {fl}")
     else:
         ms_data["sim"] = {
@@ -699,7 +707,7 @@ def _read_ms_data_rainbow(fl: str, ms_template: dict) -> dict:
                         }
 
     if ms2 is None:
-        print(f"No MS2 data found in directory: {fl}")
+        print(f"No TIC data found in directory: {fl}")
         ms_data["tic"] = None 
     else:               
         ms_data["tic"] = {
