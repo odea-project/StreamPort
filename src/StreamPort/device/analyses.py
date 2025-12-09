@@ -6,9 +6,12 @@ import os
 import datetime
 import re
 import xml.etree.ElementTree as ET
-import rainbow as rb
 import pandas as pd
 import plotly.graph_objects as go
+
+import rainbow as rb
+import lads_opcua_client as lads
+
 from src.StreamPort.core import Analyses
 from src.StreamPort.utils import get_file_encoding
 
@@ -881,7 +884,7 @@ class MassSpecAnalyses(Analyses):
         files (list): List of paths to MS data files. Possible formats are .D.
 
     Attributes:
-        data (list): List of dictionaries containing pressure curve data. Each dictionary contains the following
+        data (list): List of dictionaries containing Mass Spec data. Each dictionary contains the following
             keys:
             - index: Index of the run.
             - name: Name of the run.
@@ -1726,4 +1729,62 @@ class ActualsAnalyses(Analyses):
             f"  data: {len(self.data)} \n"
             f"{str_data} \n"
         )
+
+
+def read_sensor_data_lads(url:str = None):
+    if url is None:
+        raise ValueError("URL must be a valid server url in string form.")
     
+    #connect to server
+    conns = lads.Connections(url)
+    conns.connect()
+
+    for conn in conns:
+        server = conn.server
+        devices = server.devices
+    
+    return conns
+
+
+class SensorAnalyses(Analyses):
+    """
+    Class for analyzing Sensor data.
+
+    Args:
+        files (list): List of paths to sensor data files. Possible formats are .csv.
+
+    Attributes:
+        data (list): List of dictionaries containing sensor data. Each dictionary contains the following
+            keys:
+            - index: Index of the run.
+            - name: Name of the run.
+            - path: Path to the sensor data file.
+            - batch: Batch name.
+            - batch_position: Position of the batch in the analysis.
+            - idle_time: Idle time of the (instrument before the) run.
+            - sample: Sample name, whether the run was a Flush, Sample or Blank.
+            - method: Method name.
+            - timestamp: Timestamp of the run.
+            - unit: Unit.
+            - instrument: Type of instrument (device).
+            - signal: Signal.
+            - date: Stringified date entry of MS run. Timestamp is still used for analysis.
+            - detector: Detector name.
+            - pump: Pump name.
+            - vial_position: Vial Position entry of the run.
+            - start_time: Start time of the run.
+            - end_time: End time of the run.
+            - runtime: Runtime.
+        plotter (plotly.graph_objects): An instance of the Plotly graph objects class.
+    
+    Methods:
+        plot_chromatogram: Plots EIC/TIC for the MS data.
+        plot_3d: Creates a 3D Surface plot/2D Heatmap for the MS data.
+        plot_bpc: Plots the Base Peak Intensity across rts.
+        plot_ms: Plots the Mass Spectrum for a fixed rt across mzs.
+        plot_gaussian_fit: Plots the gaussian fit created for the target window during feature extraction.
+        plot_features: Plots the spread of extracted feature values.
+    """
+
+    def __init__(self, files: list = None):
+        super().__init__(data_type = "SensorAnalysis", formats = [".csv"])
