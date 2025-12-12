@@ -42,15 +42,15 @@ The streamPort is an experimental project under development. Below, we instruct 
 <br>
 
 # Build Library
-- The build library is required to build the libraries. It can be installed with the command `pip install build`;
+- The build package is required to build the libraries. It can be installed with the command `pip install build`;
 - The library can be built by first navigating to the root directory `StreamPort` and then running `py -m build`, which creates the `dist` directory containing the `.whl` and `.tar.gz` files for installation;
 
 # Package Installation
-- The StreamPort package can be installed by first navigating to the `dist` directory;
+- The StreamPort package can be installed by first navigating to the `dist` directory using `cd dist`;
 - Then, to install the package, run `pip install streamport-0.0.1-py3-none-any.whl`, or the `.whl` file that is created on build;
 - To install and make source code editable, run from root directory `pip install -e .`;
-- Now the StreamPort package can be imported using `pip import StreamPort`, and all its public classes can now be used using `from StreamPort import *`, where * includes `device` and `machine_learning`;
-- Your first `Device Analysis` class object can be created using `pc = device.analyses.PressureCurvesAnalyses(<files>)` or `ms = device.analyses.MassSpecAnalyses(<files>)`, where files is the file or list of files to be analyzed, and similarly for `Machine Learning Analysis` or `Methods` and so on (see notebooks directory for example usages);
+- Now the StreamPort package can be imported using `import StreamPort`, and all its public classes can now be used using `from StreamPort import *`, where * includes `device` and `machine_learning`;
+- Your first `Device Analysis` class object can be created using `pc = StreamPort.device.analyses.PressureCurvesAnalyses(<files>)` or `ms = StreamPort.device.analyses.MassSpecAnalyses(<files>)`, where files is the file or list of files to be analyzed, and similarly for `Machine Learning Analysis` or `Methods` and so on (see notebooks directory for example usages);
 
 <br>
 
