@@ -24,6 +24,7 @@ The streamPort is an experimental project under development. Below, we instruct 
 - From the local repository folder, start a virtual environment using `python -m venv env` (you can change `env` to another name of your preference);
 - Then activate the virtual environment with `env/Scripts/activate.bat`, where `env` should be the name of the virtual environment you defined;
 - Once the virtual environment is activated, you can install the required libraries with `pip install -r requirements.txt`;
+- For example workflows using Jupyter Notebooks, see the `notebooks` directory. 
 - For the Jupyter Notebooks, you can select the kernel from the virtual environment;
 - Run the `dev_core.ipynb` for testing the setup;
 
@@ -31,13 +32,25 @@ The streamPort is an experimental project under development. Below, we instruct 
 
 # Streamlit App
 - Install Streamlit version 1.48.1 or above (included in requirements);
-- Configure the page layout/design by editing the `.streamlit/config.toml` file
-- From the root directory, make all modules in the current path discoverable by setting PYTHONPATH:
+- Configure the page layout/design by editing the `.streamlit/config.toml` file;
+- From the root directory, make all modules in the current path discoverable by setting PYTHONPATH:;
 
 ## CMD
-- `set PYTHONPATH=.`
+- `set PYTHONPATH=.`;
+- Run app using `streamlit run src/StreamPort/app/Home.py`;
 
-- Run app using `streamlit run src/StreamPort/app/Home.py`
+<br>
+
+# Build Library
+- The build library is required to build the libraries. It can be installed with the command `pip install build`;
+- The library can be built by first navigating to the root directory `StreamPort` and then running `py -m build`, which creates the `dist` directory containing the `.whl` and `.tar.gz` files for installation;
+
+# Package Installation
+- The StreamPort package can be installed by first navigating to the `dist` directory;
+- Then, to install the package, run `pip install streamport-0.0.1-py3-none-any.whl`, or the `.whl` file that is created on build;
+- To install and make source code editable, run from root directory `pip install -e .`;
+- Now the StreamPort package can be imported using `pip import StreamPort`, and all its public classes can now be used using `from StreamPort import *`, where * includes `device` and `machine_learning`;
+- Your first `Device Analysis` class object can be created using `pc = device.analyses.PressureCurvesAnalyses(<files>)` or `ms = device.analyses.MassSpecAnalyses(<files>)`, where files is the file or list of files to be analyzed, and similarly for `Machine Learning Analysis` or `Methods` and so on (see notebooks directory for example usages);
 
 <br>
 
